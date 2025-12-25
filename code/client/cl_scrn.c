@@ -22,9 +22,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // cl_scrn.c -- master for refresh, status bar, console, chat, notify, etc
 
 #include "client.h"
-#include "../vr/vr_clientinfo.h"
-#include "../vr/vr_renderer.h"
-#include "../vr/vr_base.h"
+#include "../vrcommon/vr_clientinfo.h"
+#include "../vrcommon/vr_renderer.h"
+#include "../vrcommon/vr_base.h"
 
 extern vr_clientinfo_t vr;
 extern cvar_t *vr_currentHudDrawStatus;

@@ -174,7 +174,7 @@ This project uses CMake so building it on supported platforms should be
 straightforward, e.g. on Windows with MSVC you can build it with:
 
 ```bash
-cmake -S . -B build
+cmake -S . -B build # add -DBUILD_RENDERER_GL2=ON for legacy renderer
 cmake --build build --config Release
 ```
 

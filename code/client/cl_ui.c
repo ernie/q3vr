@@ -24,9 +24,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../botlib/botlib.h"
 
-#include "../vr/vr_clientinfo.h"
-#include "../vr/vr_input.h"
-#include "../vr/vr_updates.h"
+#include "../vrcommon/vr_clientinfo.h"
+#include "../vrcommon/vr_input.h"
+#include "../vrcommon/vr_updates.h"
 
 extern	botlib_export_t	*botlib_export;
 extern vr_clientinfo_t vr;

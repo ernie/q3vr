@@ -33,6 +33,27 @@ extern SDL_Window *SDL_window;
 
 /*
 =================
+GLimp_InitGamma
+=================
+*/
+void GLimp_InitGamma( glconfig_t *config )
+{
+	config->deviceSupportsGamma = qfalse;
+
+	// Check if SDL window supports gamma ramps
+	if ( SDL_window )
+	{
+		Uint16 r[256], g[256], b[256];
+		if ( SDL_GetWindowGammaRamp( SDL_window, r, g, b ) == 0 )
+		{
+			// Test if we can actually set gamma
+			config->deviceSupportsGamma = SDL_SetWindowBrightness( SDL_window, 1.0f ) >= 0 ? qtrue : qfalse;
+		}
+	}
+}
+
+/*
+=================
 GLimp_SetGamma
 =================
 */

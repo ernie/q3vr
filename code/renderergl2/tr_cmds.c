@@ -549,6 +549,78 @@ void R_Mat4Copy( const float in[16], float out[16] )
 	}
 }
 
+/*
+==================
+RE_ClearVRFramebuffer
+
+Clear the VR framebuffer - called from VR layer to avoid graphics API calls there
+==================
+*/
+void RE_ClearVRFramebuffer( int width, int height, qboolean isThirdPersonSpectator )
+{
+	qglEnable( GL_SCISSOR_TEST );
+	qglViewport( 0, 0, width, height );
+
+	if (isThirdPersonSpectator)
+	{
+		// Blood red.. ish
+		qglClearColor( 0.12f, 0.0f, 0.05f, 1.0f );
+	}
+	else
+	{
+		// Black
+		qglClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
+	}
+
+	qglScissor( 0, 0, width, height );
+	qglClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+
+	qglScissor( 0, 0, 0, 0 );
+	qglDisable( GL_SCISSOR_TEST );
+}
+
+/*
+==================
+RE_SwapDesktopWindow
+
+Swap desktop window buffers - called from VR layer after frame submission
+==================
+*/
+void RE_SwapDesktopWindow( void )
+{
+	GLimp_EndFrame();
+}
+
+/*
+==================
+RE_WaitForRenderComplete
+
+Wait for GPU to complete rendering - called from VR layer before releasing XR swapchains.
+OpenGL has implicit synchronization, so this is a no-op for GL2.
+==================
+*/
+void RE_WaitForRenderComplete( void )
+{
+	// OpenGL has implicit synchronization - GPU commands complete
+	// in order before xrReleaseSwapchainImage returns.
+	// No explicit wait needed.
+}
+
+qboolean RE_InitXRResources( void )
+{
+	// OpenGL path: FBOs are created directly in VR layer via VR_CreateImageView()
+	// No renderer-side resource initialization needed for OpenGL.
+	return qtrue;
+}
+
+void RE_BeginXRFrame( uint32_t colorIndex, uint32_t depthIndex )
+{
+	// OpenGL path: FBO is bound directly by VR layer via VR_Swapchains_BindFramebuffers()
+	// This function is only needed for Vulkan's command buffer setup.
+	(void)colorIndex;
+	(void)depthIndex;
+}
+
 void RE_SetVRHeadsetParms( const float projectionMatrix[16],  const float nonVRProjectionMatrix[16], int renderBuffer,
 						   const float projectionEye0[16], const float projectionEye1[16],
 						   float combinedFovX, float halfIpdMeters ) {

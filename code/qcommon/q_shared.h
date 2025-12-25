@@ -122,13 +122,18 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define Q_SCANF_FUNC(fmt, va) __attribute__((format(scanf, fmt, va)))
 #define Q_ALIGN(x) __attribute__((aligned(x)))
+#define QALIGN(x) __attribute__((aligned(x)))
 #else
 #define Q_UNUSED_VAR
 #define Q_NO_RETURN
 #define Q_PRINTF_FUNC(fmt, va)
 #define Q_SCANF_FUNC(fmt, va)
 #define Q_ALIGN(x)
+#define QALIGN(x)
 #endif
+
+// Quake3e compatibility defines
+#define MAX_UINT ((unsigned)(~0))
 
 #if (defined _MSC_VER)
 #define Q_EXPORT __declspec(dllexport)
@@ -204,6 +209,11 @@ typedef union {
 	int i;
 	unsigned int ui;
 } floatint_t;
+
+typedef union {
+	byte rgba[4];
+	uint32_t u32;
+} color4ub_t;
 
 typedef int		qhandle_t;
 typedef int		sfxHandle_t;
@@ -462,6 +472,7 @@ extern	vec3_t	axisDefault[3];
 #define	IS_NAN(x) (((*(int *)&x)&nanmask)==nanmask)
 
 int Q_isnan(float x);
+float Q_atof( const char *str );
 
 #if idx64
   extern long qftolsse(float f);
@@ -546,6 +557,21 @@ float Q_rsqrt( float f );		// reciprocal square root
 
 #define SQRTFAST( x ) ( (x) * Q_rsqrt( x ) )
 
+// Quake3e utility functions
+static ID_INLINE unsigned int log2pad( unsigned int v, int roundup )
+{
+	unsigned int x = 1;
+	while ( x < v ) x <<= 1;
+	if ( roundup == 0 ) {
+		if ( x > v ) {
+			x >>= 1;
+		}
+	}
+	return x;
+}
+
+unsigned int crc32_buffer( const byte *buf, unsigned int len );
+
 signed char ClampChar( int i );
 signed short ClampShort( int i );
 
@@ -588,6 +614,7 @@ typedef struct {
 #define VectorNegate(a,b)		((b)[0]=-(a)[0],(b)[1]=-(a)[1],(b)[2]=-(a)[2])
 #define VectorSet(v, x, y, z)	((v)[0]=(x), (v)[1]=(y), (v)[2]=(z))
 #define Vector4Copy(a,b)		((b)[0]=(a)[0],(b)[1]=(a)[1],(b)[2]=(a)[2],(b)[3]=(a)[3])
+#define Vector4Set(v,x,y,z,w)	((v)[0]=(x), (v)[1]=(y), (v)[2]=(z), (v)[3]=(w))
 
 #define Byte4Copy(a,b)			((b)[0]=(a)[0],(b)[1]=(a)[1],(b)[2]=(a)[2],(b)[3]=(a)[3])
 
@@ -756,10 +783,14 @@ void	COM_StripExtension(const char *in, char *out, int destsize);
 qboolean COM_CompareExtension(const char *in, const char *ext);
 void	COM_DefaultExtension( char *path, int maxSize, const char *extension );
 
+unsigned long Com_GenerateHashValue( const char *fname, const unsigned int size );
+int		Com_Split( char *in, char **out, int outsz, int delim );
+
 void	COM_BeginParseSession( const char *name );
 int		COM_GetCurrentParseLine( void );
 char	*COM_Parse( char **data_p );
 char	*COM_ParseExt( char **data_p, qboolean allowLineBreak );
+char	*COM_ParseComplex( const char **data_p, qboolean allowLineBreaks );
 int		COM_Compress( char *data_p );
 void	COM_ParseError( char *format, ... ) Q_PRINTF_FUNC(1, 2);
 void	COM_ParseWarning( char *format, ... ) Q_PRINTF_FUNC(1, 2);
@@ -768,6 +799,28 @@ void	SkipRestOfLine( char **data );
 void	SkipTillSeparators( char **data );
 void	Com_InitSeparators( void );
 char	*COM_ParseSep( char **data_p, qboolean allowLineBreaks );
+
+// Quake3e enhanced parsing - token types for COM_ParseComplex
+typedef enum {
+	TK_GENEGIC = 0, // for single-char tokens
+	TK_STRING,
+	TK_QUOTED,
+	TK_EQ,
+	TK_NEQ,
+	TK_GT,
+	TK_GTE,
+	TK_LT,
+	TK_LTE,
+	TK_MATCH,
+	TK_OR,
+	TK_AND,
+	TK_SCOPE_OPEN,
+	TK_SCOPE_CLOSE,
+	TK_NEWLINE,
+	TK_EOF,
+} tokenType_t;
+
+extern tokenType_t com_tokentype;
 
 #define MAX_TOKENLENGTH		1024
 
@@ -843,6 +896,7 @@ char    *Q_strrchr( const char* string, int c );
 // buffer size safe library replacements
 void	Q_strncpyz( char *dest, const char *src, int destsize );
 void	Q_strcat( char *dest, int size, const char *src );
+char	*Q_stradd( char *dst, const char *src );
 
 // strlen that discounts Quake color sequences
 int Q_PrintStrlen( const char *string );
@@ -936,9 +990,19 @@ default values.
 #define CVAR_SERVER_CREATED	0x0800	// cvar was created by a server the client connected to.
 #define CVAR_VM_CREATED		0x1000	// cvar was created exclusively in one of the VMs.
 #define CVAR_PROTECTED		0x2000	// prevent modifying this var from VMs or the server
+#define CVAR_DEVELOPER		0x4000	// developer cvar (hidden from normal users)
+#define CVAR_ARCHIVE_ND		CVAR_ARCHIVE	// same as CVAR_ARCHIVE (no-default distinction not used)
 // These flags are only returned by the Cvar_Flags() function
 #define CVAR_MODIFIED		0x40000000	// Cvar was modified
 #define CVAR_NONEXISTENT	0x80000000	// Cvar doesn't exist.
+
+// Cvar groups for batch modification checking
+typedef enum {
+	CVG_NONE = 0,
+	CVG_RENDERER,
+	CVG_SERVER,
+	CVG_MAX,
+} cvarGroup_t;
 
 // nothing outside the Cvar_*() functions should modify these fields!
 typedef struct cvar_s cvar_t;
@@ -958,6 +1022,7 @@ struct cvar_s {
 	float			min;
 	float			max;
 	char			*description;
+	cvarGroup_t		group;				// for batch modification checking
 
 	cvar_t *next;
 	cvar_t *prev;

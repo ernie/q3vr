@@ -27,13 +27,23 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define	REF_API_VERSION		8
 
 //
+// Shutdown codes for renderer shutdown
+//
+typedef enum {
+	REF_KEEP_CONTEXT,    // don't destroy window/context (vid_restart)
+	REF_KEEP_WINDOW,     // destroy context, keep window
+	REF_DESTROY_WINDOW,  // destroy window and context
+	REF_UNLOAD_DLL       // full cleanup for DLL unload
+} refShutdownCode_t;
+
+//
 // these are the functions exported by the refresh module
 //
 typedef struct {
 	// called before the library is unloaded
-	// if the system is just reconfiguring, pass destroyWindow = qfalse,
-	// which will keep the screen from flashing to the desktop.
-	void	(*Shutdown)( qboolean destroyWindow );
+	// REF_KEEP_CONTEXT: reconfiguring, keep window and context
+	// REF_DESTROY_WINDOW or higher: full shutdown
+	void	(*Shutdown)( refShutdownCode_t code );
 
 	// All data that will be used in a level should be
 	// registered before rendering any frames to prevent disk hits,
@@ -67,6 +77,7 @@ typedef struct {
 	int		(*LightForPoint)( vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir );
 	void	(*AddLightToScene)( const vec3_t org, float intensity, float r, float g, float b );
 	void	(*AddAdditiveLightToScene)( const vec3_t org, float intensity, float r, float g, float b );
+	void	(*AddLinearLightToScene)( const vec3_t start, const vec3_t end, float intensity, float r, float g, float b );
 	void	(*RenderScene)( const refdef_t *fd );
 	void	(*HUDBufferStart)( qboolean clear );
 	void	(*HUDBufferEnd)( void );
@@ -84,6 +95,15 @@ typedef struct {
 	// if the pointers are not NULL, timing info will be returned
 	void	(*EndFrame)( int *frontEndMsec, int *backEndMsec );
 
+	// renderervk features
+	void	(*SetColorMappings)( void );
+	void	(*ThrottleBackend)( void );
+	void	(*FinishBloom)( void );
+	qboolean (*CanMinimize)( void );
+	void	(*GetConfig)( glconfig_t *config );
+	qboolean (*VertexLighting)( void );
+	void	(*SyncRender)( void );
+
 	void	(*SetVRHeadsetParms)( const float projectionMatrix[16], const float nonVRProjectionMatrix[16], int renderBuffer,
 								  const float projectionEye0[16], const float projectionEye1[16],
 								  float combinedFovX, float halfIpdMeters );
@@ -91,6 +111,13 @@ typedef struct {
 									   int mainSceneReadBuffer, int mainSceneWidth, int mainSceneHeight );
 	void	(*ScreenOverlayBufferStart)( qboolean clear );
 	void	(*ScreenOverlayBufferEnd)( void );
+
+	// VR framebuffer operations - called from vrcommon, implemented by each renderer
+	qboolean (*InitXRResources)( void );  // Initialize XR resources after swapchains created (Vulkan)
+	void	(*BeginXRFrame)( uint32_t colorIndex, uint32_t depthIndex );  // Begin XR frame with swapchain indices (Vulkan)
+	void	(*ClearVRFramebuffer)( int width, int height, qboolean isThirdPersonSpectator );
+	void	(*SwapDesktopWindow)( void );
+	void	(*WaitForRenderComplete)( void );  // Wait for GPU to finish current frame (Vulkan needs explicit sync)
 
 	int		(*MarkFragments)( int numPoints, const vec3_t *points, const vec3_t projection,
 				   int maxPoints, vec3_t pointBuffer, int maxFragments, markFragment_t *fragmentBuffer );
@@ -145,6 +172,12 @@ typedef struct {
 	void	(*Cvar_SetDescription)( cvar_t *cv, const char *description );
 
 	int		(*Cvar_VariableIntegerValue) (const char *var_name);
+	char	*(*Cvar_VariableString) (const char *var_name);
+	void	(*Cvar_VariableStringBuffer) (const char *var_name, char *buffer, int bufsize);
+
+	void	(*Cvar_SetGroup)( cvar_t *var, cvarGroup_t group );
+	int		(*Cvar_CheckGroup)( cvarGroup_t group );
+	void	(*Cvar_ResetGroup)( cvarGroup_t group, qboolean resetModifiedFlags );
 
 	void	(*Cmd_AddCommand)( const char *name, void(*cmd)(void) );
 	void	(*Cmd_RemoveCommand)( const char *name );
@@ -189,8 +222,44 @@ typedef struct {
 	void	(*Sys_GLimpSafeInit)( void );
 	void	(*Sys_GLimpInit)( void );
 	qboolean (*Sys_LowPhysicalMemory)( void );
+
+	// Time utilities
+	void	(*Com_RealTime)( qtime_t *qtime );
+
+	// memory cleanup (Quake3e pattern)
+	void	(*FreeAll)( void );
+
+	// OpenGL platform functions
+	void	(*GLimp_Init)( glconfig_t *config );
+	void	(*GLimp_Shutdown)( qboolean unloadDLL );
+	void	(*GLimp_EndFrame)( void );
+	void	(*GLimp_InitGamma)( glconfig_t *config );
+	void	(*GLimp_SetGamma)( unsigned char red[256], unsigned char green[256], unsigned char blue[256] );
+	void*	(*GL_GetProcAddress)( const char *name );
+	void	(*GLimp_InitVR)( void );  // Initialize VR session and renderer after graphics init
+
+	// Vulkan platform functions
+	void	(*VKimp_Init)( glconfig_t *config );
+	void	(*VKimp_Shutdown)( qboolean unloadDLL );
+	void*	(*VK_GetInstanceProcAddr)( void *instance, const char *name );
+	qboolean (*VK_CreateSurface)( void *instance, void *pSurface );
+
+	// VR Vulkan device accessor (pull model for XR_KHR_vulkan_enable2)
+	// Returns const VR_VulkanDeviceInfo* (void* to avoid Vulkan header dependency)
+	const void* (*VR_Vulkan_GetDeviceInfo)( void );
+
+	// VR Vulkan swapchain accessor (pull model for XR swapchain initialization)
+	// Returns const VR_VulkanSwapchainInfo* (void* to avoid Vulkan header dependency)
+	const void* (*VR_Vulkan_GetSwapchainInfo)( void );
+
+	// Virtual screen state query (renderer pulls from VR layer)
+	// Returns qtrue if virtual screen should be rendered, filling in precomputed MVP matrices
+	// screenMVP: per-eye MVP matrices for the virtual screen cylinder
+	// floorMVP: per-eye MVP matrices for the floor grid quad
+	qboolean (*VR_GetVirtualScreenState)( float screenMVP[2][16], float floorMVP[2][16] );
 } refimport_t;
 
+extern	refimport_t	ri;
 
 // this is the only function actually exported at the linker level
 // If the module can't init to a valid rendering state, NULL will be

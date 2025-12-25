@@ -55,6 +55,190 @@ float Com_Clamp( float min, float max, float value ) {
 	return value;
 }
 
+/*
+============================================================================
+
+QUAKE3E UTILITY FUNCTIONS
+
+These functions are ported from Quake3e for renderervk compatibility.
+
+============================================================================
+*/
+
+/*
+============
+crc32_buffer
+
+Compute CRC32 checksum for a buffer. Uses lazy table initialization.
+============
+*/
+static unsigned int crc32_table[256];
+static qboolean crc32_table_initialized = qfalse;
+
+static void crc32_init_table( void ) {
+	unsigned int crc, poly;
+	int i, j;
+
+	poly = 0xEDB88320;
+	for ( i = 0; i < 256; i++ ) {
+		crc = i;
+		for ( j = 8; j > 0; j-- ) {
+			if ( crc & 1 ) {
+				crc = ( crc >> 1 ) ^ poly;
+			} else {
+				crc >>= 1;
+			}
+		}
+		crc32_table[i] = crc;
+	}
+	crc32_table_initialized = qtrue;
+}
+
+unsigned int crc32_buffer( const byte *buf, unsigned int len ) {
+	unsigned int crc;
+
+	if ( !crc32_table_initialized ) {
+		crc32_init_table();
+	}
+
+	crc = 0xFFFFFFFF;
+	while ( len-- ) {
+		crc = ( crc >> 8 ) ^ crc32_table[( crc ^ *buf++ ) & 0xFF];
+	}
+	return crc ^ 0xFFFFFFFF;
+}
+
+/*
+============
+Com_GenerateHashValue
+
+Generates a hash value for a filename, used for shader lookups.
+============
+*/
+unsigned long Com_GenerateHashValue( const char *fname, const unsigned int size ) {
+	unsigned int i;
+	unsigned long hash;
+	char letter;
+
+	if ( !fname ) {
+		return 0;
+	}
+
+	hash = 0;
+	i = 0;
+	while ( fname[i] != '\0' ) {
+		letter = tolower( fname[i] );
+		if ( letter == '.' ) break;  // don't include extension
+		if ( letter == '\\' ) letter = '/';  // path separator normalization
+		hash += (long)( letter ) * ( i + 119 );
+		i++;
+	}
+	hash = ( hash ^ ( hash >> 10 ) ^ ( hash >> 20 ) );
+	hash &= ( size - 1 );
+	return hash;
+}
+
+/*
+============
+Com_Split
+
+Split a string by delimiter into an array of strings.
+Returns the number of tokens found.
+============
+*/
+int Com_Split( char *in, char **out, int outsz, int delim ) {
+	int c;
+	char **o = out, **end = out + outsz;
+
+	// Skip leading delimiters
+	while ( (c = *in) != '\0' && c == delim ) {
+		in++;
+	}
+
+	*o = in;
+	o++;
+
+	while ( *in ) {
+		if ( *in == delim ) {
+			*in = '\0';
+			in++;
+			// Skip consecutive delimiters
+			while ( (c = *in) != '\0' && c == delim ) {
+				in++;
+			}
+			if ( *in && o < end ) {
+				*o = in;
+				o++;
+			}
+		}
+		in++;
+	}
+
+	return (int)( o - out );
+}
+
+/*
+============
+Q_stradd
+
+Appends src to dst and returns a pointer to the end of the resulting string.
+============
+*/
+char *Q_stradd( char *dst, const char *src ) {
+	while ( *dst ) {
+		dst++;
+	}
+	while ( ( *dst++ = *src++ ) != '\0' ) {
+		;
+	}
+	return dst - 1;
+}
+
+/*
+============
+Q_isfinite
+
+Check if a float is a finite number (not NaN or infinity).
+============
+*/
+static int Q_isfinite( float f ) {
+	floatint_t fi;
+	fi.f = f;
+
+	if ( fi.ui == 0xFF800000 || fi.ui == 0x7F800000 )
+		return 0; // -INF or +INF
+
+	fi.ui = 0x7F800000 - ( fi.ui & 0x7FFFFFFF );
+	if ( (int)( fi.ui >> 31 ) )
+		return 0; // -NAN or +NAN
+
+	return 1;
+}
+
+/*
+============
+Q_atof
+
+Safe atof that handles NaN and infinity values.
+============
+*/
+float Q_atof( const char *str ) {
+	float f;
+
+	if ( !str || !*str ) {
+		return 0.0f;
+	}
+
+	f = (float)atof( str );
+
+	// Check for NaN and infinity - protect against malformed input
+	if ( !Q_isfinite( f ) ) {
+		return 0.0f;
+	}
+
+	return f;
+}
+
 
 /*
 ============
@@ -314,6 +498,9 @@ static	char	com_parsename[MAX_TOKEN_CHARS];
 static	int		com_lines;
 static	int		com_tokenline;
 static	int		is_separator[ 256 ];
+
+// Quake3e enhanced parsing
+tokenType_t		com_tokentype;
 
 void COM_BeginParseSession( const char *name )
 {
@@ -807,6 +994,226 @@ void SkipRestOfLine ( char **data ) {
 	}
 
 	*data = p;
+}
+
+
+/*
+==============
+COM_ParseComplex
+
+Quake3e enhanced parser with token type detection.
+Used by renderervk shader parsing.
+==============
+*/
+char *COM_ParseComplex( const char **data_p, qboolean allowLineBreaks )
+{
+	static const byte is_sep[ 256 ] =
+	{
+	// \0 . . . . . . .\b\t\n . .\r . .
+		1,0,0,0,0,0,0,0,0,1,1,0,0,1,0,0,
+	//  . . . . . . . . . . . . . . . .
+		0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	//    ! " # $ % & ' ( ) * + , - . /
+		1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0, // excl. '-' '.' '/'
+	//  0 1 2 3 4 5 6 7 8 9 : ; < = > ?
+		0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,
+	//  @ A B C D E F G H I J K L M N O
+		1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	//  P Q R S T U V W X Y Z [ \ ] ^ _
+		0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,0, // excl. '\\' '_'
+	//  ` a b c d e f g h i j k l m n o
+		1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+	//  p q r s t u v w x y z { | } ~
+		0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1
+	};
+
+	int c, len, shift;
+	const byte *str;
+
+	str = (byte*)*data_p;
+	len = 0;
+	shift = 0; // token line shift relative to com_lines
+	com_tokentype = TK_GENEGIC;
+
+__reswitch:
+	switch ( *str )
+	{
+	case '\0':
+		com_tokentype = TK_EOF;
+		break;
+
+	// whitespace
+	case ' ':
+	case '\t':
+		str++;
+		while ( (c = *str) == ' ' || c == '\t' )
+			str++;
+		goto __reswitch;
+
+	// newlines
+	case '\n':
+	case '\r':
+		com_lines++;
+		if ( *str == '\r' && str[1] == '\n' )
+			str += 2; // CR+LF
+		else
+			str++;
+		if ( !allowLineBreaks ) {
+			com_tokentype = TK_NEWLINE;
+			break;
+		}
+		goto __reswitch;
+
+	// comments, single slash
+	case '/':
+		// until end of line
+		if ( str[1] == '/' ) {
+			str += 2;
+			while ( (c = *str) != '\0' && c != '\n' && c != '\r' )
+				str++;
+			goto __reswitch;
+		}
+
+		// comment
+		if ( str[1] == '*' ) {
+			str += 2;
+			while ( (c = *str) != '\0' && ( c != '*' || str[1] != '/' ) ) {
+				if ( c == '\n' || c == '\r' ) {
+					com_lines++;
+					if ( c == '\r' && str[1] == '\n' ) // CR+LF?
+						str++;
+				}
+				str++;
+			}
+			if ( c != '\0' && str[1] != '\0' ) {
+				str += 2;
+			}
+			goto __reswitch;
+		}
+
+		// single slash
+		com_token[ len++ ] = *str++;
+		break;
+
+	// quoted string?
+	case '"':
+		str++; // skip leading '"'
+		while ( (c = *str) != '\0' && c != '"' ) {
+			if ( c == '\n' || c == '\r' ) {
+				com_lines++;
+				shift++;
+			}
+			if ( len < MAX_TOKEN_CHARS-1 ) // overflow check
+				com_token[ len++ ] = c;
+			str++;
+		}
+		if ( c != '\0' ) {
+			str++; // skip ending '"'
+		}
+		com_tokentype = TK_QUOTED;
+		break;
+
+	// single tokens:
+	case '+': case '`':
+	/*case '*':*/ case '~':
+	case '{': case '}':
+	case '[': case ']':
+	case '?': case ',':
+	case ':': case ';':
+	case '%': case '^':
+		com_token[ len++ ] = *str++;
+		break;
+
+	case '*':
+		com_token[ len++ ] = *str++;
+		com_tokentype = TK_MATCH;
+		break;
+
+	case '(':
+		com_token[ len++ ] = *str++;
+		com_tokentype = TK_SCOPE_OPEN;
+		break;
+
+	case ')':
+		com_token[ len++ ] = *str++;
+		com_tokentype = TK_SCOPE_CLOSE;
+		break;
+
+	// !, !=
+	case '!':
+		com_token[ len++ ] = *str++;
+		if ( *str == '=' ) {
+			com_token[ len++ ] = *str++;
+			com_tokentype = TK_NEQ;
+		}
+		break;
+
+	// =, ==
+	case '=':
+		com_token[ len++ ] = *str++;
+		if ( *str == '=' ) {
+			com_token[ len++ ] = *str++;
+			com_tokentype = TK_EQ;
+		}
+		break;
+
+	// >, >=
+	case '>':
+		com_token[ len++ ] = *str++;
+		if ( *str == '=' ) {
+			com_token[ len++ ] = *str++;
+			com_tokentype = TK_GTE;
+		} else {
+			com_tokentype = TK_GT;
+		}
+		break;
+
+	//  <, <=
+	case '<':
+		com_token[ len++ ] = *str++;
+		if ( *str == '=' ) {
+			com_token[ len++ ] = *str++;
+			com_tokentype = TK_LTE;
+		} else {
+			com_tokentype = TK_LT;
+		}
+		break;
+
+	// |, ||
+	case '|':
+		com_token[ len++ ] = *str++;
+		if ( *str == '|' ) {
+			com_token[ len++ ] = *str++;
+			com_tokentype = TK_OR;
+		}
+		break;
+
+	// &, &&
+	case '&':
+		com_token[ len++ ] = *str++;
+		if ( *str == '&' ) {
+			com_token[ len++ ] = *str++;
+			com_tokentype = TK_AND;
+		}
+		break;
+
+	// rest of the charset
+	default:
+		com_token[ len++ ] = *str++;
+		while ( !is_sep[ (c = *str) ] ) {
+			if ( len < MAX_TOKEN_CHARS-1 )
+				com_token[ len++ ] = c;
+			str++;
+		}
+		com_tokentype = TK_STRING;
+		break;
+
+	} // switch ( *str )
+
+	com_tokenline = com_lines - shift;
+	com_token[ len ] = '\0';
+	*data_p = ( char * )str;
+	return com_token;
 }
 
 

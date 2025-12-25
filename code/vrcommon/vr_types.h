@@ -1,0 +1,100 @@
+#ifndef __VR_TYPES
+#define __VR_TYPES
+
+#include <stdint.h>
+
+// Platform-specific defines for OpenXR
+#if defined(WIN32)
+#include "unknwn.h"
+#define XR_USE_PLATFORM_WIN32
+#elif defined(__ANDROID__)
+#define XR_USE_PLATFORM_ANDROID
+#else
+#include <X11/Xlib.h>
+#define XR_USE_PLATFORM_XLIB
+#endif
+
+// Graphics API defines for OpenXR
+// Must be defined before including openxr_platform.h
+#ifdef USE_VULKAN
+// For Vulkan builds, vulkan.h MUST be included before openxr_platform.h
+// so that OpenXR can use Vulkan types (VkInstance, VkImage, etc.)
+#include <vulkan/vulkan.h>
+#define XR_USE_GRAPHICS_API_VULKAN
+#else
+// For OpenGL builds, SDL_opengl.h provides the GL types
+#include "SDL_opengl.h"
+#define XR_USE_GRAPHICS_API_OPENGL
+#endif
+
+#include <openxr/openxr.h>
+#include <openxr/openxr_platform.h>
+
+#include "vr_safe_types.h"
+
+#define OXR(func) func;
+
+// Renderer-agnostic boolean type
+// Uses XrBool32 which is always available from OpenXR
+typedef XrBool32 VR_Bool;
+#define VR_TRUE  XR_TRUE
+#define VR_FALSE XR_FALSE
+
+// Forward declaration for graphics-specific swapchain info
+// The actual struct is defined in vrgl2/vr_gl_types.h or vrvk/vr_vk_types.h
+typedef struct VR_SwapchainInfos_s VR_SwapchainInfos;
+
+typedef struct
+{
+	VR_SwapchainInfos* Swapchains;  // Pointer to graphics-specific swapchain info
+	float RefreshRate;
+} VR_Renderer;
+
+typedef struct
+{
+	VR_Bool Active;
+	XrPosef Pose;
+} VR_TrackedController;
+
+typedef struct
+{
+	XrInstance Instance;
+	XrSystemId SystemId;
+	XrSession Session;
+
+	VR_Bool SessionActive;
+	VR_Bool Focused;
+	VR_Bool Visible;
+
+	XrDebugUtilsMessengerEXT DebugUtilsMessenger;
+
+	XrSpace HeadSpace;
+	XrSpace StageSpace;
+	XrSpace FakeStageSpace;
+	XrSpace CurrentSpace;
+	XrSpace ViewSpace;          // VIEW reference space for head-locked quad layers
+
+	VR_Renderer Renderer;
+	VR_TrackedController TrackedController[2];
+} VR_App;
+
+typedef struct
+{
+	XrSystemProperties SystemProperties;
+	// Graphics requirements are stored in graphics-specific code
+} VR_SystemProperties;
+
+typedef struct
+{
+	int width;
+	int height;
+} VR_Window;
+
+typedef struct
+{
+	VR_Window window;
+	VR_SystemProperties systemProperties;
+	VR_App appState;
+} VR_Engine;
+
+#endif

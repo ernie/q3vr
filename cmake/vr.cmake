@@ -1,24 +1,68 @@
 include_guard(GLOBAL)
 
-set(VR_SOURCES
-    ${SOURCE_DIR}/vr/vr_base.c
-    ${SOURCE_DIR}/vr/vr_cvars.c
-    ${SOURCE_DIR}/vr/vr_debug.c
-    ${SOURCE_DIR}/vr/vr_events.c
-    ${SOURCE_DIR}/vr/vr_gameplay.c
-    ${SOURCE_DIR}/vr/vr_haptics.c
-    ${SOURCE_DIR}/vr/vr_bhaptics.c
-    ${SOURCE_DIR}/vr/vr_input.c
-    ${SOURCE_DIR}/vr/vr_instance.c
-    ${SOURCE_DIR}/vr/vr_math.c
-    ${SOURCE_DIR}/vr/vr_render_loop.c
-    ${SOURCE_DIR}/vr/vr_renderer.c
-    ${SOURCE_DIR}/vr/vr_session.c
-    ${SOURCE_DIR}/vr/vr_spaces.c
-    ${SOURCE_DIR}/vr/vr_swapchains.c
-		${SOURCE_DIR}/vr/vr_updates.c
-    ${SOURCE_DIR}/vr/vr_virtual_screen.c
+# Find OpenXR - required for all VR code
+find_package(OpenXR CONFIG REQUIRED)
+list(APPEND VR_LIBRARIES OpenXR::openxr_loader OpenXR::headers)
+
+# vrcommon - Renderer-agnostic VR sources (shared by all renderers)
+set(VR_COMMON_SOURCES
+    ${SOURCE_DIR}/vrcommon/vr_cvars.c
+    ${SOURCE_DIR}/vrcommon/vr_debug.c
+    ${SOURCE_DIR}/vrcommon/vr_events.c
+    ${SOURCE_DIR}/vrcommon/vr_gameplay.c
+    ${SOURCE_DIR}/vrcommon/vr_haptics.c
+    ${SOURCE_DIR}/vrcommon/vr_bhaptics.c
+    ${SOURCE_DIR}/vrcommon/vr_input.c
+    ${SOURCE_DIR}/vrcommon/vr_math.c
+    ${SOURCE_DIR}/vrcommon/vr_spaces.c
+    ${SOURCE_DIR}/vrcommon/vr_swapchains.c
+    ${SOURCE_DIR}/vrcommon/vr_base.c
+    ${SOURCE_DIR}/vrcommon/vr_instance.c
+    ${SOURCE_DIR}/vrcommon/vr_render_loop.c
+    ${SOURCE_DIR}/vrcommon/vr_session.c
+    ${SOURCE_DIR}/vrcommon/vr_updates.c
 )
 
-find_package(OpenGL REQUIRED)
-list(APPEND VR_LIBRARIES ${OPENGL_LIBRARIES})
+# vrgl2 - OpenGL-specific VR sources
+set(VR_GL2_SOURCES
+    ${SOURCE_DIR}/vrgl2/vr_gl.c
+    ${SOURCE_DIR}/vrgl2/vr_gl_debug.c
+    ${SOURCE_DIR}/vrgl2/vr_gl_renderer.c
+    ${SOURCE_DIR}/vrgl2/vr_gl_session.c
+    ${SOURCE_DIR}/vrgl2/vr_gl_swapchains.c
+    ${SOURCE_DIR}/vrgl2/vr_gl_virtual_screen.c
+)
+
+# vrvk - Vulkan-specific VR sources (XR_KHR_vulkan_enable2 integration)
+# These are NOT added to VR_SOURCES - they are used only by renderer_vk.cmake
+# via VR_VK_SOURCES variable
+set(VR_VK_SOURCES
+    ${SOURCE_DIR}/vrvk/vr_vk.c
+    ${SOURCE_DIR}/vrvk/vr_vk_debug.c
+    ${SOURCE_DIR}/vrvk/vr_vk_renderer.c
+    ${SOURCE_DIR}/vrvk/vr_vk_session.c
+    ${SOURCE_DIR}/vrvk/vr_vk_swapchains.c
+    ${SOURCE_DIR}/vrvk/vr_vk_virtual_screen.c
+)
+
+# VR_SOURCES is used by the client executable
+# It should contain vrcommon (always) + vrgl2 (for OpenGL clients)
+# Vulkan-specific VR code (vrvk) is only linked into renderer_vulkan.dll
+set(VR_SOURCES ${VR_COMMON_SOURCES})
+
+# Add vrcommon to include directories (always needed)
+list(APPEND VR_INCLUDE_DIRS ${SOURCE_DIR}/vrcommon)
+
+if(BUILD_RENDERER_GL2)
+    # OpenGL build gets vrgl2 sources for the client
+    list(APPEND VR_SOURCES ${VR_GL2_SOURCES})
+    find_package(OpenGL REQUIRED)
+    list(APPEND VR_LIBRARIES ${OPENGL_LIBRARIES})
+    list(APPEND VR_INCLUDE_DIRS ${SOURCE_DIR}/vrgl2)
+endif()
+
+# Note: VR_VK_SOURCES are NOT added to VR_SOURCES here
+# They are explicitly used in renderer_vk.cmake via the VR_SOURCES_VK variable
+# which combines VR_COMMON_SOURCES + VR_VK_SOURCES
+
+list(APPEND RENDERER_INCLUDE_DIRS ${VR_INCLUDE_DIRS})

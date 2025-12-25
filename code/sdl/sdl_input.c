@@ -37,7 +37,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define KMOD_SCROLL KMOD_RESERVED
 #endif
 
-#include "../vr/vr_input.h"
+#include "../vrcommon/vr_input.h"
 
 static cvar_t *in_keyboardDebug     = NULL;
 

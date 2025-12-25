@@ -7,7 +7,7 @@
 //
 
 #include "client.h"
-#include "../vr/vr_clientinfo.h"
+#include "../vrcommon/vr_clientinfo.h"
 
 extern vr_clientinfo_t vr;
 

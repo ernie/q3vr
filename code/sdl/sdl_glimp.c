@@ -26,6 +26,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #	include <SDL.h>
 #endif
 
+#ifdef USE_VULKAN
+#include <vulkan/vulkan.h>
+#include <SDL_vulkan.h>
+#endif
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,9 +40,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../sys/sys_local.h"
 #include "sdl_icon.h"
 
-#include "../vr/vr_base.h"
-#include "../vr/vr_input.h"
-#include "../vr/vr_renderer.h"
+#include "../vrcommon/vr_base.h"
+#include "../vrcommon/vr_input.h"
+#include "../vrcommon/vr_renderer.h"
 
 typedef enum
 {
@@ -102,7 +107,7 @@ void GLimp_Shutdown( void )
 	// [OpenXR] Destroy renderer and current XR session due to loss of GL context,
 	// will recreate it on next renderer init.
 	VR_Engine* engine = VR_GetEngine();
-  VR_DestroySessionInput(engine);
+	VR_DestroySessionInput(engine);
 	VR_DestroyRenderer(engine);
 	VR_LeaveVR(engine);
 
@@ -582,8 +587,7 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 		depthBits = r_depthbits->value;
 
 	stencilBits = r_stencilbits->value;
-	samples = r_ext_multisample->value;
-
+	samples = 0; // r_ext_multisample is not relevant for renderergl2
 	numContexts = 0;
 
 #if 0
@@ -1306,3 +1310,306 @@ void GLimp_EndFrame( void )
 		r_fullscreen->modified = qfalse;
 	}
 }
+
+
+#ifdef USE_VULKAN
+/*
+===============
+VKimp_SetMode
+
+Creates a Vulkan-compatible SDL window (no OpenGL context).
+For Q3VR: Vulkan device is created by VR layer, we just need the window for desktop mirror.
+===============
+*/
+static rserr_t VKimp_SetMode(int mode, qboolean fullscreen, qboolean noborder)
+{
+	int colorBits, depthBits, stencilBits;
+	int samples;
+	int x = SDL_WINDOWPOS_UNDEFINED, y = SDL_WINDOWPOS_UNDEFINED;
+	Uint32 flags = SDL_WINDOW_SHOWN | SDL_WINDOW_VULKAN;
+	SDL_DisplayMode desktopMode;
+	int display = 0;
+	SDL_Surface *icon = NULL;
+
+	ri.Printf( PRINT_ALL, "Initializing Vulkan display\n");
+
+	if ( r_allowResize->integer )
+		flags |= SDL_WINDOW_RESIZABLE;
+
+#ifdef USE_ICON
+	icon = SDL_CreateRGBSurfaceFrom(
+			(void *)CLIENT_WINDOW_ICON.pixel_data,
+			CLIENT_WINDOW_ICON.width,
+			CLIENT_WINDOW_ICON.height,
+			CLIENT_WINDOW_ICON.bytes_per_pixel * 8,
+			CLIENT_WINDOW_ICON.bytes_per_pixel * CLIENT_WINDOW_ICON.width,
+#ifdef Q3_LITTLE_ENDIAN
+			0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000
+#else
+			0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF
+#endif
+			);
+#endif
+
+	if( SDL_window != NULL )
+	{
+		display = SDL_GetWindowDisplayIndex( SDL_window );
+		if( display < 0 )
+		{
+			ri.Printf( PRINT_DEVELOPER, "SDL_GetWindowDisplayIndex() failed: %s\n", SDL_GetError() );
+			display = 0;
+		}
+	}
+
+	if( SDL_GetDesktopDisplayMode( display, &desktopMode ) == 0 )
+	{
+		displayAspect = (float)desktopMode.w / (float)desktopMode.h;
+		ri.Printf( PRINT_ALL, "Display aspect: %.3f\n", displayAspect );
+	}
+	else
+	{
+		Com_Memset( &desktopMode, 0, sizeof( SDL_DisplayMode ) );
+		ri.Printf( PRINT_ALL, "Cannot determine display aspect, assuming 1.333\n" );
+	}
+
+	ri.Printf( PRINT_ALL, "...setting mode %d:", mode );
+
+	VR_Engine* engine = VR_GetEngine();
+	VR_GetResolution(engine, &glConfig.vidWidth, &glConfig.vidHeight);
+	glConfig.windowAspect = (float)glConfig.vidWidth / (float)glConfig.vidHeight;
+
+	int windowWidth, windowHeight;
+
+	const int desktopWidth = ri.Cvar_VariableIntegerValue("r_customdesktopwidth");
+	const int desktopHeight = ri.Cvar_VariableIntegerValue("r_customdesktopheight");
+	if ( desktopWidth <= 0 || desktopHeight <= 0 )
+	{
+		ri.Cvar_SetValue("r_customdesktopwidth", desktopMode.w);
+		ri.Cvar_SetValue("r_customdesktopheight", desktopMode.h);
+	}
+	else
+	{
+		desktopMode.w = desktopWidth;
+		desktopMode.h = desktopHeight;
+	}
+	windowWidth = desktopMode.w;
+	windowHeight = desktopMode.h;
+
+	ri.Printf( PRINT_ALL, " %d %d\n", glConfig.vidWidth, glConfig.vidHeight);
+
+	if( SDL_glContext != NULL )
+	{
+		SDL_GL_DeleteContext( SDL_glContext );
+		SDL_glContext = NULL;
+	}
+
+	if( SDL_window != NULL )
+	{
+		SDL_GetWindowPosition( SDL_window, &x, &y );
+		ri.Printf( PRINT_DEVELOPER, "Existing window at %dx%d before being destroyed\n", x, y );
+		SDL_DestroyWindow( SDL_window );
+		SDL_window = NULL;
+	}
+
+	if( fullscreen )
+	{
+		flags |= SDL_WINDOW_FULLSCREEN;
+		glConfig.isFullscreen = qtrue;
+	}
+	else
+	{
+		if( noborder )
+			flags |= SDL_WINDOW_BORDERLESS;
+
+		glConfig.isFullscreen = qfalse;
+	}
+
+	colorBits = r_colorbits->value;
+	if (colorBits == 0 || colorBits > 32)
+		colorBits = 32;
+
+	if (!r_depthbits->value)
+		depthBits = 24;
+	else
+		depthBits = r_depthbits->value;
+
+	stencilBits = r_stencilbits->value;
+	samples = 0;
+
+	if( r_centerWindow->integer && !fullscreen )
+	{
+		x = ( desktopMode.w / 2 ) - ( windowWidth / 2 );
+		y = ( desktopMode.h / 2 ) - ( windowHeight / 2 );
+	}
+
+	SDL_window = SDL_CreateWindow(CLIENT_WINDOW_TITLE, x, y,
+			windowWidth, windowHeight, flags);
+
+	if (!SDL_window)
+	{
+		ri.Printf( PRINT_ALL, "Couldn't create Vulkan window: %s\n", SDL_GetError() );
+		SDL_FreeSurface( icon );
+		return RSERR_INVALID_MODE;
+	}
+
+	SDL_SetWindowIcon( SDL_window, icon );
+	SDL_FreeSurface( icon );
+
+	glConfig.colorBits = colorBits;
+	glConfig.depthBits = depthBits;
+	glConfig.stencilBits = stencilBits;
+
+	GLimp_DetectAvailableModes();
+
+	engine->window.width = windowWidth;
+	engine->window.height = windowHeight;
+
+	if (ri.Cvar_VariableIntegerValue("vr_desktopMode") == 0)
+	{
+		SDL_HideWindow(SDL_window);
+	}
+
+	ri.Printf( PRINT_ALL, "Created Vulkan window %dx%d (XR render: %dx%d)\n",
+		windowWidth, windowHeight, glConfig.vidWidth, glConfig.vidHeight);
+
+	return RSERR_OK;
+}
+
+
+/*
+===============
+VKimp_Init
+
+Initialize Vulkan for Q3VR.
+This creates the SDL window for desktop mirror.
+Vulkan instance/device is already created by the VR layer.
+===============
+*/
+void VKimp_Init(glconfig_t *config)
+{
+	ri.Printf( PRINT_DEVELOPER, "VKimp_Init()\n" );
+
+	r_allowSoftwareGL = ri.Cvar_Get( "r_allowSoftwareGL", "0", CVAR_LATCH );
+	r_sdlDriver = ri.Cvar_Get( "r_sdlDriver", "", CVAR_ROM );
+	r_allowResize = ri.Cvar_Get( "r_allowResize", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_centerWindow = ri.Cvar_Get( "r_centerWindow", "0", CVAR_ARCHIVE | CVAR_LATCH );
+
+	if( ri.Cvar_VariableIntegerValue( "com_abnormalExit" ) )
+	{
+		ri.Cvar_Set( "r_mode", va( "%d", R_MODE_FALLBACK ) );
+		ri.Cvar_Set( "r_fullscreen", "0" );
+		ri.Cvar_Set( "r_centerWindow", "0" );
+		ri.Cvar_Set( "com_abnormalExit", "0" );
+	}
+
+	ri.Sys_GLimpInit();
+
+	if (!SDL_WasInit(SDL_INIT_VIDEO))
+	{
+		if (SDL_Init(SDL_INIT_VIDEO) != 0)
+		{
+			ri.Error( ERR_FATAL, "SDL_Init( SDL_INIT_VIDEO ) FAILED (%s)", SDL_GetError());
+			return;
+		}
+
+		ri.Printf( PRINT_ALL, "SDL using driver \"%s\"\n", SDL_GetCurrentVideoDriver() );
+	}
+
+	if (VKimp_SetMode(r_mode->integer, r_fullscreen->integer, r_noborder->integer) != RSERR_OK)
+	{
+		ri.Sys_GLimpSafeInit();
+
+		if (VKimp_SetMode(r_mode->integer, r_fullscreen->integer, qfalse) != RSERR_OK)
+		{
+			if( r_mode->integer != R_MODE_FALLBACK )
+			{
+				ri.Printf( PRINT_ALL, "Setting r_mode %d failed, falling back on r_mode %d\n",
+						r_mode->integer, R_MODE_FALLBACK );
+
+				if (VKimp_SetMode(R_MODE_FALLBACK, qfalse, qfalse) != RSERR_OK)
+				{
+					ri.Error( ERR_FATAL, "VKimp_Init() - could not create Vulkan window" );
+					return;
+				}
+			}
+		}
+	}
+
+	// Fill in glConfig
+	glConfig.driverType = GLDRV_ICD;
+	glConfig.hardwareType = GLHW_GENERIC;
+	glConfig.deviceSupportsGamma = qfalse;  // VR headsets handle gamma
+
+	// Vulkan doesn't use these GL strings, but fill in something useful
+	Q_strncpyz(glConfig.vendor_string, "Vulkan VR", sizeof(glConfig.vendor_string));
+	Q_strncpyz(glConfig.renderer_string, "Q3VR Vulkan Renderer", sizeof(glConfig.renderer_string));
+	Q_strncpyz(glConfig.version_string, "Vulkan 1.1", sizeof(glConfig.version_string));
+	glConfig.extensions_string[0] = '\0';
+
+	// Copy to caller
+	*config = glConfig;
+
+	ri.Cvar_Get( "r_availableModes", "", CVAR_ROM );
+
+	// This depends on SDL_INIT_VIDEO, hence having it here
+	ri.IN_Init( SDL_window );
+}
+
+
+/*
+===============
+VKimp_Shutdown
+===============
+*/
+void VKimp_Shutdown(qboolean unloadDLL)
+{
+	(void)unloadDLL;  // Not used - DLL management handled elsewhere
+
+	ri.IN_Shutdown();
+
+	// [OpenXR] Destroy renderer and current XR session due to loss of Vulkan context,
+	// will recreate it on next renderer init.
+	VR_Engine* engine = VR_GetEngine();
+	VR_DestroySessionInput(engine);
+	VR_DestroyRenderer(engine);
+	VR_LeaveVR(engine);
+
+	// Reinitialize OpenXR instance and system, otherwise there might be visual
+	// glitches/problems with swapchains when new session is (re)created.
+	VR_Destroy(engine);
+	VR_Init();
+
+	if (SDL_window)
+	{
+		SDL_DestroyWindow(SDL_window);
+		SDL_window = NULL;
+	}
+
+	SDL_QuitSubSystem(SDL_INIT_VIDEO);
+}
+
+
+/*
+===============
+VK_CreateSurface
+
+Create a VkSurfaceKHR for the SDL window (for desktop mirror).
+===============
+*/
+qboolean VK_CreateSurface(VkInstance instance, VkSurfaceKHR *surface)
+{
+	if (!SDL_window)
+	{
+		ri.Printf(PRINT_WARNING, "VK_CreateSurface: No SDL window\n");
+		return qfalse;
+	}
+
+	if (!SDL_Vulkan_CreateSurface(SDL_window, instance, surface))
+	{
+		ri.Printf(PRINT_WARNING, "VK_CreateSurface: SDL_Vulkan_CreateSurface failed: %s\n", SDL_GetError());
+		return qfalse;
+	}
+
+	return qtrue;
+}
+#endif // USE_VULKAN

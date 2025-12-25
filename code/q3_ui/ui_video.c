@@ -485,46 +485,46 @@ static void GraphicsOptions_Event( void* ptr, int event ) {
 		break;
 
 	case ID_SUPERSAMPLING: {
-			float supersampling;
+			float supersampling = 1.0f;
 			switch (s_graphicsoptions.supersampling.curvalue) {
 				case 0:
-					supersampling = 0.5;
+					supersampling = 0.5f;
 					break;
 				case 1:
-					supersampling = 0.6;
+					supersampling = 0.6f;
 					break;
 				case 2:
-					supersampling = 0.7;
+					supersampling = 0.7f;
 					break;
 				case 3:
-					supersampling = 0.8;
+					supersampling = 0.8f;
 					break;
 				case 4:
-					supersampling = 0.9;
+					supersampling = 0.9f;
 					break;
 				case 5:
-					supersampling = 1.0;
+					supersampling = 1.0f;
 					break;
 				case 6:
-					supersampling = 1.1;
+					supersampling = 1.1f;
 					break;
 				case 7:
-					supersampling = 1.2;
+					supersampling = 1.2f;
 					break;
 				case 8:
-					supersampling = 1.3;
+					supersampling = 1.3f;
 					break;
 				case 9:
-					supersampling = 1.4;
+					supersampling = 1.4f;
 					break;
 				case 10:
-					supersampling = 1.5;
+					supersampling = 1.5f;
 					break;
 				case 11:
-					supersampling = 1.75;
+					supersampling = 1.75f;
 					break;
 				case 12:
-					supersampling = 2.0;
+					supersampling = 2.0f;
 					break;
 			}
 			trap_Cvar_SetValue("vr_superSampling", supersampling);

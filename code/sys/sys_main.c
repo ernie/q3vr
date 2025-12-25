@@ -51,9 +51,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/q_shared.h"
 #include "../qcommon/qcommon.h"
 
-#include "../vr/vr_base.h"
-#include "../vr/vr_input.h"
-#include "../vr/vr_renderer.h"
+#include "../vrcommon/vr_base.h"
+#include "../vrcommon/vr_input.h"
+#include "../vrcommon/vr_renderer.h"
 
 static char binaryPath[ MAX_OSPATH ] = { 0 };
 static char installPath[ MAX_OSPATH ] = { 0 };

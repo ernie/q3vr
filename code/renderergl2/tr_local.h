@@ -35,7 +35,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tr_postprocess.h"
 #include "../renderercommon/iqm.h"
 #include "../renderercommon/qgl.h"
-#include "../vr/vr_clientinfo.h"
+#include "../vrcommon/vr_clientinfo.h"
 
 extern cvar_t *vr_hudDepth;
 extern cvar_t *vr_hudScale;
@@ -893,7 +893,7 @@ SURFACES
 
 ==============================================================================
 */
-typedef byte color4ub_t[4];
+// color4ub_t is now defined in q_shared.h for shared use across all renderers
 
 // any changes in surfaceType must be mirrored in rb_surfaceTable[]
 typedef enum {
@@ -2030,7 +2030,7 @@ void		RE_LoadWorldMap( const char *mapname );
 void		RE_SetWorldVisData( const byte *vis );
 qhandle_t	RE_RegisterModel( const char *name );
 qhandle_t	RE_RegisterSkin( const char *name );
-void		RE_Shutdown( qboolean destroyWindow );
+void		RE_Shutdown( refShutdownCode_t code );
 
 qboolean	R_GetEntityToken( char *buffer, int size );
 
@@ -2604,6 +2604,11 @@ void RE_ScreenOverlayBufferStart( qboolean clear );
 void RE_ScreenOverlayBufferEnd( void );
 void RE_SetScreenOverlayBuffer( int overlayBuffer, int width, int height,
 								int mainSceneReadBuffer, int mainSceneWidth, int mainSceneHeight );
+void RE_ClearVRFramebuffer( int width, int height, qboolean isThirdPersonSpectator );
+void RE_SwapDesktopWindow( void );
+void RE_WaitForRenderComplete( void );
+qboolean RE_InitXRResources( void );
+void RE_BeginXRFrame( uint32_t colorIndex, uint32_t depthIndex );
 
 void RE_SaveJPG(char * filename, int quality, int image_width, int image_height,
                 unsigned char *image_buffer, int padding);

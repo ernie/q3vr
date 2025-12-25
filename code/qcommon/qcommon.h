@@ -566,6 +566,10 @@ void	Cvar_Restart_f( void );
 
 void Cvar_CompleteCvarName( char *args, int argNum );
 
+void Cvar_SetGroup( cvar_t *var, cvarGroup_t group );
+int  Cvar_CheckGroup( cvarGroup_t group );
+void Cvar_ResetGroup( cvarGroup_t group, qboolean resetModifiedFlags );
+
 extern	int			cvar_modifiedFlags;
 // whenever a cvar is modifed, its flags will be OR'd into this, so
 // a single check can determine if any CVAR_USERINFO, CVAR_SERVERINFO,

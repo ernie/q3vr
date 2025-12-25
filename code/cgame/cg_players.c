@@ -22,7 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 // cg_players.c -- handle the media and animation for player entities
 #include "cg_local.h"
-#include "../vr/vr_clientinfo.h"
+#include "../vrcommon/vr_clientinfo.h"
 
 #define PM_SKIN "pm"
 
@@ -2310,10 +2310,10 @@ static void CG_PlayerFloatSprite( centity_t *cent, qhandle_t shader ) {
 	ent.customShader = shader;
 	ent.radius = 10;
 	ent.renderfx = rf;
-	ent.shaderRGBA[0] = 255;
-	ent.shaderRGBA[1] = 255;
-	ent.shaderRGBA[2] = 255;
-	ent.shaderRGBA[3] = 255;
+	ent.shaderRGBA.rgba[0] = 255;
+	ent.shaderRGBA.rgba[1] = 255;
+	ent.shaderRGBA.rgba[2] = 255;
+	ent.shaderRGBA.rgba[3] = 255;
 	trap_R_AddRefEntityToScene( &ent );
 }
 
@@ -2761,15 +2761,15 @@ void CG_Player( centity_t *cent ) {
 
 	// colored skin
 	if ( cg_deadBodyDarken.integer && cent->currentState.eFlags & EF_DEAD ) {
-		legs.shaderRGBA[0] = 85;
-		legs.shaderRGBA[1] = 85;
-		legs.shaderRGBA[2] = 85;
+		legs.shaderRGBA.rgba[0] = 85;
+		legs.shaderRGBA.rgba[1] = 85;
+		legs.shaderRGBA.rgba[2] = 85;
 	} else {
-		legs.shaderRGBA[0] = ci->legsColor[0] * 255;
-		legs.shaderRGBA[1] = ci->legsColor[1] * 255;
-		legs.shaderRGBA[2] = ci->legsColor[2] * 255;
+		legs.shaderRGBA.rgba[0] = ci->legsColor[0] * 255;
+		legs.shaderRGBA.rgba[1] = ci->legsColor[1] * 255;
+		legs.shaderRGBA.rgba[2] = ci->legsColor[2] * 255;
 	}
-	legs.shaderRGBA[3] = 255;
+	legs.shaderRGBA.rgba[3] = 255;
 
 	CG_AddRefEntityWithPowerups( &legs, &cent->currentState, ci->team );
 
@@ -2797,15 +2797,15 @@ void CG_Player( centity_t *cent ) {
 
 	// colored skin
 	if ( cg_deadBodyDarken.integer && cent->currentState.eFlags & EF_DEAD ) {
-		torso.shaderRGBA[0] = 85;
-		torso.shaderRGBA[1] = 85;
-		torso.shaderRGBA[2] = 85;
+		torso.shaderRGBA.rgba[0] = 85;
+		torso.shaderRGBA.rgba[1] = 85;
+		torso.shaderRGBA.rgba[2] = 85;
 	} else {
-		torso.shaderRGBA[0] = ci->bodyColor[0] * 255;
-		torso.shaderRGBA[1] = ci->bodyColor[1] * 255;
-		torso.shaderRGBA[2] = ci->bodyColor[2] * 255;
+		torso.shaderRGBA.rgba[0] = ci->bodyColor[0] * 255;
+		torso.shaderRGBA.rgba[1] = ci->bodyColor[1] * 255;
+		torso.shaderRGBA.rgba[2] = ci->bodyColor[2] * 255;
 	}
-	torso.shaderRGBA[3] = 255;
+	torso.shaderRGBA.rgba[3] = 255;
 
 	CG_AddRefEntityWithPowerups( &torso, &cent->currentState, ci->team );
 
@@ -3002,16 +3002,16 @@ void CG_Player( centity_t *cent ) {
 		powerup.origin[2] += -24 + (float) t * 80 / 500;
 		if ( t > 400 ) {
 			c = (float) (t - 1000) * 0xff / 100;
-			powerup.shaderRGBA[0] = 0xff - c;
-			powerup.shaderRGBA[1] = 0xff - c;
-			powerup.shaderRGBA[2] = 0xff - c;
-			powerup.shaderRGBA[3] = 0xff - c;
+			powerup.shaderRGBA.rgba[0] = 0xff - c;
+			powerup.shaderRGBA.rgba[1] = 0xff - c;
+			powerup.shaderRGBA.rgba[2] = 0xff - c;
+			powerup.shaderRGBA.rgba[3] = 0xff - c;
 		}
 		else {
-			powerup.shaderRGBA[0] = 0xff;
-			powerup.shaderRGBA[1] = 0xff;
-			powerup.shaderRGBA[2] = 0xff;
-			powerup.shaderRGBA[3] = 0xff;
+			powerup.shaderRGBA.rgba[0] = 0xff;
+			powerup.shaderRGBA.rgba[1] = 0xff;
+			powerup.shaderRGBA.rgba[2] = 0xff;
+			powerup.shaderRGBA.rgba[3] = 0xff;
 		}
 		trap_R_AddRefEntityToScene( &powerup );
 	}
@@ -3035,15 +3035,15 @@ void CG_Player( centity_t *cent ) {
 
 	// colored skin
 	if ( cg_deadBodyDarken.integer && cent->currentState.eFlags & EF_DEAD ) {
-		head.shaderRGBA[0] = 85;
-		head.shaderRGBA[1] = 85;
-		head.shaderRGBA[2] = 85;
+		head.shaderRGBA.rgba[0] = 85;
+		head.shaderRGBA.rgba[1] = 85;
+		head.shaderRGBA.rgba[2] = 85;
 	} else {
-		head.shaderRGBA[0] = ci->headColor[0] * 255;
-		head.shaderRGBA[1] = ci->headColor[1] * 255;
-		head.shaderRGBA[2] = ci->headColor[2] * 255;
+		head.shaderRGBA.rgba[0] = ci->headColor[0] * 255;
+		head.shaderRGBA.rgba[1] = ci->headColor[1] * 255;
+		head.shaderRGBA.rgba[2] = ci->headColor[2] * 255;
 	}
-	head.shaderRGBA[3] = 255;
+	head.shaderRGBA.rgba[3] = 255;
 
 	if (!firstPersonBody)
 	{

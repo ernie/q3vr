@@ -25,9 +25,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../botlib/botlib.h"
 
-#include "../vr/vr_input.h"
-#include "../vr/vr_clientinfo.h"
-#include "../vr/vr_gameplay.h"
+#include "../vrcommon/vr_input.h"
+#include "../vrcommon/vr_clientinfo.h"
+#include "../vrcommon/vr_gameplay.h"
 
 #ifdef USE_MUMBLE
 #include "libmumblelink.h"

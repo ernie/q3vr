@@ -175,7 +175,6 @@ cvar_t	*r_stencilbits;
 cvar_t	*r_depthbits;
 cvar_t	*r_colorbits;
 cvar_t	*r_texturebits;
-cvar_t  *r_ext_multisample;
 
 cvar_t	*r_drawBuffer;
 cvar_t	*r_lightmap;
@@ -1269,8 +1268,6 @@ void R_Register( void )
 	r_colorbits = ri.Cvar_Get( "r_colorbits", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_stencilbits = ri.Cvar_Get( "r_stencilbits", "8", CVAR_ARCHIVE | CVAR_LATCH );
 	r_depthbits = ri.Cvar_Get( "r_depthbits", "0", CVAR_ARCHIVE | CVAR_LATCH );
-	r_ext_multisample = ri.Cvar_Get( "r_ext_multisample", "0", CVAR_ARCHIVE | CVAR_LATCH );
-	ri.Cvar_CheckRange( r_ext_multisample, 0, 4, qtrue );
 	r_overBrightBits = ri.Cvar_Get ("r_overBrightBits", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "0", CVAR_ARCHIVE | CVAR_LATCH);
 	r_mode = ri.Cvar_Get( "r_mode", "-2", CVAR_ARCHIVE | CVAR_LATCH );
@@ -1363,7 +1360,7 @@ void R_Register( void )
 	//
 	// archived variables that can change at any time
 	//
-	r_lodCurveError = ri.Cvar_Get( "r_lodCurveError", "10000", CVAR_ARCHIVE|CVAR_CHEAT );
+	r_lodCurveError = ri.Cvar_Get( "r_lodCurveError", "8192", CVAR_ARCHIVE|CVAR_CHEAT );
 	r_lodbias = ri.Cvar_Get( "r_lodbias", "-2", CVAR_ARCHIVE );
 	r_flares = ri.Cvar_Get ("r_flares", "1", CVAR_ARCHIVE );
 	r_znear = ri.Cvar_Get( "r_znear", "4", CVAR_CHEAT );
@@ -1600,9 +1597,10 @@ void R_Init( void ) {
 RE_Shutdown
 ===============
 */
-void RE_Shutdown( qboolean destroyWindow ) {	
+void RE_Shutdown( refShutdownCode_t code ) {
+	qboolean destroyWindow = ( code >= REF_DESTROY_WINDOW );
 
-	ri.Printf( PRINT_ALL, "RE_Shutdown( %i )\n", destroyWindow );
+	ri.Printf( PRINT_ALL, "RE_Shutdown( %i )\n", code );
 
 	ri.Cmd_RemoveCommand( "imagelist" );
 	ri.Cmd_RemoveCommand( "shaderlist" );
@@ -1669,6 +1667,46 @@ void RE_EndRegistration( void ) {
 
 
 /*
+===============
+Quake3e feature stubs for renderergl2
+===============
+*/
+static void RE_AddLinearLightToScene( const vec3_t start, const vec3_t end, float intensity, float r, float g, float b ) {
+	// TODO: Implement linear light support for GL2
+	// For now, add as a point light at the center
+	vec3_t center;
+	center[0] = (start[0] + end[0]) * 0.5f;
+	center[1] = (start[1] + end[1]) * 0.5f;
+	center[2] = (start[2] + end[2]) * 0.5f;
+	RE_AddLightToScene( center, intensity, r, g, b );
+}
+
+static void RE_ThrottleBackend( void ) {
+	// Stub - frame throttling handled elsewhere in Q3VR
+}
+
+static void RE_FinishBloom( void ) {
+	// Stub - bloom handled in existing post-processing if enabled
+}
+
+static qboolean RE_CanMinimize( void ) {
+	return qtrue;
+}
+
+static void RE_GetConfig( glconfig_t *config ) {
+	*config = glConfig;
+}
+
+static qboolean RE_VertexLighting( void ) {
+	return r_vertexLight->integer ? qtrue : qfalse;
+}
+
+static void RE_SyncRender( void ) {
+	R_IssuePendingRenderCommands();
+}
+
+
+/*
 @@@@@@@@@@@@@@@@@@@@@
 GetRefAPI
 
@@ -1718,6 +1756,7 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.LightForPoint = R_LightForPoint;
 	re.AddLightToScene = RE_AddLightToScene;
 	re.AddAdditiveLightToScene = RE_AddAdditiveLightToScene;
+	re.AddLinearLightToScene = RE_AddLinearLightToScene;
 	re.RenderScene = RE_RenderScene;
 
 	re.HUDBufferStart = RE_HUDBufferStart;
@@ -1726,6 +1765,11 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.SetScreenOverlayBuffer = RE_SetScreenOverlayBuffer;
 	re.ScreenOverlayBufferStart = RE_ScreenOverlayBufferStart;
 	re.ScreenOverlayBufferEnd = RE_ScreenOverlayBufferEnd;
+	re.InitXRResources = RE_InitXRResources;
+	re.BeginXRFrame = RE_BeginXRFrame;
+	re.ClearVRFramebuffer = RE_ClearVRFramebuffer;
+	re.SwapDesktopWindow = RE_SwapDesktopWindow;
+	re.WaitForRenderComplete = RE_WaitForRenderComplete;
 
 	re.SetColor = RE_SetColor;
 	re.DrawStretchPic = RE_StretchPic;
@@ -1738,6 +1782,15 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.inPVS = R_inPVS;
 
 	re.TakeVideoFrame = RE_TakeVideoFrame;
+
+	// Quake3e features - stubs for GL2 renderer
+	re.SetColorMappings = R_SetColorMappings;
+	re.ThrottleBackend = RE_ThrottleBackend;
+	re.FinishBloom = RE_FinishBloom;
+	re.CanMinimize = RE_CanMinimize;
+	re.GetConfig = RE_GetConfig;
+	re.VertexLighting = RE_VertexLighting;
+	re.SyncRender = RE_SyncRender;
 
 	return &re;
 }

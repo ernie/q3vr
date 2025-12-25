@@ -27,7 +27,27 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../sys/sys_local.h"
 #include "../sys/sys_loadlib.h"
 
-#include "../vr/vr_cvars.h"
+#include "../vrcommon/vr_cvars.h"
+#include "../renderercommon/tr_common.h"
+
+// VR Vulkan accessors and platform functions
+// For Vulkan builds, implemented in vrvk/vr_vk.c and sdl/sdl_glimp.c
+// For OpenGL builds, returns NULL (Vulkan not available)
+#ifdef USE_VULKAN
+#include <vulkan/vulkan.h>
+extern const void* VR_Vulkan_GetDeviceInfo(void);
+extern const void* VR_Vulkan_GetSwapchainInfo(void);
+extern qboolean VR_GetVirtualScreenMVP(float screenMVP[2][16], float floorMVP[2][16]);
+extern void VKimp_Init(glconfig_t *config);
+extern void VKimp_Shutdown(qboolean unloadDLL);
+extern qboolean VK_CreateSurface(VkInstance instance, VkSurfaceKHR *surface);
+#else
+static const void* VR_Vulkan_GetDeviceInfo(void) { return NULL; }
+static const void* VR_Vulkan_GetSwapchainInfo(void) { return NULL; }
+static qboolean VR_GetVirtualScreenMVP(float screenMVP[2][16], float floorMVP[2][16]) { return qfalse; }
+#endif
+
+#include <SDL.h>
 
 #ifdef USE_MUMBLE
 #include "libmumblelink.h"
@@ -1223,7 +1243,7 @@ void CL_ShutdownAll(qboolean shutdownRef)
 	if(shutdownRef)
 		CL_ShutdownRef();
 	else if(re.Shutdown)
-		re.Shutdown(qfalse);		// don't destroy window or context
+		re.Shutdown(REF_KEEP_CONTEXT);		// don't destroy window or context
 
 	cls.uiStarted = qfalse;
 	cls.cgameStarted = qfalse;
@@ -3153,7 +3173,7 @@ CL_ShutdownRef
 */
 void CL_ShutdownRef( void ) {
 	if ( re.Shutdown ) {
-		re.Shutdown( qtrue );
+		re.Shutdown( REF_DESTROY_WINDOW );
 	}
 
 	Com_Memset( &re, 0, sizeof( re ) );
@@ -3244,6 +3264,27 @@ int CL_ScaledMilliseconds(void) {
 
 /*
 ============
+Platform wrapper functions for Quake3e-style refimport_t
+============
+*/
+static void CL_GLimp_Init_Wrapper( glconfig_t *config ) {
+	// Quake3e passes glconfig pointer, Q3VR's GLimp_Init takes fixedFunction boolean
+	// For Q3VR, we use fixedFunction = qfalse (modern OpenGL)
+	GLimp_Init( qfalse );
+}
+
+static void CL_GLimp_Shutdown_Wrapper( qboolean unloadDLL ) {
+	// Q3VR's GLimp_Shutdown takes no arguments
+	GLimp_Shutdown();
+}
+
+static void *CL_GL_GetProcAddress( const char *name ) {
+	// Forward to SDL
+	return SDL_GL_GetProcAddress( name );
+}
+
+/*
+============
 CL_InitRef
 ============
 */
@@ -3318,6 +3359,11 @@ void CL_InitRef( void ) {
 	ri.Cvar_CheckRange = Cvar_CheckRange;
 	ri.Cvar_SetDescription = Cvar_SetDescription;
 	ri.Cvar_VariableIntegerValue = Cvar_VariableIntegerValue;
+	ri.Cvar_VariableString = Cvar_VariableString;
+	ri.Cvar_VariableStringBuffer = Cvar_VariableStringBuffer;
+	ri.Cvar_SetGroup = Cvar_SetGroup;
+	ri.Cvar_CheckGroup = Cvar_CheckGroup;
+	ri.Cvar_ResetGroup = Cvar_ResetGroup;
 
 	// cinematic stuff
 
@@ -3337,6 +3383,40 @@ void CL_InitRef( void ) {
 	ri.Sys_GLimpSafeInit = Sys_GLimpSafeInit;
 	ri.Sys_GLimpInit = Sys_GLimpInit;
 	ri.Sys_LowPhysicalMemory = Sys_LowPhysicalMemory;
+
+	ri.Com_RealTime = Com_RealTime;
+
+	// memory cleanup (Quake3e pattern) - not used in Q3VR
+	ri.FreeAll = NULL;
+
+	// OpenGL platform functions - using wrappers to match Quake3e signatures
+	ri.GLimp_Init = CL_GLimp_Init_Wrapper;
+	ri.GLimp_Shutdown = CL_GLimp_Shutdown_Wrapper;
+	ri.GLimp_EndFrame = GLimp_EndFrame;
+	ri.GLimp_InitGamma = GLimp_InitGamma;
+	ri.GLimp_SetGamma = GLimp_SetGamma;
+	ri.GL_GetProcAddress = CL_GL_GetProcAddress;
+	ri.GLimp_InitVR = GLimp_InitVR;
+
+	// Vulkan platform functions
+#ifdef USE_VULKAN
+	ri.VKimp_Init = VKimp_Init;
+	ri.VKimp_Shutdown = VKimp_Shutdown;
+	ri.VK_GetInstanceProcAddr = vkGetInstanceProcAddr;
+	ri.VK_CreateSurface = VK_CreateSurface;
+#else
+	ri.VKimp_Init = NULL;
+	ri.VKimp_Shutdown = NULL;
+	ri.VK_GetInstanceProcAddr = NULL;
+	ri.VK_CreateSurface = NULL;
+#endif
+
+	// VR Vulkan accessors - renderer pulls XR-created resources during init
+	ri.VR_Vulkan_GetDeviceInfo = VR_Vulkan_GetDeviceInfo;
+	ri.VR_Vulkan_GetSwapchainInfo = VR_Vulkan_GetSwapchainInfo;
+
+	// Virtual screen state query - renderer pulls virtual screen MVP matrices
+	ri.VR_GetVirtualScreenState = VR_GetVirtualScreenMVP;
 
 	ret = GetRefAPI( REF_API_VERSION, &ri );
 

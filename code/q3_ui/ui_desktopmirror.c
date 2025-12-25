@@ -317,7 +317,7 @@ static void DesktopMirror_MenuInit( void ) {
 	{
 		"Fit / Contain",
 		"Fill / Crop",
-    NULL,
+		NULL,
 	};
 
 	static const char *s_desktopMenuStyles[] =

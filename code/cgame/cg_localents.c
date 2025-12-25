@@ -338,10 +338,10 @@ void CG_AddFadeRGB( localEntity_t *le ) {
 	c = ( le->endTime - cg.time ) * le->lifeRate;
 	c *= 0xff;
 
-	re->shaderRGBA[0] = le->color[0] * c;
-	re->shaderRGBA[1] = le->color[1] * c;
-	re->shaderRGBA[2] = le->color[2] * c;
-	re->shaderRGBA[3] = le->color[3] * c;
+	re->shaderRGBA.rgba[0] = le->color[0] * c;
+	re->shaderRGBA.rgba[1] = le->color[1] * c;
+	re->shaderRGBA.rgba[2] = le->color[2] * c;
+	re->shaderRGBA.rgba[3] = le->color[3] * c;
 
 	trap_R_AddRefEntityToScene( re );
 }
@@ -368,7 +368,7 @@ static void CG_AddMoveScaleFade( localEntity_t *le ) {
 		c = ( le->endTime - cg.time ) * le->lifeRate;
 	}
 
-	re->shaderRGBA[3] = 0xff * c * le->color[3];
+	re->shaderRGBA.rgba[3] = 0xff * c * le->color[3];
 
 	if ( !( le->leFlags & LEF_PUFF_DONT_SCALE ) ) {
 		re->radius = le->radius * ( 1.0 - c ) + 8;
@@ -465,7 +465,7 @@ static void CG_AddScaleFade( localEntity_t *le ) {
 	// fade / grow time
 	c = ( le->endTime - cg.time ) * le->lifeRate;
 
-	re->shaderRGBA[3] = 0xff * c * le->color[3];
+	re->shaderRGBA.rgba[3] = 0xff * c * le->color[3];
 	re->radius = le->radius * ( 1.0 - c ) + 8;
 
 	// if the view would be "inside" the sprite, kill the sprite
@@ -502,7 +502,7 @@ static void CG_AddFallScaleFade( localEntity_t *le ) {
 	// fade time
 	c = ( le->endTime - cg.time ) * le->lifeRate;
 
-	re->shaderRGBA[3] = 0xff * c * le->color[3];
+	re->shaderRGBA.rgba[3] = 0xff * c * le->color[3];
 
 	re->origin[2] = le->pos.trBase[2] - ( 1.0 - c ) * le->pos.trDelta[2];
 
@@ -566,10 +566,10 @@ static void CG_AddSpriteExplosion( localEntity_t *le ) {
 		c = 1.0;	// can happen during connection problems
 	}
 
-	re.shaderRGBA[0] = 0xff;
-	re.shaderRGBA[1] = 0xff;
-	re.shaderRGBA[2] = 0xff;
-	re.shaderRGBA[3] = 0xff * c * 0.33;
+	re.shaderRGBA.rgba[0] = 0xff;
+	re.shaderRGBA.rgba[1] = 0xff;
+	re.shaderRGBA.rgba[2] = 0xff;
+	re.shaderRGBA.rgba[3] = 0xff * c * 0.33;
 
 	re.reType = RT_SPRITE;
 	re.radius = 42 * ( 1.0 - c ) + 30;
@@ -638,10 +638,10 @@ void CG_AddKamikaze( localEntity_t *le ) {
 			c = 0;
 		}
 		c *= 0xff;
-		shockwave.shaderRGBA[0] = 0xff - c;
-		shockwave.shaderRGBA[1] = 0xff - c;
-		shockwave.shaderRGBA[2] = 0xff - c;
-		shockwave.shaderRGBA[3] = 0xff - c;
+		shockwave.shaderRGBA.rgba[0] = 0xff - c;
+		shockwave.shaderRGBA.rgba[1] = 0xff - c;
+		shockwave.shaderRGBA.rgba[2] = 0xff - c;
+		shockwave.shaderRGBA.rgba[3] = 0xff - c;
 
 		trap_R_AddRefEntityToScene( &shockwave );
 	}
@@ -650,10 +650,10 @@ void CG_AddKamikaze( localEntity_t *le ) {
 		// explosion and implosion
 		c = ( le->endTime - cg.time ) * le->lifeRate;
 		c *= 0xff;
-		re->shaderRGBA[0] = le->color[0] * c;
-		re->shaderRGBA[1] = le->color[1] * c;
-		re->shaderRGBA[2] = le->color[2] * c;
-		re->shaderRGBA[3] = le->color[3] * c;
+		re->shaderRGBA.rgba[0] = le->color[0] * c;
+		re->shaderRGBA.rgba[1] = le->color[1] * c;
+		re->shaderRGBA.rgba[2] = le->color[2] * c;
+		re->shaderRGBA.rgba[3] = le->color[3] * c;
 
 		if( t < KAMI_IMPLODE_STARTTIME ) {
 			c = (float)(t - KAMI_EXPLODE_STARTTIME) / (float)(KAMI_IMPLODE_STARTTIME - KAMI_EXPLODE_STARTTIME);
@@ -709,10 +709,10 @@ void CG_AddKamikaze( localEntity_t *le ) {
 			c = 0;
 		}
 		c *= 0xff;
-		shockwave.shaderRGBA[0] = 0xff - c;
-		shockwave.shaderRGBA[1] = 0xff - c;
-		shockwave.shaderRGBA[2] = 0xff - c;
-		shockwave.shaderRGBA[3] = 0xff - c;
+		shockwave.shaderRGBA.rgba[0] = 0xff - c;
+		shockwave.shaderRGBA.rgba[1] = 0xff - c;
+		shockwave.shaderRGBA.rgba[2] = 0xff - c;
+		shockwave.shaderRGBA.rgba[3] = 0xff - c;
 
 		trap_R_AddRefEntityToScene( &shockwave );
 	}
@@ -783,29 +783,29 @@ void CG_AddScorePlum( localEntity_t *le ) {
 
 	score = le->radius;
 	if (score < 0) {
-		re->shaderRGBA[0] = 0xff;
-		re->shaderRGBA[1] = 0x11;
-		re->shaderRGBA[2] = 0x11;
+		re->shaderRGBA.rgba[0] = 0xff;
+		re->shaderRGBA.rgba[1] = 0x11;
+		re->shaderRGBA.rgba[2] = 0x11;
 	}
 	else {
-		re->shaderRGBA[0] = 0xff;
-		re->shaderRGBA[1] = 0xff;
-		re->shaderRGBA[2] = 0xff;
+		re->shaderRGBA.rgba[0] = 0xff;
+		re->shaderRGBA.rgba[1] = 0xff;
+		re->shaderRGBA.rgba[2] = 0xff;
 		if (score >= 50) {
-			re->shaderRGBA[1] = 0;
+			re->shaderRGBA.rgba[1] = 0;
 		} else if (score >= 20) {
-			re->shaderRGBA[0] = re->shaderRGBA[1] = 0;
+			re->shaderRGBA.rgba[0] = re->shaderRGBA.rgba[1] = 0;
 		} else if (score >= 10) {
-			re->shaderRGBA[2] = 0;
+			re->shaderRGBA.rgba[2] = 0;
 		} else if (score >= 2) {
-			re->shaderRGBA[0] = re->shaderRGBA[2] = 0;
+			re->shaderRGBA.rgba[0] = re->shaderRGBA.rgba[2] = 0;
 		}
 
 	}
 	if (c < 0.25)
-		re->shaderRGBA[3] = 0xff * 4 * c;
+		re->shaderRGBA.rgba[3] = 0xff * 4 * c;
 	else
-		re->shaderRGBA[3] = 0xff;
+		re->shaderRGBA.rgba[3] = 0xff;
 
 	re->radius = NUMBER_SIZE / 2;
 
@@ -870,21 +870,21 @@ void CG_AddDamagePlum( localEntity_t *le ) {
 
 	// Color based on damage amount - gradient from white to red
 	if (damage >= 50) {
-		re->shaderRGBA[0] = 0xff;
-		re->shaderRGBA[1] = 0x00;
-		re->shaderRGBA[2] = 0x00;
+		re->shaderRGBA.rgba[0] = 0xff;
+		re->shaderRGBA.rgba[1] = 0x00;
+		re->shaderRGBA.rgba[2] = 0x00;
 	} else if (damage >= 25) {
-		re->shaderRGBA[0] = 0xff;
-		re->shaderRGBA[1] = 0x80;
-		re->shaderRGBA[2] = 0x00;
+		re->shaderRGBA.rgba[0] = 0xff;
+		re->shaderRGBA.rgba[1] = 0x80;
+		re->shaderRGBA.rgba[2] = 0x00;
 	} else if (damage >= 10) {
-		re->shaderRGBA[0] = 0xff;
-		re->shaderRGBA[1] = 0xff;
-		re->shaderRGBA[2] = 0x00;
+		re->shaderRGBA.rgba[0] = 0xff;
+		re->shaderRGBA.rgba[1] = 0xff;
+		re->shaderRGBA.rgba[2] = 0x00;
 	} else {
-		re->shaderRGBA[0] = 0xff;
-		re->shaderRGBA[1] = 0xff;
-		re->shaderRGBA[2] = 0xff;
+		re->shaderRGBA.rgba[0] = 0xff;
+		re->shaderRGBA.rgba[1] = 0xff;
+		re->shaderRGBA.rgba[2] = 0xff;
 	}
 
 	// Fade out after 250ms (after peak at 25% progress)
@@ -894,7 +894,7 @@ void CG_AddDamagePlum( localEntity_t *le ) {
 	} else {
 		fade = 1.0 - ((progress - 0.25) / 0.75);  // Fade out over remaining 750ms
 	}
-	re->shaderRGBA[3] = 0xff * fade;
+	re->shaderRGBA.rgba[3] = 0xff * fade;
 
 	re->radius = NUMBER_SIZE / 2;
 

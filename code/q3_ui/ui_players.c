@@ -854,10 +854,10 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 		memset( &gun, 0, sizeof(gun) );
 		gun.hModel = pi->weaponModel;
 		if( pi->currentWeapon == WP_RAILGUN ) {
-			Byte4Copy( pi->c1RGBA, gun.shaderRGBA );
+			Byte4Copy( pi->c1RGBA, gun.shaderRGBA.rgba );
 		}
 		else {
-			Byte4Copy( colorWhite, gun.shaderRGBA );
+			Byte4Copy( colorWhite, gun.shaderRGBA.rgba );
 		}
 		VectorCopy( origin, gun.lightingOrigin );
 		UI_PositionEntityOnTag( &gun, &torso, pi->torsoModel, "tag_weapon");
@@ -894,10 +894,10 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 			memset( &flash, 0, sizeof(flash) );
 			flash.hModel = pi->flashModel;
 			if( pi->currentWeapon == WP_RAILGUN ) {
-				Byte4Copy( pi->c1RGBA, flash.shaderRGBA );
+				Byte4Copy( pi->c1RGBA, flash.shaderRGBA.rgba );
 			}
 			else {
-				Byte4Copy( colorWhite, flash.shaderRGBA );
+				Byte4Copy( colorWhite, flash.shaderRGBA.rgba );
 			}
 			VectorCopy( origin, flash.lightingOrigin );
 			UI_PositionEntityOnTag( &flash, &gun, pi->weaponModel, "tag_flash");

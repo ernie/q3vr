@@ -32,6 +32,9 @@ int			cvar_modifiedFlags;
 cvar_t		cvar_indexes[MAX_CVARS];
 int			cvar_numIndexes;
 
+// Cvar group modification tracking
+static int	cvar_group[CVG_MAX];
+
 #define FILE_HASH_SIZE		256
 static	cvar_t	*hashTable[FILE_HASH_SIZE];
 
@@ -439,6 +442,8 @@ cvar_t *Cvar_Get( const char *var_name, const char *var_value, int flags ) {
 	var->resetString = CopyString( var_value );
 	var->validate = qfalse;
 	var->description = NULL;
+	var->group = CVG_NONE;
+	cvar_group[var->group] = 1;
 
 	// link the variable in
 	var->next = cvar_vars;
@@ -593,6 +598,7 @@ cvar_t *Cvar_Set2( const char *var_name, const char *value, qboolean force ) {
 			var->latchedString = CopyString(value);
 			var->modified = qtrue;
 			var->modificationCount++;
+			cvar_group[var->group] = 1;
 			return var;
 		}
 	}
@@ -610,9 +616,10 @@ cvar_t *Cvar_Set2( const char *var_name, const char *value, qboolean force ) {
 
 	var->modified = qtrue;
 	var->modificationCount++;
-	
+	cvar_group[var->group] = 1;
+
 	Z_Free (var->string);	// free the old value string
-	
+
 	var->string = CopyString(value);
 	var->value = atof (var->string);
 	var->integer = atoi (var->string);
@@ -1425,6 +1432,49 @@ void Cvar_CompleteCvarName( char *args, int argNum )
 
 		if( p > args )
 			Field_CompleteCommand( p, qfalse, qtrue );
+	}
+}
+
+/*
+==================
+Cvar_SetGroup
+==================
+*/
+void Cvar_SetGroup( cvar_t *var, cvarGroup_t group ) {
+	if ( var ) {
+		var->group = group;
+	}
+}
+
+/*
+==================
+Cvar_CheckGroup
+==================
+*/
+int Cvar_CheckGroup( cvarGroup_t group ) {
+	if ( group < CVG_MAX ) {
+		return cvar_group[ group ];
+	} else {
+		return 0;
+	}
+}
+
+/*
+==================
+Cvar_ResetGroup
+==================
+*/
+void Cvar_ResetGroup( cvarGroup_t group, qboolean resetModifiedFlags ) {
+	if ( group < CVG_MAX ) {
+		cvar_group[ group ] = 0;
+		if ( resetModifiedFlags ) {
+			int i;
+			for ( i = 0; i < cvar_numIndexes; i++ ) {
+				if ( cvar_indexes[ i ].group == group && cvar_indexes[ i ].name ) {
+					cvar_indexes[ i ].modified = qfalse;
+				}
+			}
+		}
 	}
 }
 

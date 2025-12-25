@@ -30,7 +30,7 @@ USER INTERFACE MAIN
 
 
 #include "ui_local.h"
-#include "../vr/vr_clientinfo.h"
+#include "../vrcommon/vr_clientinfo.h"
 
 vr_clientinfo_t *vr = NULL;
 

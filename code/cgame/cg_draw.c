@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // active (after loading) gameplay
 
 #include "cg_local.h"
-#include "../vr/vr_clientinfo.h"
+#include "../vrcommon/vr_clientinfo.h"
 
 #ifdef MISSIONPACK
 #include "../ui/ui_shared.h"
@@ -288,10 +288,10 @@ void CG_Draw3DModel( float x, float y, float w, float h, qhandle_t model, qhandl
 	ent.customSkin = skin;
 	ent.renderfx = RF_NOSHADOW;		// no stencil shadows
 
-	ent.shaderRGBA[0] = 255;
-	ent.shaderRGBA[1] = 255;
-	ent.shaderRGBA[2] = 255;
-	ent.shaderRGBA[3] = 255;
+	ent.shaderRGBA.rgba[0] = 255;
+	ent.shaderRGBA.rgba[1] = 255;
+	ent.shaderRGBA.rgba[2] = 255;
+	ent.shaderRGBA.rgba[3] = 255;
 
 	refdef.rdflags = RDF_NOWORLDMODEL;
 
@@ -357,10 +357,10 @@ void CG_Draw3DModelColor( float x, float y, float w, float h, qhandle_t model, q
 
 	refdef.isHUD = qtrue;
 
-	ent.shaderRGBA[0] = color[0] * 255;
-	ent.shaderRGBA[1] = color[1] * 255;
-	ent.shaderRGBA[2] = color[2] * 255;
-	ent.shaderRGBA[3] = 255;
+	ent.shaderRGBA.rgba[0] = color[0] * 255;
+	ent.shaderRGBA.rgba[1] = color[1] * 255;
+	ent.shaderRGBA.rgba[2] = color[2] * 255;
+	ent.shaderRGBA.rgba[3] = 255;
 
 	trap_R_ClearScene();
 	trap_R_AddRefEntityToScene( &ent );
@@ -2168,12 +2168,12 @@ static void CG_DrawCrosshair3D(void)
 	if ( cg_crosshairHealth.integer ) {
 		vec4_t hcolor;
 		CG_ColorForHealth( hcolor );
-		ent.shaderRGBA[0] = (byte)(hcolor[0] * 255);
-		ent.shaderRGBA[1] = (byte)(hcolor[1] * 255);
-		ent.shaderRGBA[2] = (byte)(hcolor[2] * 255);
-		ent.shaderRGBA[3] = (byte)(hcolor[3] * 255);
+		ent.shaderRGBA.rgba[0] = (byte)(hcolor[0] * 255);
+		ent.shaderRGBA.rgba[1] = (byte)(hcolor[1] * 255);
+		ent.shaderRGBA.rgba[2] = (byte)(hcolor[2] * 255);
+		ent.shaderRGBA.rgba[3] = (byte)(hcolor[3] * 255);
 	} else {
-		CG_CrosshairColorFromInt( cg_crosshairColor.integer, ent.shaderRGBA );
+		CG_CrosshairColorFromInt( cg_crosshairColor.integer, ent.shaderRGBA.rgba );
 	}
 
 	// ensure crosshair is aligned with world, not HMD/view
@@ -2257,10 +2257,11 @@ static void CG_DrawCrosshairNames( void ) {
 #ifdef MISSIONPACK
 	color[3] *= 0.5f;
 	w = CG_Text_Width(name, 0.3f, 0);
-	CG_Text_Paint( 320 - w / 2, 190, 0.3f, color, name, 0, 0, ITEM_TEXTSTYLE_SHADOWED);
+	CG_Text_Paint( 320 - w / 2, 190, 0.3f, color, name, 0, 0, ITEM_TEXTSTYLE_NORMAL);
 #else
 	w = CG_DrawStrlen( name ) * BIGCHAR_WIDTH;
-	CG_DrawBigString( 320 - w / 2, 170, name, color[3] * 0.5f );
+	color[3] *= 0.5f;
+	CG_DrawStringExt( 320 - w / 2, 170, name, color, qfalse, qfalse, BIGCHAR_WIDTH, BIGCHAR_HEIGHT, 0 );
 #endif
 	trap_R_SetColor( NULL );
 }
@@ -3138,13 +3139,12 @@ static void CG_DrawScreen2D(void)
     }
 }
 
-
-//
+#ifndef USE_VULKAN
 // HACK HACK HACK
 //
-//Render an empty scene - seems to sort the weird out-of-body thing
-//when the HUD isn't being drawn. Need to get to the bottom of this
-//it shouldn't cost frames, but it is ugly
+// Render an empty scene - seems to sort the weird out-of-body thing
+// when the HUD isn't being drawn. Need to get to the bottom of this
+// it shouldn't cost frames, but it is ugly
 static void CG_EmptySceneHackHackHack( void )
 {
 	refdef_t refdef;
@@ -3166,6 +3166,7 @@ static void CG_EmptySceneHackHackHack( void )
 	trap_R_ClearScene();
 	trap_R_RenderScene( &refdef );
 }
+#endif
 
 static void CG_CalculatePing( void ) {
 	int count, i, v;
@@ -3520,41 +3521,55 @@ void CG_DrawActive( void ) {
 	VectorCopy( baseOrg, cg.refdef.vieworg );
 
 	{
+		float hudStatus = trap_Cvar_VariableValue( "vr_currentHudDrawStatus" );
+
 		// Draw screen 2D overlays (vignette, damage effects, reticle) to overlay buffer
 		// for quad layer submission to avoid stereo offset
 		if (!vr->virtual_screen) {
 			trap_R_ScreenOverlayBufferStart(qtrue);
 		}
+		
 		CG_DrawScreen2D();
-
-		if (!vr->virtual_screen || vr->first_person_following)
+		
+		if (vr->weapon_zoomed)
 		{
-			float hudStatus = trap_Cvar_VariableValue( "vr_currentHudDrawStatus" );
+			// Weapon zoomed: render minimal HUD to overlay buffer with scaled coordinates
+			cg.drawingHUD = qtrue;
+			cg.drawingZoomedHUD = qtrue;
+			CG_WarmupEvents();
+			CG_DrawHUD2DMinimal();
+			cg.drawingZoomedHUD = qfalse;
+			cg.drawingHUD = qfalse;
+		} 
+		else if (hudStatus == 2 && !vr->virtual_screen)
+		{
+			// HUD mode 2 outside virtual screen: render to overlay buffer (quad layer)
+			// Don't clear, append to existing screen overlays
+			cg.drawingHUD = qtrue;
+			CG_WarmupEvents();
+			CG_DrawHUD2D();
+			cg.drawingHUD = qfalse;
+		}
+		
+		if (!vr->virtual_screen) {
+			trap_R_ScreenOverlayBufferEnd();
+		}
 
-			if (vr->weapon_zoomed)
-			{
-				// Weapon zoomed: render minimal HUD to overlay buffer with scaled coordinates
-				cg.drawingHUD = qtrue;
-				cg.drawingZoomedHUD = qtrue;
-				CG_WarmupEvents();
-				CG_DrawHUD2DMinimal();
-				cg.drawingZoomedHUD = qfalse;
-				cg.drawingHUD = qfalse;
-			}
-			else if (hudStatus != 0)
+		if (!vr->weapon_zoomed && (!vr->virtual_screen || vr->first_person_following))
+		{
+			if (hudStatus != 0)
 			{
 				cg.drawingHUD = qtrue;
 
-				if (hudStatus == 2 && !vr->virtual_screen)
+				if (hudStatus == 2 && vr->first_person_following)
 				{
-					// HUD mode 2 outside virtual screen: render to overlay buffer (quad layer)
-					// Don't clear, append to existing screen overlays
+					// HUD mode 2 in first person following
 					CG_WarmupEvents();
 					CG_DrawHUD2D();
 				}
-				else
+				else if (hudStatus == 1)
 				{
-					// HUD mode 1 or virtual screen: use existing HUD buffer (floating in-world)
+					// HUD mode 1: use existing HUD buffer (floating in-world)
 					trap_R_HUDBufferStart(qtrue);
 					CG_WarmupEvents();
 					CG_DrawHUD2D();
@@ -3570,11 +3585,9 @@ void CG_DrawActive( void ) {
 				trap_R_HUDBufferEnd();
 			}
 		}
-
-		if (!vr->virtual_screen) {
-			trap_R_ScreenOverlayBufferEnd();
-		}
 	}
 
+#ifndef USE_VULKAN
 	CG_EmptySceneHackHackHack();
+#endif
 }

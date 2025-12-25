@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // of event processing
 
 #include "cg_local.h"
-#include "../vr/vr_clientinfo.h"
+#include "../vrcommon/vr_clientinfo.h"
 
 extern vr_clientinfo_t* vr;
 
@@ -73,10 +73,10 @@ void CG_BubbleTrail( vec3_t start, vec3_t end, float spacing ) {
 		re->rotation = 0;
 		re->radius = 3;
 		re->customShader = cgs.media.waterBubbleShader;
-		re->shaderRGBA[0] = 0xff;
-		re->shaderRGBA[1] = 0xff;
-		re->shaderRGBA[2] = 0xff;
-		re->shaderRGBA[3] = 0xff;
+		re->shaderRGBA.rgba[0] = 0xff;
+		re->shaderRGBA.rgba[1] = 0xff;
+		re->shaderRGBA.rgba[2] = 0xff;
+		re->shaderRGBA.rgba[3] = 0xff;
 
 		le->color[3] = 1.0;
 
@@ -147,15 +147,15 @@ localEntity_t *CG_SmokePuff( const vec3_t p, const vec3_t vel,
 	// rage pro can't alpha fade, so use a different shader
 	if ( cgs.glconfig.hardwareType == GLHW_RAGEPRO ) {
 		re->customShader = cgs.media.smokePuffRageProShader;
-		re->shaderRGBA[0] = 0xff;
-		re->shaderRGBA[1] = 0xff;
-		re->shaderRGBA[2] = 0xff;
-		re->shaderRGBA[3] = 0xff;
+		re->shaderRGBA.rgba[0] = 0xff;
+		re->shaderRGBA.rgba[1] = 0xff;
+		re->shaderRGBA.rgba[2] = 0xff;
+		re->shaderRGBA.rgba[3] = 0xff;
 	} else {
-		re->shaderRGBA[0] = le->color[0] * 0xff;
-		re->shaderRGBA[1] = le->color[1] * 0xff;
-		re->shaderRGBA[2] = le->color[2] * 0xff;
-		re->shaderRGBA[3] = 0xff;
+		re->shaderRGBA.rgba[0] = le->color[0] * 0xff;
+		re->shaderRGBA.rgba[1] = le->color[1] * 0xff;
+		re->shaderRGBA.rgba[2] = le->color[2] * 0xff;
+		re->shaderRGBA.rgba[3] = 0xff;
 	}
 
 	re->reType = RT_SPRITE;

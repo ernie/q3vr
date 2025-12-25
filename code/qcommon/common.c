@@ -31,7 +31,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <winsock.h>
 #endif
 
-#include "../vr/vr_base.h"
+#include "../vrcommon/vr_base.h"
 
 int demo_protocols[] =
 { 67, 66, 0 };

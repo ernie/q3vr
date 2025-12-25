@@ -23,6 +23,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifndef __TR_TYPES_H
 #define __TR_TYPES_H
 
+#define MAX_VIDEO_HANDLES	16
+
+// myftol - used by renderervk for float-to-int conversion
+#define	myftol(x) ((int)(x))
 
 #define	MAX_DLIGHTS		32		// can't be increased, because bit flags are used on surfaces
 
@@ -43,6 +47,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 						// DEPTHHACK in stereo rendering mode, with the difference that the
 						// projection matrix won't be hacked to reduce the stereo separation as
 						// is done for the gun.
+
+#define RF_OVERBRIGHT		0x0020		// apply overbright scaling to diffuse lighting
 
 #define	RF_NOSHADOW		0x0040		// don't add stencil shadows
 
@@ -111,7 +117,7 @@ typedef struct {
 	qhandle_t	customShader;		// use one image for the entire thing
 
 	// misc
-	byte		shaderRGBA[4];		// colors used by rgbgen entity shaders
+	color4ub_t	shaderRGBA;			// colors used by rgbgen entity shaders
 	float		shaderTexCoord[2];	// texture coordinates used by tcMod entity modifiers
 	float		shaderTime;			// subtracted from refdef time to control effect start times
 

@@ -22,8 +22,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 // cg_weapons.c -- events and effects dealing with weapons
 #include "cg_local.h"
-#include "../vr/vr_clientinfo.h"
-#include "../vr/vr_safe_types.h"
+#include "../vrcommon/vr_clientinfo.h"
+#include "../vrcommon/vr_safe_types.h"
 
 extern vr_clientinfo_t *vr;
 
@@ -528,10 +528,10 @@ void CG_LaserSight( vec3_t start, vec3_t end, byte colour[4], float width ) {
 
   AxisClear( re.axis );
 
-	re.shaderRGBA[0] = colour[0];
-	re.shaderRGBA[1] = colour[1];
-	re.shaderRGBA[2] = colour[2];
-	re.shaderRGBA[3] = colour[3];
+	re.shaderRGBA.rgba[0] = colour[0];
+	re.shaderRGBA.rgba[1] = colour[1];
+	re.shaderRGBA.rgba[2] = colour[2];
+	re.shaderRGBA.rgba[3] = colour[3];
 
 	trap_R_AddRefEntityToScene(&re);
 }
@@ -572,10 +572,10 @@ void CG_RailTrail (clientInfo_t *ci, vec3_t start, vec3_t end) {
 	VectorCopy(start, re->origin);
 	VectorCopy(end, re->oldorigin);
  
-	re->shaderRGBA[0] = ci->color1[0] * 255;
-	re->shaderRGBA[1] = ci->color1[1] * 255;
-	re->shaderRGBA[2] = ci->color1[2] * 255;
-	re->shaderRGBA[3] = 255;
+	re->shaderRGBA.rgba[0] = ci->color1[0] * 255;
+	re->shaderRGBA.rgba[1] = ci->color1[1] * 255;
+	re->shaderRGBA.rgba[2] = ci->color1[2] * 255;
+	re->shaderRGBA.rgba[3] = 255;
 
 	le->color[0] = ci->color1[0] * 0.75;
 	le->color[1] = ci->color1[1] * 0.75;
@@ -629,10 +629,10 @@ void CG_RailTrail (clientInfo_t *ci, vec3_t start, vec3_t end) {
 			re->radius = 1.2f;
 			re->customShader = cgs.media.railRingsShader;
 
-			re->shaderRGBA[0] = ci->color2[0] * 255;
-			re->shaderRGBA[1] = ci->color2[1] * 255;
-			re->shaderRGBA[2] = ci->color2[2] * 255;
-			re->shaderRGBA[3] = 255;
+			re->shaderRGBA.rgba[0] = ci->color2[0] * 255;
+			re->shaderRGBA.rgba[1] = ci->color2[1] * 255;
+			re->shaderRGBA.rgba[2] = ci->color2[2] * 255;
+			re->shaderRGBA.rgba[3] = 255;
 
 			le->color[0] = ci->color2[0] * 0.75;
 			le->color[1] = ci->color2[1] * 0.75;
@@ -863,10 +863,10 @@ static void CG_PlasmaTrail( centity_t *cent, const weaponInfo_t *wi ) {
 	re->customShader = cgs.media.railRingsShader;
 	le->bounceFactor = 0.3f;
 
-	re->shaderRGBA[0] = wi->flashDlightColor[0] * 63;
-	re->shaderRGBA[1] = wi->flashDlightColor[1] * 63;
-	re->shaderRGBA[2] = wi->flashDlightColor[2] * 63;
-	re->shaderRGBA[3] = 63;
+	re->shaderRGBA.rgba[0] = wi->flashDlightColor[0] * 63;
+	re->shaderRGBA.rgba[1] = wi->flashDlightColor[1] * 63;
+	re->shaderRGBA.rgba[2] = wi->flashDlightColor[2] * 63;
+	re->shaderRGBA.rgba[3] = 63;
 
 	le->color[0] = wi->flashDlightColor[0] * 0.2;
 	le->color[1] = wi->flashDlightColor[1] * 0.2;
@@ -914,10 +914,10 @@ void CG_GrappleTrail( centity_t *ent, const weaponInfo_t *wi ) {
 	beam.customShader = cgs.media.lightningShader;
 
 	AxisClear( beam.axis );
-	beam.shaderRGBA[0] = 0xff;
-	beam.shaderRGBA[1] = 0xff;
-	beam.shaderRGBA[2] = 0xff;
-	beam.shaderRGBA[3] = 0xff;
+	beam.shaderRGBA.rgba[0] = 0xff;
+	beam.shaderRGBA.rgba[1] = 0xff;
+	beam.shaderRGBA.rgba[2] = 0xff;
+	beam.shaderRGBA.rgba[3] = 0xff;
 	trap_R_AddRefEntityToScene( &beam );
 }
 
@@ -1552,13 +1552,13 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 		clientInfo_t *ci = &cgs.clientinfo[cent->currentState.clientNum];
 		if( cent->pe.railFireTime + 1500 > cg.time ) {
 			int scale = 255 * ( cg.time - cent->pe.railFireTime ) / 1500;
-			gun.shaderRGBA[0] = ( ci->c1RGBA[0] * scale ) >> 8;
-			gun.shaderRGBA[1] = ( ci->c1RGBA[1] * scale ) >> 8;
-			gun.shaderRGBA[2] = ( ci->c1RGBA[2] * scale ) >> 8;
-			gun.shaderRGBA[3] = 255;
+			gun.shaderRGBA.rgba[0] = ( ci->c1RGBA[0] * scale ) >> 8;
+			gun.shaderRGBA.rgba[1] = ( ci->c1RGBA[1] * scale ) >> 8;
+			gun.shaderRGBA.rgba[2] = ( ci->c1RGBA[2] * scale ) >> 8;
+			gun.shaderRGBA.rgba[3] = 255;
 		}
 		else {
-			Byte4Copy( ci->c1RGBA, gun.shaderRGBA );
+			Byte4Copy( ci->c1RGBA, gun.shaderRGBA.rgba );
 		}
 	}
 
@@ -1657,9 +1657,9 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 		clientInfo_t	*ci;
 
 		ci = &cgs.clientinfo[ cent->currentState.clientNum ];
-		flash.shaderRGBA[0] = 255 * ci->color1[0];
-		flash.shaderRGBA[1] = 255 * ci->color1[1];
-		flash.shaderRGBA[2] = 255 * ci->color1[2];
+		flash.shaderRGBA.rgba[0] = 255 * ci->color1[0];
+		flash.shaderRGBA.rgba[1] = 255 * ci->color1[1];
+		flash.shaderRGBA.rgba[2] = 255 * ci->color1[2];
 	}
 
 	CG_PositionRotatedEntityOnTag( &flash, &gun, weapon->weaponModel, "tag_flash");
@@ -2123,6 +2123,8 @@ void CG_DrawWeaponSelector( void )
 	vec3_t wheelAngles, wheelOrigin, beamOrigin, wheelForward, wheelRight, wheelUp;
 	CG_CalculateVRPositionInWorld(cg.weaponSelectorOrigin, cg.weaponSelectorOffset, cg.weaponSelectorAngles, wheelOrigin, wheelAngles);
 
+	// Zero out roll so "up" on the wheel is always world-relative, not controller-roll-relative
+	wheelAngles[ROLL] = 0;
 	AngleVectors(wheelAngles, wheelForward, wheelRight, wheelUp);
 
 	if (selectorMode == WS_CONTROLLER)
@@ -2284,10 +2286,10 @@ void CG_DrawWeaponSelector( void )
 				sprite.reType = RT_SPRITE;
 				sprite.customShader = cgs.media.friendShader;
 				sprite.radius = 0.5f;
-				sprite.shaderRGBA[0] = 255;
-				sprite.shaderRGBA[1] = 255;
-				sprite.shaderRGBA[2] = 255;
-				sprite.shaderRGBA[3] = 255;
+				sprite.shaderRGBA.rgba[0] = 255;
+				sprite.shaderRGBA.rgba[1] = 255;
+				sprite.shaderRGBA.rgba[2] = 255;
+				sprite.shaderRGBA.rgba[3] = 255;
 				trap_R_AddRefEntityToScene( &sprite );
 			}
 
@@ -2303,12 +2305,13 @@ void CG_DrawWeaponSelector( void )
 				VectorMA(ent.origin, 0.1f, wheelUp, ent.origin);
 
 				vec3_t iconAngles;
-				VectorCopy(wheelAngles, iconAngles);
+				// Use wheel orientation so icons face consistently relative to the wheel
 				iconAngles[PITCH] = 10;
-				iconAngles[YAW] -= 145.0f;
+				iconAngles[YAW] = wheelAngles[YAW] - 145.0f;
+				iconAngles[ROLL] = 0;
 				if (weaponId == WP_GAUNTLET)
 				{
-					iconAngles[ROLL] -= 90.0f;
+					iconAngles[ROLL] = -90.0f;
 				}
 
 				float weaponScale = ((scale+0.02f)*frac) + (cg.weaponSelectorSelection == weaponId ? 0.04f : 0);
@@ -2323,20 +2326,21 @@ void CG_DrawWeaponSelector( void )
 					clientInfo_t *ci = &cgs.clientinfo[cg.predictedPlayerState.clientNum];
 					if( cg_entities[cg.predictedPlayerState.clientNum].pe.railFireTime + 1500 > cg.time ) {
 						int scale = 255 * ( cg.time - cg_entities[cg.predictedPlayerState.clientNum].pe.railFireTime ) / 1500;
-						ent.shaderRGBA[0] = ( ci->c1RGBA[0] * scale ) >> 8;
-						ent.shaderRGBA[1] = ( ci->c1RGBA[1] * scale ) >> 8;
-						ent.shaderRGBA[2] = ( ci->c1RGBA[2] * scale ) >> 8;
-						ent.shaderRGBA[3] = 255;
+						ent.shaderRGBA.rgba[0] = ( ci->c1RGBA[0] * scale ) >> 8;
+						ent.shaderRGBA.rgba[1] = ( ci->c1RGBA[1] * scale ) >> 8;
+						ent.shaderRGBA.rgba[2] = ( ci->c1RGBA[2] * scale ) >> 8;
+						ent.shaderRGBA.rgba[3] = 255;
 					}
 					else {
-						Byte4Copy( ci->c1RGBA, ent.shaderRGBA );
+						Byte4Copy( ci->c1RGBA, ent.shaderRGBA.rgba );
 					}
 				}
 
 				ent.hModel = cg_weapons[weaponId].weaponModel;
+				ent.renderfx = RF_OVERBRIGHT;
 				if (!selectable)
 				{
-					ent.customShader = cgs.media.invisShader;				    
+					ent.customShader = cgs.media.invisShader;
 				}
 				trap_R_AddRefEntityToScene(&ent);
 
@@ -2345,6 +2349,7 @@ void CG_DrawWeaponSelector( void )
 				refEntity_t barrel;
 				memset(&barrel, 0, sizeof(barrel));
 				barrel.hModel = cg_weapons[weaponId].barrelModel;
+				barrel.renderfx = RF_OVERBRIGHT;
 				vec3_t barrelAngles;
 				VectorClear(barrelAngles);
 				barrelAngles[ROLL] = AngleNormalize360((cg.time - cg.weaponSelectorTime) * 0.9f);
@@ -2362,16 +2367,17 @@ void CG_DrawWeaponSelector( void )
 				refEntity_t		sprite;
 				memset( &sprite, 0, sizeof( sprite ) );
 
-				float sRadius = 0.7f + (0.2f * (trap_Cvar_VariableValue("vr_currentHudDepth")-1));
+				// Scale icon radius proportionally to distance so apparent size stays consistent
+				float sRadius = dist * 0.08f;
 
 				VectorCopy(iconOrigin, sprite.origin);
 				sprite.reType = RT_SPRITE;
 				sprite.customShader = cg_weapons[weaponId].weaponIcon;
 				sprite.radius = sRadius * 0.9f * (cg.weaponSelectorSelection == weaponId ? 1.1f : 1.0);
-				sprite.shaderRGBA[0] = 255;
-				sprite.shaderRGBA[1] = 255;
-				sprite.shaderRGBA[2] = 255;
-				sprite.shaderRGBA[3] = 255;
+				sprite.shaderRGBA.rgba[0] = 255;
+				sprite.shaderRGBA.rgba[1] = 255;
+				sprite.shaderRGBA.rgba[2] = 255;
+				sprite.shaderRGBA.rgba[3] = 255;
 				trap_R_AddRefEntityToScene(&sprite);
 
 				//And now the selection background
@@ -2380,10 +2386,10 @@ void CG_DrawWeaponSelector( void )
 				sprite.reType = RT_SPRITE;
 				sprite.customShader = cgs.media.selectShader;
 				sprite.radius = sRadius * (cg.weaponSelectorSelection == weaponId ? 1.1f : 1.0);
-				sprite.shaderRGBA[0] = 255;
-				sprite.shaderRGBA[1] = 255;
-				sprite.shaderRGBA[2] = 255;
-				sprite.shaderRGBA[3] = 255;
+				sprite.shaderRGBA.rgba[0] = 255;
+				sprite.shaderRGBA.rgba[1] = 255;
+				sprite.shaderRGBA.rgba[2] = 255;
+				sprite.shaderRGBA.rgba[3] = 255;
 				trap_R_AddRefEntityToScene( &sprite );
 
 				if (!selectable)
@@ -2393,10 +2399,10 @@ void CG_DrawWeaponSelector( void )
 					sprite.reType = RT_SPRITE;
 					sprite.customShader = cgs.media.noammoShader;
 					sprite.radius = sRadius;
-					sprite.shaderRGBA[0] = 255;
-					sprite.shaderRGBA[1] = 255;
-					sprite.shaderRGBA[2] = 255;
-					sprite.shaderRGBA[3] = 255;
+					sprite.shaderRGBA.rgba[0] = 255;
+					sprite.shaderRGBA.rgba[1] = 255;
+					sprite.shaderRGBA.rgba[2] = 255;
+					sprite.shaderRGBA.rgba[3] = 255;
 					trap_R_AddRefEntityToScene(&sprite);
 				}
 			}
@@ -2766,10 +2772,10 @@ void CG_MissileHitWall( int weapon, int clientNum, vec3_t origin, vec3_t dir, im
 		if ( weapon == WP_RAILGUN ) {
 			// colorize with client color
 			VectorCopy( cgs.clientinfo[clientNum].color1, le->color );
-			le->refEntity.shaderRGBA[0] = le->color[0] * 0xff;
-			le->refEntity.shaderRGBA[1] = le->color[1] * 0xff;
-			le->refEntity.shaderRGBA[2] = le->color[2] * 0xff;
-			le->refEntity.shaderRGBA[3] = 0xff;
+			le->refEntity.shaderRGBA.rgba[0] = le->color[0] * 0xff;
+			le->refEntity.shaderRGBA.rgba[1] = le->color[1] * 0xff;
+			le->refEntity.shaderRGBA.rgba[2] = le->color[2] * 0xff;
+			le->refEntity.shaderRGBA.rgba[3] = 0xff;
 		}
 	}
 
