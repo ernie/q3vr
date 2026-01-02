@@ -408,7 +408,7 @@ static void CG_AddBloodParticle( localEntity_t *le ) {
 	// Calculate fade
 	c = ( le->endTime - cg.time ) * le->lifeRate;
 	if ( c < 0 ) c = 0;
-	re->shaderRGBA[3] = 0xff * c * le->color[3];
+	re->shaderRGBA.rgba[3] = 0xff * c * le->color[3];
 
 	// Calculate new position
 	BG_EvaluateTrajectory( &le->pos, cg.time, newOrigin );

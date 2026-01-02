@@ -701,10 +701,10 @@ void CG_Bleed( vec3_t origin, vec3_t dir, int entityNum, int weapon ) {
 		le->color[2] = 1.0f;
 		le->color[3] = 1.0f;
 
-		re->shaderRGBA[0] = 0xff;
-		re->shaderRGBA[1] = 0xff;
-		re->shaderRGBA[2] = 0xff;
-		re->shaderRGBA[3] = 0xff;
+		re->shaderRGBA.rgba[0] = 0xff;
+		re->shaderRGBA.rgba[1] = 0xff;
+		re->shaderRGBA.rgba[2] = 0xff;
+		re->shaderRGBA.rgba[3] = 0xff;
 
 		le->radius = re->radius;
 
