@@ -30,11 +30,9 @@ struct VR_SwapchainInfos_s {
 	uint32_t viewCount;
 	VR_GL_SwapchainInfo color;
 	VR_GL_SwapchainInfo depth;
-	VR_GL_SwapchainInfo screenOverlay;     // Single-layer texture for 2D screen overlays
 	GLuint* framebuffers;
 	GLuint** eyeFramebuffers;              // separate FBOs with bound only single eye image
 	GLuint virtualScreenFramebuffer;
-	GLuint screenOverlayFramebuffer;       // FBO for screen overlay rendering
 };
 
 #endif

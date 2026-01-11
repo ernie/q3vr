@@ -535,6 +535,12 @@ static void ComputeShaderColors( shaderStage_t *pStage, vec4_t baseColor, vec4_t
 			}
 			break;
 		case CGEN_IDENTITY:
+			// Identity means full brightness (1.0), no overbright scaling
+			// This matches renderervk behavior where CGEN_IDENTITY = 255
+			baseColor[0] =
+			baseColor[1] =
+			baseColor[2] = 1.0f;
+			break;
 		case CGEN_LIGHTING_DIFFUSE:
 			baseColor[0] =
 			baseColor[1] =

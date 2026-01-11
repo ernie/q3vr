@@ -75,6 +75,8 @@ cvar_t	*r_measureOverdraw;
 cvar_t	*r_inGameVideo;
 cvar_t	*r_fastsky;
 cvar_t	*vr_thirdPersonSpectator;
+cvar_t	*vr_currentHudDrawStatus;
+cvar_t	*vr_currentHudDepth;
 cvar_t	*r_drawSun;
 cvar_t	*r_dynamiclight;
 cvar_t	*r_dlightBacks;
@@ -1371,6 +1373,8 @@ void R_Register( void )
 	r_ignoreGLErrors = ri.Cvar_Get( "r_ignoreGLErrors", "1", CVAR_ARCHIVE );
 	r_fastsky = ri.Cvar_Get( "r_fastsky", "0", CVAR_ARCHIVE );
 	vr_thirdPersonSpectator = ri.Cvar_Get( "vr_thirdPersonSpectator", "0", CVAR_TEMP );
+	vr_currentHudDrawStatus = ri.Cvar_Get( "vr_currentHudDrawStatus", "1", CVAR_ARCHIVE );
+	vr_currentHudDepth = ri.Cvar_Get( "vr_currentHudDepth", "3", 0 );
 	r_inGameVideo = ri.Cvar_Get( "r_inGameVideo", "1", CVAR_ARCHIVE );
 	r_drawSun = ri.Cvar_Get( "r_drawSun", "1", CVAR_ARCHIVE );
 	r_dynamiclight = ri.Cvar_Get( "r_dynamiclight", "1", CVAR_ARCHIVE );
@@ -1762,9 +1766,6 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.HUDBufferStart = RE_HUDBufferStart;
 	re.HUDBufferEnd = RE_HUDBufferEnd;
 	re.SetVRHeadsetParms = RE_SetVRHeadsetParms;
-	re.SetScreenOverlayBuffer = RE_SetScreenOverlayBuffer;
-	re.ScreenOverlayBufferStart = RE_ScreenOverlayBufferStart;
-	re.ScreenOverlayBufferEnd = RE_ScreenOverlayBufferEnd;
 	re.InitXRResources = RE_InitXRResources;
 	re.BeginXRFrame = RE_BeginXRFrame;
 	re.ClearVRFramebuffer = RE_ClearVRFramebuffer;

@@ -876,12 +876,6 @@ typedef struct {
 	float		menuProjection[16]; // Symmetric projection built from refdef FOV for menu 3D models
 	int			renderBuffer;
 	int			renderBufferOriginal;
-	int			screenOverlayBuffer;  // Framebuffer for screen overlay quad layer
-	int			screenOverlayWidth;
-	int			screenOverlayHeight;
-	int			mainSceneReadBuffer;  // Framebuffer to read main scene from (layer 0) for mono blit
-	int			mainSceneWidth;
-	int			mainSceneHeight;
 	float		combinedFovX;         // Combined stereo horizontal FOV for culling (encompasses both eyes)
 	float		halfIpdMeters;        // Half IPD in meters for frustum plane offset
 } vrParms_t;
@@ -1427,7 +1421,6 @@ typedef struct {
 	mat4_t        modelMatrix;
 	mat4_t        projection;
 	qboolean 		isDrawingHUD;
-	qboolean 		isDrawingScreenOverlay;  // True when rendering to overlay quad layer buffer
 } glstate_t;
 
 typedef enum {
@@ -2527,12 +2520,6 @@ typedef struct {
 	qboolean clear; // Clear the buffer?
 } hudBufferCommand_t;
 
-typedef struct {
-	int commandId;
-	qboolean start;
-	qboolean clear; // Clear the buffer?
-} screenOverlayBufferCommand_t;
-
 typedef enum {
 	RC_END_OF_LIST,
 	RC_SET_COLOR,
@@ -2548,8 +2535,7 @@ typedef enum {
 	RC_POSTPROCESS,
 	RC_EXPORT_CUBEMAPS,
 	RC_SWITCH_EYE,
-	RC_HUD_BUFFER,
-	RC_SCREEN_OVERLAY_BUFFER
+	RC_HUD_BUFFER
 } renderCommand_t;
 
 
@@ -2600,10 +2586,6 @@ void RE_SetVRHeadsetParms( const float projectionMatrix[16],
 					  float halfIpdMeters );
 void RE_HUDBufferStart( qboolean clear );
 void RE_HUDBufferEnd( void );
-void RE_ScreenOverlayBufferStart( qboolean clear );
-void RE_ScreenOverlayBufferEnd( void );
-void RE_SetScreenOverlayBuffer( int overlayBuffer, int width, int height,
-								int mainSceneReadBuffer, int mainSceneWidth, int mainSceneHeight );
 void RE_ClearVRFramebuffer( int width, int height, qboolean isThirdPersonSpectator );
 void RE_SwapDesktopWindow( void );
 void RE_WaitForRenderComplete( void );

@@ -239,10 +239,24 @@ static void GLSL_ViewMatricesUniformBuffer(const float eyeView[2][16], const flo
         }
         break;
       case MIRROR_VR_PROJECTION:
-      case VR_PROJECTION:
         {
           Mat4Copy(eyeView[0], viewMatrices);
           Mat4Copy(eyeView[1], viewMatrices+16);
+        }
+        break;
+      case VR_PROJECTION:
+        {
+          // Mono view when stereo disabled (weapon zoom, virtual screen)
+          if (VR_ShouldDisableStereo())
+          {
+            Mat4Copy(modelView, viewMatrices);
+            Mat4Copy(modelView, viewMatrices+16);
+          }
+          else
+          {
+            Mat4Copy(eyeView[0], viewMatrices);
+            Mat4Copy(eyeView[1], viewMatrices+16);
+          }
         }
         break;
       case MONO_VR_PROJECTION:
@@ -1802,27 +1816,53 @@ void GLSL_PrepareUniformBuffers(void)
 
   Mat4Ortho(0, width, height, 0, 0, 1, orthoProjectionMatrix);
 
-  //ortho projection matrices (same for both eyes - 2D content)
+  //FULLSCREEN_ORTHO - symmetric, same for both eyes (used for virtual screen)
   GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[FULLSCREEN_ORTHO_PROJECTION],
           orthoProjectionMatrix, orthoProjectionMatrix);
-  GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[STEREO_ORTHO_PROJECTION],
-          orthoProjectionMatrix, orthoProjectionMatrix);
+
+  // STEREO_ORTHO - per-eye asymmetry for comfortable stereo fusion
+  // Weapon zoom uses 2x scale since mono content needs full IPD compensation
+  {
+    float orthoEye0[16], orthoEye1[16];
+    Com_Memcpy(orthoEye0, orthoProjectionMatrix, sizeof(orthoEye0));
+    Com_Memcpy(orthoEye1, orthoProjectionMatrix, sizeof(orthoEye1));
+
+    float scale = vr.weapon_zoomed ? 2.0f : 1.0f;
+    orthoEye0[12] -= tr.vrParms.projectionEye[0][8] * scale;
+    orthoEye1[12] -= tr.vrParms.projectionEye[1][8] * scale;
+
+    GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[STEREO_ORTHO_PROJECTION],
+            orthoEye0, orthoEye1);
+  }
 
   float hudOrthoProjectionMatrix[16];
   Mat4Ortho(0, 1280, 960, 0, 0, 1, hudOrthoProjectionMatrix);
   GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[HUDBUFFER_ORTHO_PROJECTION],
           hudOrthoProjectionMatrix, hudOrthoProjectionMatrix);
 
-  //VR projection matrix - use per-eye projections from OpenXR
-  //When weapon is zoomed or virtual screen is active, use symmetric projection for true mono rendering
-  //Virtual screen captures from left eye only, so asymmetric projection would cause offset
-  if (vr.weapon_zoomed || vr.virtual_screen)
+  // VR_PROJECTION - 3D world rendering
+  if (vr.weapon_zoomed)
   {
+    // Weapon zoom: symmetric projection with 2x asymmetry for mono content convergence
+    float projEye0[16], projEye1[16];
+    Com_Memcpy(projEye0, tr.vrParms.projection, sizeof(projEye0));
+    Com_Memcpy(projEye1, tr.vrParms.projection, sizeof(projEye1));
+
+    projEye0[8] = tr.vrParms.projectionEye[0][8] * 2.0f;
+    projEye1[8] = tr.vrParms.projectionEye[1][8] * 2.0f;
+
+    GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[VR_PROJECTION],
+            projEye0, projEye1);
+  }
+  else if (vr.virtual_screen)
+  {
+    // Virtual screen: symmetric projection (content on virtual screen quad)
     GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[VR_PROJECTION],
             tr.vrParms.projection, tr.vrParms.projection);
   }
   else
   {
+    // Normal stereo
     GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[VR_PROJECTION],
             tr.vrParms.projectionEye[0], tr.vrParms.projectionEye[1]);
   }
@@ -1887,15 +1927,14 @@ static GLuint GLSL_CalculateProjection() {
       }
       else
       {
-        // Use FULLSCREEN_ORTHO instead of STEREO_ORTHO to avoid stereo offset
-        // which offset HUD to the right on virtual screen.
-        result = FULLSCREEN_ORTHO_PROJECTION;
+        // HUD mode 2: use stereo ortho (has per-eye asymmetry) unless on virtual screen
+        result = vr.virtual_screen ? FULLSCREEN_ORTHO_PROJECTION : STEREO_ORTHO_PROJECTION;
       }
     }
     else
     {
-      // Non-HUD 2D content should use identity view matrices (no stereo offset)
-      result = FULLSCREEN_ORTHO_PROJECTION;
+      // Non-HUD 2D: use stereo ortho unless on virtual screen
+      result = vr.virtual_screen ? FULLSCREEN_ORTHO_PROJECTION : STEREO_ORTHO_PROJECTION;
     }
   }
 

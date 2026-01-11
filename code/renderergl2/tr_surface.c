@@ -257,7 +257,11 @@ static void RB_SurfaceSprite( void ) {
 		radiusY = radius;
 	}
 
-	if ( ent->e.rotation == 0 ) {
+	// Check for world-oriented sprite (uses entity axis instead of billboarding)
+	if ( ent->e.renderfx & RF_WORLD_ORIENTED ) {
+		VectorScale( ent->e.axis[1], radius, left );
+		VectorScale( ent->e.axis[2], ent->e.invert ? -radiusY : radiusY, up );
+	} else if ( ent->e.rotation == 0 ) {
 		VectorScale( backEnd.viewParms.or.axis[1], radius, left );
 		VectorScale( backEnd.viewParms.or.axis[2], ent->e.invert ? -radiusY : radiusY, up );
 	} else {

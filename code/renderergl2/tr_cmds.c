@@ -509,37 +509,6 @@ void RE_HUDBufferEnd( void )
     cmd->commandId = RC_HUD_BUFFER;
 }
 
-void RE_ScreenOverlayBufferStart( qboolean clear )
-{
-    screenOverlayBufferCommand_t *cmd;
-
-    if ( !tr.registered ) {
-        return;
-    }
-    cmd = R_GetCommandBufferReserved( sizeof( *cmd ), 0 );
-    if ( !cmd ) {
-        return;
-    }
-    cmd->start = qtrue;
-    cmd->clear = clear;
-    cmd->commandId = RC_SCREEN_OVERLAY_BUFFER;
-}
-
-void RE_ScreenOverlayBufferEnd( void )
-{
-    screenOverlayBufferCommand_t *cmd;
-
-    if ( !tr.registered ) {
-        return;
-    }
-    cmd = R_GetCommandBufferReserved( sizeof( *cmd ), 0 );
-    if ( !cmd ) {
-        return;
-    }
-    cmd->start = qfalse;
-    cmd->commandId = RC_SCREEN_OVERLAY_BUFFER;
-}
-
 void R_Mat4Copy( const float in[16], float out[16] )
 {
 	int i;
@@ -663,16 +632,6 @@ void RE_SetVRHeadsetParms( const float projectionMatrix[16],  const float nonVRP
 	tr.vrParms.combinedFovX = combinedFovX;
 	tr.vrParms.halfIpdMeters = halfIpdMeters;
 	tr.vrParms.valid = qtrue;
-}
-
-void RE_SetScreenOverlayBuffer( int overlayBuffer, int width, int height,
-								int mainSceneReadBuffer, int mainSceneWidth, int mainSceneHeight ) {
-	tr.vrParms.screenOverlayBuffer = overlayBuffer;
-	tr.vrParms.screenOverlayWidth = width;
-	tr.vrParms.screenOverlayHeight = height;
-	tr.vrParms.mainSceneReadBuffer = mainSceneReadBuffer;
-	tr.vrParms.mainSceneWidth = mainSceneWidth;
-	tr.vrParms.mainSceneHeight = mainSceneHeight;
 }
 
 /*

@@ -39,7 +39,6 @@ XrView views[2];
 uint32_t viewCount = 2;
 uint32_t swapchainColorIndex = 0;
 uint32_t swapchainDepthIndex = 0;
-qboolean overlayAcquiredThisFrame = qfalse;
 
 void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter);
 void VR_Renderer_EndFrame(VR_Engine* engine);
@@ -183,6 +182,25 @@ void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 	// Update HMD position/views
 	IN_VRUpdateHMD(views, viewCount, &fov);
 
+	// SP intermission state tracking - must be set before rendering
+	// so UI code sees the correct state for scaling/offsets
+	qboolean isSPIntermission = VR_IsSPIntermission();
+	if (isSPIntermission && !vr.sp_intermission_active)
+	{
+		// First frame of SP intermission - capture anchor position
+		vr.sp_intermission_active = qtrue;
+		// Store yaw for HUD positioning (in degrees)
+		XrQuaternionf q = views[0].pose.orientation;
+		float siny_cosp = 2.0f * (q.w * q.y + q.z * q.x);
+		float cosy_cosp = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
+		vr.sp_intermission_yaw = atan2f(siny_cosp, cosy_cosp) * 180.0f / (float)M_PI;
+	}
+	else if (!isSPIntermission && vr.sp_intermission_active)
+	{
+		// Exiting SP intermission - reset state
+		vr.sp_intermission_active = qfalse;
+	}
+
 	// [Input] poll actions, update controller state, issue action commands
 	IN_VRSyncActions(engine);
 	IN_VRUpdateControllers(engine, lastPredictedDisplayTime);
@@ -192,28 +210,6 @@ void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 	VR_Swapchains_Acquire(swapchains, &swapchainColorIndex, &swapchainDepthIndex);
 	VR_Swapchains_BindFramebuffers(swapchains, swapchainColorIndex, swapchainDepthIndex);
 	VR_ClearFrameBuffer(swapchains->color.width, swapchains->color.height);
-
-	// Acquire overlay swapchain for 2D screen overlays (vignette, damage, reticle, HUD mode 2)
-	// Skip during loading states to avoid submitting uninitialized overlay content
-	// Skip when in virtual screen mode - overlay would obscure the virtual screen
-	overlayAcquiredThisFrame = qfalse;
-	if (swapchains->screenOverlay.swapchain != XR_NULL_HANDLE && clc.state == CA_ACTIVE && !vr.virtual_screen)
-	{
-		uint32_t overlayIndex;
-		VR_Swapchains_AcquireOverlay(&swapchains->screenOverlay, &overlayIndex);
-		VR_Swapchains_BindOverlayFramebuffer(swapchains, overlayIndex);
-		overlayAcquiredThisFrame = qtrue;
-
-		// Tell renderer about the overlay buffer so it can bind it when drawing screen overlays
-		// Also provide the main scene read buffer for mono blit when weapon is zoomed
-		re.SetScreenOverlayBuffer(
-			swapchains->screenOverlayFramebuffer,
-			swapchains->screenOverlay.width,
-			swapchains->screenOverlay.height,
-			swapchains->eyeFramebuffers[0][swapchainColorIndex],
-			swapchains->color.width,
-			swapchains->color.height);
-	}
 
 	// Set renderer params
 	// Near plane must be in Quake units to match our view matrices
@@ -291,12 +287,6 @@ void VR_Renderer_EndFrame(VR_Engine* engine)
 
 	VR_Swapchains_Release(swapchains);
 
-	// Release overlay swapchain only if it was acquired this frame
-	if (overlayAcquiredThisFrame)
-	{
-		VR_Swapchains_ReleaseOverlay(&swapchains->screenOverlay);
-	}
-
 	VR_Swapchains_BindFramebuffers(NULL, 0, 0);
 
 	// Blit to main FBO (desktop window) - use virtual screen if active, otherwise eye view
@@ -310,8 +300,7 @@ void VR_Renderer_EndFrame(VR_Engine* engine)
 		fov,
 		engine->appState.CurrentSpace,
 		engine->appState.ViewSpace,
-		lastPredictedDisplayTime,
-		overlayAcquiredThisFrame);
+		lastPredictedDisplayTime);
 
 	// Flip desktop window's buffer - use renderer export for abstraction
 	re.SwapDesktopWindow();
