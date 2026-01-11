@@ -1400,6 +1400,7 @@ void CG_CenterPrint( const char *str, int y, int charWidth );
 void CG_DrawHead( float x, float y, float w, float h, int clientNum, vec3_t headAngles );
 void CG_DrawActive( void );
 void CG_GetProjectionCenter( float *outX, float *outY );
+float CG_GetCombinedFovScale( void );
 void CG_DamageBorderVignette( void );
 void CG_DrawFlagModel( float x, float y, float w, float h, int team, qboolean force2D );
 void CG_DrawTeamBackground( int x, int y, int w, int h, float alpha, int team );

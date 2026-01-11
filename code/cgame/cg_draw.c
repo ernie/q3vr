@@ -2984,34 +2984,33 @@ static void CG_DrawVignette( void )
 
 		int insetX = (int)baseInsetX;
 
-		// Vignette position: start at -extraWidth + inset, width covers full combined FOV minus insets
-		int vignetteX = (int)(-extraWidth + insetX);
-		int vignetteW = (int)(cg.refdef.width + 2 * extraWidth - 2 * insetX);
-		int vignetteH = (int)(cg.refdef.height - insetTop - insetBottom);
+		// Vignette covers the normal viewport minus insets (not stretched into extended FOV)
+		int vignetteX = insetX;
+		int vignetteW = cg.refdef.width - 2 * insetX;
+		int vignetteH = cg.refdef.height - insetTop - insetBottom;
 
 		// Account for vertical offset when viewport is centered (e.g., virtual screen mode)
 		int yOffset = cg.refdef.y;
+
+		// Extended FOV edges
+		int leftEdge = (int)(-extraWidth);
+		int rightEdge = (int)(cg.refdef.width + extraWidth);
 
 		// Black borders to fill the solid black areas around the vignette
 		vec4_t black = {0.0, 0.0, 0.0, 1};
 		trap_R_SetColor( black );
 
-		// Left border: from left edge of combined FOV to vignette start
-		int leftEdge = (int)(-extraWidth);
+		// Left border: from extended left edge to vignette start
 		trap_R_DrawStretchPic( leftEdge, yOffset, vignetteX - leftEdge, cg.refdef.height, 0, 0, 1, 1, cgs.media.whiteShader );
-
-		// Right border: from vignette end to right edge of combined FOV
-		int rightEdge = (int)(cg.refdef.width + extraWidth);
-		int vignetteRight = vignetteX + vignetteW;
-		trap_R_DrawStretchPic( vignetteRight, yOffset, rightEdge - vignetteRight, cg.refdef.height, 0, 0, 1, 1, cgs.media.whiteShader );
+		// Right border: from vignette end to extended right edge
+		trap_R_DrawStretchPic( vignetteX + vignetteW, yOffset, rightEdge - (vignetteX + vignetteW), cg.refdef.height, 0, 0, 1, 1, cgs.media.whiteShader );
 
 		// Top border: between the side borders, above the vignette
 		trap_R_DrawStretchPic( vignetteX, yOffset, vignetteW, insetTop, 0, 0, 1, 1, cgs.media.whiteShader );
-
 		// Bottom border: between the side borders, below the vignette
 		trap_R_DrawStretchPic( vignetteX, yOffset + cg.refdef.height - insetBottom, vignetteW, insetBottom, 0, 0, 1, 1, cgs.media.whiteShader );
 
-		// Vignette shader - scaled to cover combined FOV
+		// Vignette shader - covers normal viewport minus insets
 		trap_R_DrawStretchPic( vignetteX, yOffset + insetTop, vignetteW, vignetteH, 0, 0, 1, 1, cgs.media.vignetteShader );
 
 		trap_R_SetColor( NULL );

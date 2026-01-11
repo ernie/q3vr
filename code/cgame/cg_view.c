@@ -896,39 +896,63 @@ void CG_DamageBorderVignette( void ) {
 	float topWeight = 1.0f + cg.damageY;    // Damage from top increases this
 	float bottomWeight = 1.0f - cg.damageY; // Damage from bottom increases this
 
-	// Calculate weighted border dimensions
-	int leftBorder = (int)(percentX * leftWeight);
-	int rightBorder = (int)(percentX * rightWeight);
-	int topBorder = (int)(percentY * topWeight);
-	int bottomBorder = (int)(percentY * bottomWeight);
-
 	// Account for vertical offset when viewport is centered (e.g., virtual screen mode)
 	int yOffset = cg.refdef.y;
+
+	// Calculate combined FOV scale for stereo coverage
+	float combinedFovScale = CG_GetCombinedFovScale();
+	float extraWidth = (cg.refdef.width * (combinedFovScale - 1.0f)) / 2.0f;
+	int leftEdge = (int)(-extraWidth);
+	int rightEdge = (int)(cg.refdef.width + extraWidth);
+
+	// Calculate vertical FOV asymmetry offset
+	// OpenXR typically has more FOV below optical center than above
+	float projCenterX, projCenterY;
+	CG_GetProjectionCenter(&projCenterX, &projCenterY);
+	// projCenterY is in 640x480 coords where 240 is geometric center
+	// Positive offset means optical center is below geometric center
+	float verticalAsymmetryOffset = (projCenterY - 240.0f) / 480.0f * cg.refdef.height;
+
+	// Adjust top/bottom borders for vertical asymmetry
+	// Adding offset to top and subtracting from bottom shifts the opening upward
+	int topBorder = (int)(percentY * topWeight + verticalAsymmetryOffset);
+	int bottomBorder = (int)(percentY * bottomWeight - verticalAsymmetryOffset);
+	if (topBorder < 0) topBorder = 0;
+	if (bottomBorder < 0) bottomBorder = 0;
+
+	// Calculate weighted horizontal border dimensions
+	int leftBorder = (int)(percentX * leftWeight);
+	int rightBorder = (int)(percentX * rightWeight);
 
 	// Red color with fading alpha
 	vec4_t red = {1.0f, 0.0f, 0.0f, alpha * 0.8f};
 
+	// Vignette covers the normal viewport minus borders (not stretched into extended FOV)
+	int vignetteX = leftBorder;
+	int vignetteW = cg.refdef.width - leftBorder - rightBorder;
+	int vignetteH = cg.refdef.height - topBorder - bottomBorder;
+
 	trap_R_SetColor( red );
 
-	// Left
-	trap_R_DrawStretchPic( 0, yOffset, leftBorder, cg.refdef.height,
+	// Left border: from extended left edge to vignette start
+	trap_R_DrawStretchPic( leftEdge, yOffset, vignetteX - leftEdge, cg.refdef.height,
 		0, 0, 1, 1, cgs.media.whiteShader );
-	// Right
-	trap_R_DrawStretchPic( cg.refdef.width - rightBorder, yOffset, rightBorder, cg.refdef.height,
+	// Right border: from vignette end to extended right edge
+	trap_R_DrawStretchPic( vignetteX + vignetteW, yOffset, rightEdge - (vignetteX + vignetteW), cg.refdef.height,
 		0, 0, 1, 1, cgs.media.whiteShader );
-	// Top
-	trap_R_DrawStretchPic( leftBorder, yOffset, cg.refdef.width - leftBorder - rightBorder, topBorder,
+
+	// Top: spans vignette width
+	trap_R_DrawStretchPic( vignetteX, yOffset, vignetteW, topBorder,
 		0, 0, 1, 1, cgs.media.whiteShader );
-	// Bottom
-	trap_R_DrawStretchPic( leftBorder, yOffset + cg.refdef.height - bottomBorder,
-		cg.refdef.width - leftBorder - rightBorder, bottomBorder,
+	// Bottom: spans vignette width
+	trap_R_DrawStretchPic( vignetteX, yOffset + cg.refdef.height - bottomBorder, vignetteW, bottomBorder,
 		0, 0, 1, 1, cgs.media.whiteShader );
 
 	// Draw vignette shader in the center for fade effect
-	x = leftBorder;
+	x = vignetteX;
 	y = yOffset + topBorder;
-	w = cg.refdef.width - leftBorder - rightBorder;
-	h = cg.refdef.height - topBorder - bottomBorder;
+	w = vignetteW;
+	h = vignetteH;
 
 	trap_R_DrawStretchPic( x, y, w, h, 0, 0, 1, 1, cgs.media.vignetteShader );
 
