@@ -119,6 +119,9 @@ float UI_GetXScale()
 		float viewableWidth, viewableHeight;
 		UI_GetViewable4x3Dimensions(&viewableWidth, &viewableHeight);
 		return viewableWidth / 640.0f;
+	} else if (vr->sp_intermission_active) {
+		// SP intermission: drawing to HUD buffer (1280x960), use 2x scale for 640->1280
+		return 2.0f;
 	} else {
 		return uis.xscale / 2.75f;
 	}
@@ -131,6 +134,9 @@ float UI_GetYScale()
 		float viewableWidth, viewableHeight;
 		UI_GetViewable4x3Dimensions(&viewableWidth, &viewableHeight);
 		return viewableHeight / 480.0f;
+	} else if (vr->sp_intermission_active) {
+		// SP intermission: drawing to HUD buffer (1280x960), use 2x scale for 480->960
+		return 2.0f;
 	} else {
 		return uis.yscale / 3.25f;
 	}
@@ -138,7 +144,10 @@ float UI_GetYScale()
 
 float UI_GetXOffset()
 {
-	if (vr == NULL || vr->virtual_screen) {
+	if (vr != NULL && vr->sp_intermission_active) {
+		// SP intermission: no offset, draw to full HUD buffer
+		return 0;
+	} else if (vr == NULL || vr->virtual_screen) {
 		// In virtual screen mode, center the 4:3 content horizontally
 		// (only matters for ultra-wide headsets)
 		float viewableWidth, viewableHeight;
@@ -151,7 +160,10 @@ float UI_GetXOffset()
 
 float UI_GetYOffset()
 {
-	if (vr == NULL || vr->virtual_screen) {
+	if (vr != NULL && vr->sp_intermission_active) {
+		// SP intermission: no offset, draw to full HUD buffer
+		return 0;
+	} else if (vr == NULL || vr->virtual_screen) {
 		// In virtual screen mode, center the 4:3 content vertically
 		// Use optical center offset to account for asymmetric FOV
 		float viewableWidth, viewableHeight;

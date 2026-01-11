@@ -35,7 +35,7 @@ typedef struct VR_VK_SwapchainInfo_s {
 	VkFormat format;             // Chosen format
 	uint32_t width;
 	uint32_t height;
-	uint32_t arraySize;          // 2 for stereo multiview, 1 for overlay
+	uint32_t arraySize;          // 2 for stereo multiview
 	uint32_t imageCount;         // Number of swapchain images
 	VkImage* images;             // VkImage handles from XR (NOT owned - from OpenXR)
 } VR_VK_SwapchainInfo;
@@ -47,7 +47,6 @@ struct VR_SwapchainInfos_s {
 	uint32_t viewCount;
 	VR_VK_SwapchainInfo color;             // 2-layer multiview for stereo
 	VR_VK_SwapchainInfo depth;             // 2-layer multiview for stereo
-	VR_VK_SwapchainInfo screenOverlay;     // 1-layer for HUD mode 2 / overlays
 };
 
 #endif

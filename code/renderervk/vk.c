@@ -2,6 +2,7 @@
 #include "vk.h"
 #include "../vrvk/vr_vk.h"  // For VR_VulkanDeviceInfo (pull model)
 #include "../vrcommon/vr_clientinfo.h"
+#include "../vrcommon/vr_gameplay.h"  // For VR_Gameplay_ShouldRenderInVirtualScreen
 
 // VR client state accessible from renderer
 extern vr_clientinfo_t vr;
@@ -1202,80 +1203,6 @@ static void vk_create_render_passes( void )
 		SET_OBJECT_NAME( vk.render_pass.hudBuffer, "render pass - HUD buffer", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
 
 		ri.Printf( PRINT_ALL, "...HUD buffer render pass created\n" );
-	}
-
-	/*
-	 * Screen Overlay Render Pass (single layer, color-only, no depth)
-	 * Used for HUD mode 2, vignette, damage, reticle, weapon zoom.
-	 * Submitted as XrCompositionLayerQuad. Uses multiview (viewMask=0b01) for gl_ViewIndex=0.
-	 */
-	{
-		VkRenderPassMultiviewCreateInfo overlayMultiviewInfo;
-		VkSubpassDependency overlayDeps[2];
-		uint32_t overlayViewMask = 0b01;
-		uint32_t overlayCorrelationMask = 0b01;
-
-		ri.Printf( PRINT_ALL, "Creating screen overlay render pass (color_format=0x%x, multiview)...\n",
-			vk.color_format );
-
-		attachments[0].flags = 0;
-		attachments[0].format = vk.color_format;
-		attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
-		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		attachments[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-		colorRef0.attachment = 0;
-		colorRef0.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-		Com_Memset( &subpass, 0, sizeof( subpass ) );
-		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-		subpass.colorAttachmentCount = 1;
-		subpass.pColorAttachments = &colorRef0;
-		subpass.pDepthStencilAttachment = NULL;
-
-		// Dependencies: wait for main pass, ensure writes before XR compositor
-		overlayDeps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-		overlayDeps[0].dstSubpass = 0;
-		overlayDeps[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
-		overlayDeps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		overlayDeps[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
-		overlayDeps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		overlayDeps[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-		overlayDeps[1].srcSubpass = 0;
-		overlayDeps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-		overlayDeps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		overlayDeps[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-		overlayDeps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		overlayDeps[1].dstAccessMask = 0;
-		overlayDeps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-		Com_Memset( &overlayMultiviewInfo, 0, sizeof( overlayMultiviewInfo ) );
-		overlayMultiviewInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO;
-		overlayMultiviewInfo.subpassCount = 1;
-		overlayMultiviewInfo.pViewMasks = &overlayViewMask;
-		overlayMultiviewInfo.correlationMaskCount = 1;
-		overlayMultiviewInfo.pCorrelationMasks = &overlayCorrelationMask;
-
-		Com_Memset( &desc, 0, sizeof( desc ) );
-		desc.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-		desc.pNext = &overlayMultiviewInfo;
-		desc.flags = 0;
-		desc.pAttachments = attachments;
-		desc.attachmentCount = 1;
-		desc.pSubpasses = &subpass;
-		desc.subpassCount = 1;
-		desc.dependencyCount = 2;
-		desc.pDependencies = overlayDeps;
-
-		VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.overlay ) );
-		SET_OBJECT_NAME( vk.render_pass.overlay, "render pass - screen overlay", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
-
-		ri.Printf( PRINT_ALL, "...screen overlay render pass created\n" );
 	}
 }
 
@@ -3003,12 +2930,6 @@ static void vk_create_shader_modules( void )
 
 	SET_OBJECT_NAME( vk.modules.desktopmirror_vs, "desktop mirror vertex module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 	SET_OBJECT_NAME( vk.modules.desktopmirror_fs, "desktop mirror fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
-
-	vk.modules.overlayzoom_vs = SHADER_MODULE( overlayzoom_vert_spv );
-	vk.modules.overlayzoom_fs = SHADER_MODULE( overlayzoom_frag_spv );
-
-	SET_OBJECT_NAME( vk.modules.overlayzoom_vs, "overlay zoom vertex module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
-	SET_OBJECT_NAME( vk.modules.overlayzoom_fs, "overlay zoom fragment module", VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT );
 }
 
 
@@ -4582,12 +4503,6 @@ static void vk_destroy_render_passes( void )
 		vk.render_pass.hudBuffer = VK_NULL_HANDLE;
 	}
 
-	// Screen overlay render pass
-	if ( vk.render_pass.overlay != VK_NULL_HANDLE ) {
-		qvkDestroyRenderPass( vk.device, vk.render_pass.overlay, NULL );
-		vk.render_pass.overlay = VK_NULL_HANDLE;
-	}
-
 	// Virtual screen render pass
 	if ( vk.render_pass.virtualScreen != VK_NULL_HANDLE ) {
 		qvkDestroyRenderPass( vk.device, vk.render_pass.virtualScreen, NULL );
@@ -4791,9 +4706,6 @@ void vk_shutdown( refShutdownCode_t code )
 
 	qvkDestroyShaderModule(vk.device, vk.modules.desktopmirror_vs, NULL);
 	qvkDestroyShaderModule(vk.device, vk.modules.desktopmirror_fs, NULL);
-
-	qvkDestroyShaderModule(vk.device, vk.modules.overlayzoom_vs, NULL);
-	qvkDestroyShaderModule(vk.device, vk.modules.overlayzoom_fs, NULL);
 
 __cleanup:
 	if ( vk.device != VK_NULL_HANDLE ) {
@@ -5668,7 +5580,7 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	unsigned int state_bits = def->state_bits;
 
 	// Q3VR: All shaders use multiview for VR stereo rendering.
-	// gl_ViewIndex is 0 for single-layer targets (HUD buffer, overlay).
+	// gl_ViewIndex is 0 for single-layer targets (HUD buffer).
 
 	switch ( def->shader_type ) {
 
@@ -6413,11 +6325,11 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	// Set sample count based on render pass:
 	// - SCREENMAP uses its own sample count
 	// - MAIN, POST_BLOOM, and default use vkSamples (main has MSAA when active)
-	// - HUD and OVERLAY always use 1 sample (their render passes are non-MSAA)
+	// - HUD always uses 1 sample (its render pass is non-MSAA)
 	if ( renderPassIndex == RENDER_PASS_SCREENMAP ) {
 		multisample_state.rasterizationSamples = vk.screenMapSamples;
-	} else if ( renderPassIndex == RENDER_PASS_HUD || renderPassIndex == RENDER_PASS_OVERLAY ) {
-		// HUD and OVERLAY render passes are always 1 sample
+	} else if ( renderPassIndex == RENDER_PASS_HUD ) {
+		// HUD render pass is always 1 sample
 		multisample_state.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 	} else {
 		// MAIN, POST_BLOOM, and any unexpected value use vkSamples
@@ -6609,8 +6521,6 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		create_info.renderPass = vk.render_pass.screenmap;
 	} else if ( renderPassIndex == RENDER_PASS_HUD ) {
 		create_info.renderPass = vk.render_pass.hudBuffer;
-	} else if ( renderPassIndex == RENDER_PASS_OVERLAY ) {
-		create_info.renderPass = vk.render_pass.overlay;
 	} else if ( renderPassIndex == RENDER_PASS_POST_BLOOM ) {
 		// Post-bloom uses post_bloom (handles MSAA properly)
 		create_info.renderPass = vk.render_pass.post_bloom;
@@ -6912,22 +6822,69 @@ void vk_update_mvp( const float *m ) {
 		float mvp5 = 2.0f / vk.renderHeight;
 
 		Com_Memset( push_constants, 0, sizeof( push_constants ) );
-		// Eye 0
+
+		// Per-eye asymmetry compensation for <100% binocular overlap
+		// VR headsets have asymmetric horizontal FOV per eye (more to the outside than nose).
+		// The per-eye projection matrices have element [8] = (tanRight + tanLeft) / tanWidth
+		// which represents how far the optical center is offset from screen center:
+		//   Left eye:  negative [8] = optical center is LEFT of screen center
+		//   Right eye: positive [8] = optical center is RIGHT of screen center
+		//
+		// For 2D content rendered directly to eye buffers (not virtual screen), we SUBTRACT
+		// the asymmetry offset to shift content toward each eye's optical center, allowing
+		// comfortable fusion at optical infinity. Without this, content rendered at screen
+		// center would require wall-eyed viewing.
+		float asymmetryOffset[2] = { 0.0f, 0.0f };
+		int hudStatus = vr_currentHudDrawStatus ? vr_currentHudDrawStatus->integer : -1;
+		qboolean isHudMode1 = ( backEnd.isDrawingHUD && hudStatus == 1 );
+		// vr.virtual_screen can be stale when we are between levels showing loading screens
+		qboolean isVirtualScreen = VR_Gameplay_ShouldRenderInVirtualScreen();
+		if ( tr.vrParms.valid && !isVirtualScreen && !isHudMode1 ) {
+			// For weapon zoom, scale asymmetry by 2x to account for full IPD
+			// (each eye normally shifts half IPD from center, so mono content needs 2x)
+			float scale = vr.weapon_zoomed ? 2.0f : 1.0f;
+			asymmetryOffset[0] = tr.vrParms.projectionEye[0][8] * scale;
+			asymmetryOffset[1] = tr.vrParms.projectionEye[1][8] * scale;
+		}
+
+		// Calculate stereo parallax offset for HUD depth perception
+		// Only apply stereo offset for HUD mode 2 (direct-to-screen HUD)
+		float depthOffset = 0.0f;
+		if ( backEnd.isDrawingHUD && hudStatus == 2 && !vr.first_person_following ) {
+			// HUD mode 2: apply stereo offset based on depth setting
+			// Formula matches renderergles3's STEREO_ORTHO_PROJECTION
+			// vr_currentHudDepth ranges 0-5: 0=closest, 5=farthest
+			float hudDepth = vr_currentHudDepth ? vr_currentHudDepth->value : 3.0f;
+			depthOffset = (5.0f - powf(hudDepth, 0.7f)) * 16.0f;
+		}
+
+		// Eye 0 (left)
+		// Base translation: -1.0 maps input 0 to NDC -1
+		// Asymmetry compensation: SUBTRACT asymmetryOffset to shift content TOWARD optical center
+		//   Left eye has negative asymmetry (optical center LEFT of screen center)
+		//   Subtracting negative offset shifts content RIGHT toward optical center
+		// Depth offset: add (depthOffset * mvp0) to shift content RIGHT for convergence
 		push_constants[0]  = mvp0;
 		push_constants[5]  = mvp5;
 #ifdef USE_REVERSED_DEPTH
-		push_constants[12] = -1.0f;
+		push_constants[12] = -1.0f - asymmetryOffset[0] + (depthOffset * mvp0);
 		push_constants[13] = -1.0f;
 		push_constants[14] = 1.0f;
 		push_constants[15] = 1.0f;
 #else
 		push_constants[10] = 1.0f;
-		push_constants[12] = -1.0f;
+		push_constants[12] = -1.0f - asymmetryOffset[0] + (depthOffset * mvp0);
 		push_constants[13] = -1.0f;
 		push_constants[15] = 1.0f;
 #endif
-		// Eye 1 - identical for 2D
+
+		// Eye 1 (right)
+		// Asymmetry compensation: SUBTRACT asymmetryOffset[1] (positive for right eye)
+		//   Right eye has positive asymmetry (optical center RIGHT of screen center)
+		//   Subtracting positive offset shifts content LEFT toward optical center
+		// Depth offset: subtract (depthOffset * mvp0) to shift content LEFT for convergence
 		Com_Memcpy( &push_constants[16], push_constants, sizeof(float) * 16 );
+		push_constants[28] = -1.0f - asymmetryOffset[1] - (depthOffset * mvp0);
 
 		qvkCmdPushConstants( vk.cmd->command_buffer, vk.pipeline_layout,
 			VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof( push_constants ), push_constants );
@@ -6941,7 +6898,7 @@ void vk_update_mvp( const float *m ) {
 		for ( int eye = 0; eye < 2; eye++ ) {
 			myGlMultMatrix( m, tr.vrParms.projectionEye[eye], &push_constants[eye * 16] );
 		}
-	} else if ( tr.vrParms.valid && !backEnd.projection2D ) {
+	} else if ( tr.vrParms.valid && !backEnd.projection2D && !vr.weapon_zoomed ) {
 		// VR 3D rendering: Use per-eye view matrices from backend orientation
 		// backEnd.or.eyeViewMatrix contains the combined entity-to-eye transform
 		// (built by R_RotateForViewer for world, R_RotateForEntity for entities)
@@ -7000,10 +6957,34 @@ void vk_update_mvp( const float *m ) {
 		}
 	} else {
 		// Fallback: mono rendering (same matrix for both eyes)
-		float mvp[16];
-		myGlMultMatrix( vk_world.modelview_transform, backEnd.viewParms.projectionMatrix, mvp );
-		Com_Memcpy( &push_constants[0], mvp, sizeof(float) * 16 );
-		Com_Memcpy( &push_constants[16], mvp, sizeof(float) * 16 );
+		// For weapon zoom, apply per-eye asymmetry for correct aiming per-eye,
+		// then compensate with opposite shift for correct stereo convergence
+		if ( vr.weapon_zoomed && tr.vrParms.valid ) {
+			float mvp[16];
+			float proj[16];
+			float scale = 2.0f;  // 2x scale to account for full IPD (each eye shifts half from center)
+
+			// Left eye
+			Com_Memcpy( proj, backEnd.viewParms.projectionMatrix, sizeof(proj) );
+			proj[8] = tr.vrParms.projectionEye[0][8] * scale;  // Apply scaled left eye asymmetry
+			myGlMultMatrix( vk_world.modelview_transform, proj, mvp );
+			// Compensate: shift image toward optical center (subtract scaled asymmetry)
+			mvp[12] -= tr.vrParms.projectionEye[0][8] * scale;
+			Com_Memcpy( &push_constants[0], mvp, sizeof(float) * 16 );
+
+			// Right eye
+			Com_Memcpy( proj, backEnd.viewParms.projectionMatrix, sizeof(proj) );
+			proj[8] = tr.vrParms.projectionEye[1][8] * scale;  // Apply scaled right eye asymmetry
+			myGlMultMatrix( vk_world.modelview_transform, proj, mvp );
+			// Compensate: shift image toward optical center (subtract scaled asymmetry)
+			mvp[12] -= tr.vrParms.projectionEye[1][8] * scale;
+			Com_Memcpy( &push_constants[16], mvp, sizeof(float) * 16 );
+		} else {
+			float mvp[16];
+			myGlMultMatrix( vk_world.modelview_transform, backEnd.viewParms.projectionMatrix, mvp );
+			Com_Memcpy( &push_constants[0], mvp, sizeof(float) * 16 );
+			Com_Memcpy( &push_constants[16], mvp, sizeof(float) * 16 );
+		}
 	}
 
 	qvkCmdPushConstants( vk.cmd->command_buffer, vk.pipeline_layout,
@@ -7701,224 +7682,6 @@ void vk_end_hud_render_pass( void )
 }
 
 
-// Forward declaration for overlay zoom resources (created lazily on first weapon zoom)
-static qboolean vk_create_overlay_zoom_resources( void );
-
-/*
- * vk_begin_overlay_render_pass - Begin rendering to the screen overlay
- *
- * Begins the screen overlay render pass for 2D UI elements (vignette, damage,
- * reticle, HUD mode 2). The overlay is a single-layer color-only framebuffer
- * that's submitted as an XrCompositionLayerQuad.
- *
- * If weapon is zoomed and clear is requested, blits the main scene to overlay
- * first (mono rendering mode).
- */
-void vk_begin_overlay_render_pass( qboolean clear )
-{
-	VkXrResources *xr = &vk.xr;
-	VkRenderPassBeginInfo rpBI;
-	VkViewport viewport;
-	VkRect2D scissor;
-
-	// Check if overlay resources are available
-	if ( !xr->overlayAcquired || xr->overlayInfo == NULL ) {
-		return;
-	}
-
-	// Validate overlay index is in bounds and framebuffer exists
-	if ( xr->overlayIndex >= xr->overlayInfo->imageCount ||
-		 xr->overlayFramebuffers[xr->overlayIndex] == VK_NULL_HANDLE ) {
-		return;
-	}
-
-	// End current render pass if active
-	if ( vk.inRenderPass ) {
-		qvkCmdEndRenderPass( vk.cmd->command_buffer );
-		vk.inRenderPass = qfalse;
-	}
-
-	// Handle weapon zoom: render from vk.processed (already gamma-corrected) to overlay
-	if ( clear && vr.weapon_zoomed && xr->colorInfo != NULL ) {
-		// Lazy-init overlay zoom resources (pipeline, render pass)
-		if ( vk.overlayZoomPipeline == VK_NULL_HANDLE ) {
-			vk_create_overlay_zoom_resources();
-			if ( vk.overlayZoomPipeline == VK_NULL_HANDLE ) {
-				// Failed to create resources, fall back to no zoom
-				goto fallback_direct_blit;
-			}
-		}
-
-		// Check if we have the processed descriptor for layer 0
-		if ( vk.processed.layer0Descriptor == VK_NULL_HANDLE ) {
-			goto fallback_direct_blit;
-		}
-
-		// vk.processed is already in SHADER_READ_ONLY_OPTIMAL from vk_copy_processed_to_xr_swapchain
-
-		// Transition overlay to COLOR_ATTACHMENT_OPTIMAL for render pass
-		record_image_layout_transition( vk.cmd->command_buffer,
-			xr->overlayInfo->images[xr->overlayIndex],
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			0, 0 );
-
-		// Render from vk.processed (layer 0) to overlay with inverse gamma
-		{
-			VkRenderPassBeginInfo zoomRpBI;
-			VkViewport zoomViewport;
-			VkRect2D zoomScissor;
-
-			Com_Memset( &zoomRpBI, 0, sizeof( zoomRpBI ) );
-			zoomRpBI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-			zoomRpBI.renderPass = vk.overlayZoomRenderPass;
-			zoomRpBI.framebuffer = xr->overlayFramebuffers[xr->overlayIndex];
-			zoomRpBI.renderArea.offset.x = 0;
-			zoomRpBI.renderArea.offset.y = 0;
-			zoomRpBI.renderArea.extent.width = xr->overlayInfo->width;
-			zoomRpBI.renderArea.extent.height = xr->overlayInfo->height;
-			zoomRpBI.clearValueCount = 0;
-			zoomRpBI.pClearValues = NULL;
-
-			qvkCmdBeginRenderPass( vk.cmd->command_buffer, &zoomRpBI, VK_SUBPASS_CONTENTS_INLINE );
-
-			// Bind pipeline and descriptor (sample from vk.processed layer 0)
-			qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.overlayZoomPipeline );
-			qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-				vk.overlayZoomPipelineLayout, 0, 1, &vk.processed.layer0Descriptor, 0, NULL );
-
-			// Set viewport and scissor
-			zoomViewport.x = 0;
-			zoomViewport.y = 0;
-			zoomViewport.width = (float)xr->overlayInfo->width;
-			zoomViewport.height = (float)xr->overlayInfo->height;
-			zoomViewport.minDepth = 0.0f;
-			zoomViewport.maxDepth = 1.0f;
-			qvkCmdSetViewport( vk.cmd->command_buffer, 0, 1, &zoomViewport );
-
-			zoomScissor.offset.x = 0;
-			zoomScissor.offset.y = 0;
-			zoomScissor.extent.width = xr->overlayInfo->width;
-			zoomScissor.extent.height = xr->overlayInfo->height;
-			qvkCmdSetScissor( vk.cmd->command_buffer, 0, 1, &zoomScissor );
-
-			// Draw fullscreen triangle
-			qvkCmdDraw( vk.cmd->command_buffer, 3, 1, 0, 0 );
-
-			qvkCmdEndRenderPass( vk.cmd->command_buffer );
-		}
-
-		// Don't clear - we just rendered the gamma-corrected scene
-		clear = qfalse;
-	} else {
-fallback_direct_blit:
-		// No zoom - need to transition overlay image from UNDEFINED to COLOR_ATTACHMENT_OPTIMAL
-		// since the render pass expects initialLayout = COLOR_ATTACHMENT_OPTIMAL
-		record_image_layout_transition( vk.cmd->command_buffer,
-			xr->overlayInfo->images[xr->overlayIndex],
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			0, 0 );
-	}
-
-	// Set up render pass begin info
-	VkClearValue clearValue;
-	clearValue.color.float32[0] = 0.0f;
-	clearValue.color.float32[1] = 0.0f;
-	clearValue.color.float32[2] = 0.0f;
-	clearValue.color.float32[3] = 0.0f;  // Transparent black
-
-	Com_Memset( &rpBI, 0, sizeof( rpBI ) );
-	rpBI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	rpBI.renderPass = vk.render_pass.overlay;
-	rpBI.framebuffer = xr->overlayFramebuffers[xr->overlayIndex];
-	rpBI.renderArea.offset.x = 0;
-	rpBI.renderArea.offset.y = 0;
-	rpBI.renderArea.extent.width = xr->overlayInfo->width;
-	rpBI.renderArea.extent.height = xr->overlayInfo->height;
-	rpBI.clearValueCount = 1;
-	rpBI.pClearValues = &clearValue;
-
-	qvkCmdBeginRenderPass( vk.cmd->command_buffer, &rpBI, VK_SUBPASS_CONTENTS_INLINE );
-
-	// Update state
-	vk.renderPassIndex = RENDER_PASS_OVERLAY;
-	vk.inRenderPass = qtrue;
-	vk.renderWidth = xr->overlayInfo->width;
-	vk.renderHeight = xr->overlayInfo->height;
-	vk.renderScaleX = 1.0f;
-	vk.renderScaleY = 1.0f;
-
-	// Set viewport - standard (no Y-flip), matching OpenGL overlay behavior
-	// The 2D projection maps coordinates the same way OpenGL does
-	viewport.x = 0.0f;
-	viewport.y = 0.0f;
-	viewport.width = (float)xr->overlayInfo->width;
-	viewport.height = (float)xr->overlayInfo->height;
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
-	qvkCmdSetViewport( vk.cmd->command_buffer, 0, 1, &viewport );
-
-	// Manual clear if requested (since render pass uses LOAD_OP_LOAD)
-	if ( clear ) {
-		VkClearAttachment clearAttachment;
-		VkClearRect clearRect;
-
-		// Color: transparent black
-		clearAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		clearAttachment.colorAttachment = 0;
-		clearAttachment.clearValue.color.float32[0] = 0.0f;
-		clearAttachment.clearValue.color.float32[1] = 0.0f;
-		clearAttachment.clearValue.color.float32[2] = 0.0f;
-		clearAttachment.clearValue.color.float32[3] = 0.0f;
-
-		clearRect.rect.offset.x = 0;
-		clearRect.rect.offset.y = 0;
-		clearRect.rect.extent.width = xr->overlayInfo->width;
-		clearRect.rect.extent.height = xr->overlayInfo->height;
-		clearRect.baseArrayLayer = 0;
-		clearRect.layerCount = 1;
-
-		qvkCmdClearAttachments( vk.cmd->command_buffer, 1, &clearAttachment, 1, &clearRect );
-	}
-
-	scissor.offset.x = 0;
-	scissor.offset.y = 0;
-	scissor.extent.width = xr->overlayInfo->width;
-	scissor.extent.height = xr->overlayInfo->height;
-	qvkCmdSetScissor( vk.cmd->command_buffer, 0, 1, &scissor );
-
-	vk.cmd->last_pipeline = VK_NULL_HANDLE;
-
-	// Reset descriptor set tracking - descriptors bound in previous render pass are invalid
-	Com_Memset( vk.cmd->descriptor_set.current, 0, sizeof( vk.cmd->descriptor_set.current ) );
-	vk.cmd->descriptor_set.start = ~0U;
-	vk.cmd->descriptor_set.end = 0;
-}
-
-
-/*
- * vk_end_overlay_render_pass - End rendering to the screen overlay
- *
- * Ends the overlay render pass and resumes the main XR render pass.
- */
-void vk_end_overlay_render_pass( void )
-{
-	if ( vk.renderPassIndex != RENDER_PASS_OVERLAY ) {
-		return;
-	}
-
-	// End the overlay render pass
-	qvkCmdEndRenderPass( vk.cmd->command_buffer );
-	vk.inRenderPass = qfalse;
-
-	// Resume main XR render pass without clearing (preserve existing content)
-	vk_begin_main_render_pass( qfalse );
-}
-
-
 static qboolean vk_find_screenmap_drawsurfs( void )
 {
 	const void *curCmd = &backEndData->commands.cmds;
@@ -8035,9 +7798,6 @@ void vk_begin_frame( uint32_t colorIndex, uint32_t depthIndex )
 	// Store current XR swapchain indices (after validation)
 	vk.xr.colorIndex = colorIndex;
 	vk.xr.depthIndex = depthIndex;
-
-	// Reset overlay state - will be set by SetScreenOverlayBuffer if overlay is acquired
-	vk.xr.overlayAcquired = qfalse;
 
 	// Validate framebuffer exists based on rendering mode
 	// When FBO is active: use vk.framebuffers.main for main rendering
@@ -8172,7 +7932,7 @@ void vk_end_frame( void )
 		vk.renderScaleX = vk.renderScaleY = 1.0f;
 
 		// Gamma pass outputs to vk.processed (intermediate image)
-		// This ensures all outputs (XR, virtual screen, desktop mirror, overlay) get the same gamma-corrected result
+		// This ensures all outputs (XR, virtual screen, desktop mirror) get the same gamma-corrected result
 		vk_begin_render_pass( vk.render_pass.gamma, vk.framebuffers.processed,
 			qfalse, vk.renderWidth, vk.renderHeight );
 		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -8291,8 +8051,6 @@ void vk_finish_frame( void )
 
 // Forward declarations for vk_recreate_desktop_swapchain
 static void vk_destroy_desktop_mirror_resources( void );
-static void vk_destroy_overlay_zoom_resources( void );
-static qboolean vk_create_overlay_zoom_resources( void );
 
 
 /*
@@ -8794,263 +8552,6 @@ static qboolean vk_create_desktop_mirror_resources( void )
 			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
 		end_command_buffer( cmdBuf, "desktop mirror layout init" );
 	}
-
-	return qtrue;
-}
-
-
-/*
-===============
-vk_destroy_overlay_zoom_resources
-
-Destroy overlay zoom shader-based rendering resources.
-===============
-*/
-static void vk_destroy_overlay_zoom_resources( void )
-{
-	if ( vk.overlayZoomPipeline != VK_NULL_HANDLE ) {
-		qvkDestroyPipeline( vk.device, vk.overlayZoomPipeline, NULL );
-		vk.overlayZoomPipeline = VK_NULL_HANDLE;
-	}
-	if ( vk.overlayZoomPipelineLayout != VK_NULL_HANDLE ) {
-		qvkDestroyPipelineLayout( vk.device, vk.overlayZoomPipelineLayout, NULL );
-		vk.overlayZoomPipelineLayout = VK_NULL_HANDLE;
-	}
-	if ( vk.overlayZoomRenderPass != VK_NULL_HANDLE ) {
-		qvkDestroyRenderPass( vk.device, vk.overlayZoomRenderPass, NULL );
-		vk.overlayZoomRenderPass = VK_NULL_HANDLE;
-	}
-}
-
-
-/*
-===============
-vk_create_overlay_zoom_resources
-
-Create overlay zoom shader-based rendering resources for gamma-correct weapon zoom.
-Creates render pass and pipeline for rendering from vk.processed to overlay swapchain.
-Called lazily on first use after XR resources are available.
-===============
-*/
-static qboolean vk_create_overlay_zoom_resources( void )
-{
-	VkXrResources *xr = &vk.xr;
-	VkAttachmentDescription attachment;
-	VkAttachmentReference colorRef;
-	VkSubpassDescription subpass;
-	VkSubpassDependency deps[2];
-	VkRenderPassMultiviewCreateInfo multiviewInfo;
-	VkRenderPassCreateInfo rpInfo;
-	VkPipelineLayoutCreateInfo layoutInfo;
-	VkPipelineShaderStageCreateInfo shaderStages[2];
-	VkPipelineVertexInputStateCreateInfo vertexInput;
-	VkPipelineInputAssemblyStateCreateInfo inputAssembly;
-	VkPipelineViewportStateCreateInfo viewportState;
-	VkPipelineRasterizationStateCreateInfo rasterization;
-	VkPipelineMultisampleStateCreateInfo multisample;
-	VkPipelineColorBlendAttachmentState blendAttachment;
-	VkPipelineColorBlendStateCreateInfo colorBlend;
-	VkPipelineDynamicStateCreateInfo dynamicState;
-	VkDynamicState dynamicStates[2];
-	VkViewport viewport;
-	VkRect2D scissor;
-	VkGraphicsPipelineCreateInfo pipelineInfo;
-	VkSpecializationMapEntry specEntries[2];
-	VkSpecializationInfo specInfo;
-	struct { float gamma; float obScale; } specData;
-	uint32_t viewMask = 0b01;  // Single view
-	uint32_t correlationMask = 0b01;
-
-	// Clean up any existing resources first
-	vk_destroy_overlay_zoom_resources();
-
-	// Need overlay dimensions
-	if ( xr->overlayInfo == NULL || xr->overlayInfo->width == 0 || xr->overlayInfo->height == 0 ) {
-		return qfalse;
-	}
-
-	// Create render pass (single-view, for overlay swapchain)
-	// Use sRGB format of overlay swapchain for proper gamma output
-	VkFormat overlayFormat = xr->overlayInfo->format;
-
-	Com_Memset( &attachment, 0, sizeof( attachment ) );
-	attachment.format = overlayFormat;
-	attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-	attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;  // We're filling the whole buffer
-	attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-	Com_Memset( &colorRef, 0, sizeof( colorRef ) );
-	colorRef.attachment = 0;
-	colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-	Com_Memset( &subpass, 0, sizeof( subpass ) );
-	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass.colorAttachmentCount = 1;
-	subpass.pColorAttachments = &colorRef;
-
-	// Dependencies
-	deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-	deps[0].dstSubpass = 0;
-	deps[0].srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
-	deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	deps[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	deps[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-	deps[1].srcSubpass = 0;
-	deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-	deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	deps[1].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	deps[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	deps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-	// Multiview info for single-view rendering (required for overlay framebuffer compatibility)
-	Com_Memset( &multiviewInfo, 0, sizeof( multiviewInfo ) );
-	multiviewInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO;
-	multiviewInfo.subpassCount = 1;
-	multiviewInfo.pViewMasks = &viewMask;
-	multiviewInfo.correlationMaskCount = 1;
-	multiviewInfo.pCorrelationMasks = &correlationMask;
-
-	Com_Memset( &rpInfo, 0, sizeof( rpInfo ) );
-	rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	rpInfo.pNext = &multiviewInfo;
-	rpInfo.attachmentCount = 1;
-	rpInfo.pAttachments = &attachment;
-	rpInfo.subpassCount = 1;
-	rpInfo.pSubpasses = &subpass;
-	rpInfo.dependencyCount = 2;
-	rpInfo.pDependencies = deps;
-
-	VK_CHECK( qvkCreateRenderPass( vk.device, &rpInfo, NULL, &vk.overlayZoomRenderPass ) );
-	SET_OBJECT_NAME( vk.overlayZoomRenderPass, "Overlay zoom render pass", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
-
-	// Create pipeline layout (no push constants needed)
-	Com_Memset( &layoutInfo, 0, sizeof( layoutInfo ) );
-	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	layoutInfo.setLayoutCount = 1;
-	layoutInfo.pSetLayouts = &vk.set_layout_sampler;
-
-	VK_CHECK( qvkCreatePipelineLayout( vk.device, &layoutInfo, NULL, &vk.overlayZoomPipelineLayout ) );
-	SET_OBJECT_NAME( vk.overlayZoomPipelineLayout, "Overlay zoom pipeline layout", VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT );
-
-	// Create pipeline with specialization constants for gamma
-	// vk.processed contains sRGB-encoded values (gamma-corrected) stored in UNORM format.
-	// Overlay now uses UNORM format views/render pass, so no automatic sRGB conversion occurs.
-	// Use gamma=1.0 for passthrough (values are already correctly gamma-encoded).
-	specData.gamma = 1.0f;
-	specData.obScale = 1.0f;
-
-	specEntries[0].constantID = 0;
-	specEntries[0].offset = 0;
-	specEntries[0].size = sizeof( float );
-	specEntries[1].constantID = 1;
-	specEntries[1].offset = sizeof( float );
-	specEntries[1].size = sizeof( float );
-
-	Com_Memset( &specInfo, 0, sizeof( specInfo ) );
-	specInfo.mapEntryCount = 2;
-	specInfo.pMapEntries = specEntries;
-	specInfo.dataSize = sizeof( specData );
-	specInfo.pData = &specData;
-
-	// Shader stages
-	Com_Memset( shaderStages, 0, sizeof( shaderStages ) );
-	shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-	shaderStages[0].module = vk.modules.overlayzoom_vs;
-	shaderStages[0].pName = "main";
-
-	shaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	shaderStages[1].module = vk.modules.overlayzoom_fs;
-	shaderStages[1].pName = "main";
-	shaderStages[1].pSpecializationInfo = &specInfo;
-
-	// Vertex input (no vertex attributes - fullscreen triangle from gl_VertexIndex)
-	Com_Memset( &vertexInput, 0, sizeof( vertexInput ) );
-	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-
-	// Input assembly
-	Com_Memset( &inputAssembly, 0, sizeof( inputAssembly ) );
-	inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-	inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-	// Viewport and scissor (dynamic)
-	viewport.x = 0;
-	viewport.y = 0;
-	viewport.width = (float)xr->overlayInfo->width;
-	viewport.height = (float)xr->overlayInfo->height;
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
-
-	scissor.offset.x = 0;
-	scissor.offset.y = 0;
-	scissor.extent.width = xr->overlayInfo->width;
-	scissor.extent.height = xr->overlayInfo->height;
-
-	Com_Memset( &viewportState, 0, sizeof( viewportState ) );
-	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-	viewportState.viewportCount = 1;
-	viewportState.pViewports = &viewport;
-	viewportState.scissorCount = 1;
-	viewportState.pScissors = &scissor;
-
-	// Rasterization
-	Com_Memset( &rasterization, 0, sizeof( rasterization ) );
-	rasterization.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-	rasterization.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterization.cullMode = VK_CULL_MODE_NONE;
-	rasterization.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	rasterization.lineWidth = 1.0f;
-
-	// Multisample
-	Com_Memset( &multisample, 0, sizeof( multisample ) );
-	multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-	// Color blend
-	Com_Memset( &blendAttachment, 0, sizeof( blendAttachment ) );
-	blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-		VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-
-	Com_Memset( &colorBlend, 0, sizeof( colorBlend ) );
-	colorBlend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-	colorBlend.attachmentCount = 1;
-	colorBlend.pAttachments = &blendAttachment;
-
-	// Dynamic state
-	dynamicStates[0] = VK_DYNAMIC_STATE_VIEWPORT;
-	dynamicStates[1] = VK_DYNAMIC_STATE_SCISSOR;
-
-	Com_Memset( &dynamicState, 0, sizeof( dynamicState ) );
-	dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-	dynamicState.dynamicStateCount = 2;
-	dynamicState.pDynamicStates = dynamicStates;
-
-	// Create pipeline
-	Com_Memset( &pipelineInfo, 0, sizeof( pipelineInfo ) );
-	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineInfo.stageCount = 2;
-	pipelineInfo.pStages = shaderStages;
-	pipelineInfo.pVertexInputState = &vertexInput;
-	pipelineInfo.pInputAssemblyState = &inputAssembly;
-	pipelineInfo.pViewportState = &viewportState;
-	pipelineInfo.pRasterizationState = &rasterization;
-	pipelineInfo.pMultisampleState = &multisample;
-	pipelineInfo.pColorBlendState = &colorBlend;
-	pipelineInfo.pDynamicState = &dynamicState;
-	pipelineInfo.layout = vk.overlayZoomPipelineLayout;
-	pipelineInfo.renderPass = vk.overlayZoomRenderPass;
-	pipelineInfo.subpass = 0;
-
-	VK_CHECK( qvkCreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &pipelineInfo, NULL, &vk.overlayZoomPipeline ) );
-	SET_OBJECT_NAME( vk.overlayZoomPipeline, "Overlay zoom pipeline", VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT );
 
 	return qtrue;
 }
@@ -10169,8 +9670,7 @@ qboolean vk_bloom( void )
  * vk_create_xr_image_views - Create VkImageViews for XR swapchain images
  *
  * Creates multiview array views for the color and depth swapchains,
- * single-layer views for the overlay swapchain, and per-eye views
- * for desktop mirror blitting.
+ * and per-eye views for desktop mirror blitting.
  *
  * This function is called after the VR layer creates XR swapchains
  * and the renderer creates render passes.
@@ -10281,43 +9781,8 @@ qboolean vk_create_xr_image_views( void )
 		VK_CHECK( qvkCreateImageView( vk.device, &viewInfo, NULL, &xr->depthViews[i] ) );
 	}
 
-	// Create overlay views (single layer)
-	// Use UNORM format to prevent automatic linear→sRGB conversion on write.
-	// Quake 3 textures are sRGB-encoded but loaded as UNORM, so shaders operate on
-	// "wrong" gamma values. Using UNORM attachment preserves this legacy behavior
-	// and matches how the main FBO rendering works.
-	if ( xr->overlayInfo ) {
-		VkFormat overlayUnormFormat = vk_get_unorm_format( xr->overlayInfo->format );
-		for ( uint32_t i = 0; i < xr->overlayInfo->imageCount && i < MAX_SWAPCHAIN_IMAGES; i++ ) {
-			VkImageViewCreateInfo viewInfo = {
-				.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-				.pNext = NULL,
-				.flags = 0,
-				.image = xr->overlayInfo->images[i],
-				.viewType = VK_IMAGE_VIEW_TYPE_2D,
-				.format = overlayUnormFormat,  // UNORM to prevent sRGB encode on write
-				.components = {
-					.r = VK_COMPONENT_SWIZZLE_IDENTITY,
-					.g = VK_COMPONENT_SWIZZLE_IDENTITY,
-					.b = VK_COMPONENT_SWIZZLE_IDENTITY,
-					.a = VK_COMPONENT_SWIZZLE_IDENTITY,
-				},
-				.subresourceRange = {
-					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-					.baseMipLevel = 0,
-					.levelCount = 1,
-					.baseArrayLayer = 0,
-					.layerCount = 1,
-				},
-			};
-
-			VK_CHECK( qvkCreateImageView( vk.device, &viewInfo, NULL, &xr->overlayViews[i] ) );
-		}
-	}
-
-	ri.Printf( PRINT_ALL, "XR image views created: color=%u, depth=%u, overlay=%u\n",
-		xr->colorInfo->imageCount, xr->depthInfo->imageCount,
-		xr->overlayInfo ? xr->overlayInfo->imageCount : 0 );
+	ri.Printf( PRINT_ALL, "XR image views created: color=%u, depth=%u\n",
+		xr->colorInfo->imageCount, xr->depthInfo->imageCount );
 
 	// Allocate and initialize per-eye descriptors for desktop mirror VR view mode
 	// These are pre-bound to specific swapchain images so we don't need to update them at runtime
@@ -10395,14 +9860,6 @@ void vk_destroy_xr_image_views( void )
 		if ( xr->depthViews[i] != VK_NULL_HANDLE ) {
 			qvkDestroyImageView( vk.device, xr->depthViews[i], NULL );
 			xr->depthViews[i] = VK_NULL_HANDLE;
-		}
-	}
-
-	// Destroy overlay views
-	for ( uint32_t i = 0; i < MAX_SWAPCHAIN_IMAGES; i++ ) {
-		if ( xr->overlayViews[i] != VK_NULL_HANDLE ) {
-			qvkDestroyImageView( vk.device, xr->overlayViews[i], NULL );
-			xr->overlayViews[i] = VK_NULL_HANDLE;
 		}
 	}
 }
@@ -10483,30 +9940,6 @@ qboolean vk_create_xr_framebuffers( void )
 
 	// Per-eye framebuffers for desktop mirror not implemented (VR-only app)
 
-	// Create overlay framebuffers - one per overlay swapchain image
-	if ( xr->overlayInfo != NULL ) {
-		for ( i = 0; i < xr->overlayInfo->imageCount; i++ ) {
-			if ( xr->overlayViews[i] == VK_NULL_HANDLE ) {
-				continue;
-			}
-
-			attachments[0] = xr->overlayViews[i];
-
-			Com_Memset( &fbInfo, 0, sizeof( fbInfo ) );
-			fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-			fbInfo.renderPass = vk.render_pass.overlay;
-			fbInfo.attachmentCount = 1;
-			fbInfo.pAttachments = attachments;
-			fbInfo.width = xr->overlayInfo->width;
-			fbInfo.height = xr->overlayInfo->height;
-			fbInfo.layers = 1;
-
-			VK_CHECK( qvkCreateFramebuffer( vk.device, &fbInfo, NULL, &xr->overlayFramebuffers[i] ) );
-			SET_OBJECT_NAME( xr->overlayFramebuffers[i], va( "XR overlay framebuffer %d", i ),
-				VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
-		}
-	}
-
 	return qtrue;
 }
 
@@ -10522,14 +9955,6 @@ void vk_destroy_xr_framebuffers( void )
 		if ( xr->framebuffers[i] != VK_NULL_HANDLE ) {
 			qvkDestroyFramebuffer( vk.device, xr->framebuffers[i], NULL );
 			xr->framebuffers[i] = VK_NULL_HANDLE;
-		}
-	}
-
-	// Destroy overlay framebuffers
-	for ( uint32_t i = 0; i < MAX_SWAPCHAIN_IMAGES; i++ ) {
-		if ( xr->overlayFramebuffers[i] != VK_NULL_HANDLE ) {
-			qvkDestroyFramebuffer( vk.device, xr->overlayFramebuffers[i], NULL );
-			xr->overlayFramebuffers[i] = VK_NULL_HANDLE;
 		}
 	}
 }
@@ -10868,7 +10293,7 @@ static void vk_destroy_hud_buffer( void )
  * vk_destroy_processed_image - Destroy processed image resources
  *
  * The processed image holds post-gamma output and is sampled by all
- * output destinations (XR swapchain, virtual screen, desktop mirror, overlay).
+ * output destinations (XR swapchain, virtual screen, desktop mirror).
  */
 static void vk_destroy_processed_image( void )
 {
@@ -10884,10 +10309,6 @@ static void vk_destroy_processed_image( void )
 		qvkDestroyImageView( vk.device, vk.processed.samplerView, NULL );
 		vk.processed.samplerView = VK_NULL_HANDLE;
 	}
-	if ( vk.processed.layer0View != VK_NULL_HANDLE ) {
-		qvkDestroyImageView( vk.device, vk.processed.layer0View, NULL );
-		vk.processed.layer0View = VK_NULL_HANDLE;
-	}
 	if ( vk.processed.image != VK_NULL_HANDLE ) {
 		qvkDestroyImage( vk.device, vk.processed.image, NULL );
 		vk.processed.image = VK_NULL_HANDLE;
@@ -10898,7 +10319,6 @@ static void vk_destroy_processed_image( void )
 	}
 	// Descriptors are freed when pool is reset
 	vk.processed.descriptor = VK_NULL_HANDLE;
-	vk.processed.layer0Descriptor = VK_NULL_HANDLE;
 }
 
 
@@ -10962,7 +10382,7 @@ qboolean vk_create_processed_image( void )
 	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imageCI.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |  // Gamma pass renders here
-	                VK_IMAGE_USAGE_SAMPLED_BIT |           // Desktop mirror/overlay sample
+	                VK_IMAGE_USAGE_SAMPLED_BIT |           // Desktop mirror sample
 	                VK_IMAGE_USAGE_TRANSFER_SRC_BIT;       // Copy to XR swapchain
 	imageCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -11051,23 +10471,6 @@ qboolean vk_create_processed_image( void )
 	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	descriptorWrite.descriptorCount = 1;
 	descriptorWrite.pImageInfo = &imageInfo;
-
-	qvkUpdateDescriptorSets( vk.device, 1, &descriptorWrite, 0, NULL );
-
-	// 7. Create 2D view for layer 0 only (for overlay zoom which uses sampler2D)
-	viewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	viewCI.subresourceRange.baseArrayLayer = 0;
-	viewCI.subresourceRange.layerCount = 1;
-
-	VK_CHECK( qvkCreateImageView( vk.device, &viewCI, NULL, &vk.processed.layer0View ) );
-	SET_OBJECT_NAME( vk.processed.layer0View, "Processed image view (layer 0)", VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT );
-
-	// 8. Create descriptor for layer 0 (for overlay zoom)
-	VK_CHECK( qvkAllocateDescriptorSets( vk.device, &descAllocInfo, &vk.processed.layer0Descriptor ) );
-
-	imageInfo.imageView = vk.processed.layer0View;
-
-	descriptorWrite.dstSet = vk.processed.layer0Descriptor;
 
 	qvkUpdateDescriptorSets( vk.device, 1, &descriptorWrite, 0, NULL );
 
@@ -12241,7 +11644,7 @@ static void vk_render_virtual_screen( float screenMVP[2][16], float floorMVP[2][
 		xr->virtualScreenImage, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
 
-	// 7. Transition vk.processed to SHADER_READ_ONLY (for desktop mirror/overlay sampling)
+	// 7. Transition vk.processed to SHADER_READ_ONLY (for desktop mirror sampling)
 	record_image_layout_transition( vk.cmd->command_buffer,
 		srcImage, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
@@ -12566,7 +11969,6 @@ static qboolean vk_reallocate_xr_fbo_descriptors( void )
 // Static swapchain info storage - populated from VR layer pull
 static VR_VK_SwapchainInfo s_colorSwapchainInfo;
 static VR_VK_SwapchainInfo s_depthSwapchainInfo;
-static VR_VK_SwapchainInfo s_overlaySwapchainInfo;
 
 /*
  * vk_recreate_xr_render_pass - Recreate main render pass with correct XR formats
@@ -12845,79 +12247,6 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 			(void*)vk.render_pass.gamma, (unsigned int)gammaFormat );
 	}
 
-	// Recreate overlay render pass with XR swapchain format
-	// The overlay swapchain uses the same format as the color swapchain
-	{
-		VkRenderPassMultiviewCreateInfo overlayMultiviewInfo;
-		VkSubpassDependency overlayDeps[2];
-		uint32_t overlayViewMask = 0b01;  // Single view (view 0 only)
-		uint32_t overlayCorrelationMask = 0b01;
-
-		if ( vk.render_pass.overlay != VK_NULL_HANDLE ) {
-			qvkDestroyRenderPass( vk.device, vk.render_pass.overlay, NULL );
-			vk.render_pass.overlay = VK_NULL_HANDLE;
-		}
-
-		// Color attachment with UNORM format to prevent automatic linear->sRGB conversion.
-		// This matches the overlay framebuffer views which also use UNORM.
-		attachments[0].flags = 0;
-		attachments[0].format = vk_get_unorm_format( colorFormat );  // UNORM to prevent sRGB encode
-		attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
-		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		attachments[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-		colorRef.attachment = 0;
-		colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-		Com_Memset( &subpass, 0, sizeof( subpass ) );
-		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-		subpass.colorAttachmentCount = 1;
-		subpass.pColorAttachments = &colorRef;
-		subpass.pDepthStencilAttachment = NULL;
-
-		// Overlay dependencies
-		overlayDeps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-		overlayDeps[0].dstSubpass = 0;
-		overlayDeps[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
-		overlayDeps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		overlayDeps[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
-		overlayDeps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		overlayDeps[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-		overlayDeps[1].srcSubpass = 0;
-		overlayDeps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-		overlayDeps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		overlayDeps[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-		overlayDeps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		overlayDeps[1].dstAccessMask = 0;
-		overlayDeps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-		// Multiview info for single-view rendering
-		Com_Memset( &overlayMultiviewInfo, 0, sizeof( overlayMultiviewInfo ) );
-		overlayMultiviewInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO;
-		overlayMultiviewInfo.subpassCount = 1;
-		overlayMultiviewInfo.pViewMasks = &overlayViewMask;
-		overlayMultiviewInfo.correlationMaskCount = 1;
-		overlayMultiviewInfo.pCorrelationMasks = &overlayCorrelationMask;
-
-		Com_Memset( &desc, 0, sizeof( desc ) );
-		desc.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-		desc.pNext = &overlayMultiviewInfo;
-		desc.attachmentCount = 1;
-		desc.pAttachments = attachments;
-		desc.subpassCount = 1;
-		desc.pSubpasses = &subpass;
-		desc.dependencyCount = 2;
-		desc.pDependencies = overlayDeps;
-
-		VK_CHECK( qvkCreateRenderPass( vk.device, &desc, NULL, &vk.render_pass.overlay ) );
-		SET_OBJECT_NAME( vk.render_pass.overlay, "render pass - overlay (recreated with XR format)", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
-	}
-
 	// Create virtual screen render pass (multiview, color+depth, no MSAA)
 	// This is used for rendering floor grid and virtual screen cylinder to XR swapchain
 	{
@@ -13115,20 +12444,9 @@ qboolean vk_init_xr_resources( void )
 	s_depthSwapchainInfo.imageCount = xrInfo->depthImageCount;
 	s_depthSwapchainInfo.images = xrInfo->depthImages;
 
-	Com_Memset( &s_overlaySwapchainInfo, 0, sizeof( s_overlaySwapchainInfo ) );
-	if ( xrInfo->overlayImages ) {
-		s_overlaySwapchainInfo.format = xrInfo->overlayFormat;
-		s_overlaySwapchainInfo.width = xrInfo->overlayWidth;
-		s_overlaySwapchainInfo.height = xrInfo->overlayHeight;
-		s_overlaySwapchainInfo.arraySize = 1;
-		s_overlaySwapchainInfo.imageCount = xrInfo->overlayImageCount;
-		s_overlaySwapchainInfo.images = xrInfo->overlayImages;
-	}
-
 	// Point vk.xr to the static info
 	vk.xr.colorInfo = &s_colorSwapchainInfo;
 	vk.xr.depthInfo = &s_depthSwapchainInfo;
-	vk.xr.overlayInfo = xrInfo->overlayImages ? &s_overlaySwapchainInfo : NULL;
 
 	// Set XR render dimensions from color swapchain
 	vk.xr.width = xrInfo->colorWidth;
@@ -13201,9 +12519,6 @@ void vk_shutdown_xr_resources( void )
 	// Destroy desktop mirror resources (shader-based gamma correction)
 	vk_destroy_desktop_mirror_resources();
 
-	// Destroy overlay zoom resources (gamma correction for weapon zoom)
-	vk_destroy_overlay_zoom_resources();
-
 	// Destroy virtual screen pipelines
 	vk_destroy_virtual_screen_pipelines();
 
@@ -13220,7 +12535,6 @@ void vk_shutdown_xr_resources( void )
 	// Clear swapchain info pointers
 	vk.xr.colorInfo = NULL;
 	vk.xr.depthInfo = NULL;
-	vk.xr.overlayInfo = NULL;
 
 	vk.xr.initialized = qfalse;
 	ri.Printf( PRINT_ALL, "XR resources shutdown complete\n" );

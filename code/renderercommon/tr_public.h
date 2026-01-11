@@ -107,10 +107,6 @@ typedef struct {
 	void	(*SetVRHeadsetParms)( const float projectionMatrix[16], const float nonVRProjectionMatrix[16], int renderBuffer,
 								  const float projectionEye0[16], const float projectionEye1[16],
 								  float combinedFovX, float halfIpdMeters );
-	void	(*SetScreenOverlayBuffer)( int overlayBuffer, int width, int height,
-									   int mainSceneReadBuffer, int mainSceneWidth, int mainSceneHeight );
-	void	(*ScreenOverlayBufferStart)( qboolean clear );
-	void	(*ScreenOverlayBufferEnd)( void );
 
 	// VR framebuffer operations - called from vrcommon, implemented by each renderer
 	qboolean (*InitXRResources)( void );  // Initialize XR resources after swapchains created (Vulkan)

@@ -637,13 +637,7 @@ void R_ComputeColors( const int b, color4ub_t *dest, const shaderStage_t *pStage
 			break;
 		default:
 		case CGEN_IDENTITY_LIGHTING:
-			// When rendering to overlay (bypasses gamma/overbright pass), use full brightness.
-			// Otherwise use identityLightByte, compensated by gamma pass overbright.
-			if ( backEnd.isDrawingScreenOverlay ) {
-				Com_Memset( dest, 0xff, tess.numVertexes * 4 );
-			} else {
-				Com_Memset( dest, tr.identityLightByte, tess.numVertexes * 4 );
-			}
+			Com_Memset( dest, tr.identityLightByte, tess.numVertexes * 4 );
 			break;
 		case CGEN_LIGHTING_DIFFUSE:
 			RB_CalcDiffuseColor( ( unsigned char * ) dest );
@@ -657,8 +651,7 @@ void R_ComputeColors( const int b, color4ub_t *dest, const shaderStage_t *pStage
 			}
 			break;
 		case CGEN_VERTEX:
-			// When rendering to overlay, use full brightness (bypass overbright path)
-			if ( tr.identityLight == 1 || backEnd.isDrawingScreenOverlay )
+			if ( tr.identityLight == 1 )
 			{
 				Com_Memcpy( dest, tess.vertexColors, tess.numVertexes * sizeof( tess.vertexColors[0] ) );
 			}
@@ -674,8 +667,7 @@ void R_ComputeColors( const int b, color4ub_t *dest, const shaderStage_t *pStage
 			}
 			break;
 		case CGEN_ONE_MINUS_VERTEX:
-			// When rendering to overlay, use full brightness (bypass overbright path)
-			if ( tr.identityLight == 1 || backEnd.isDrawingScreenOverlay )
+			if ( tr.identityLight == 1 )
 			{
 				for ( i = 0; i < tess.numVertexes; i++ )
 				{
@@ -988,13 +980,6 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 #ifdef USE_VULKAN
 		tess_flags |= pStage->tessFlags;
 
-		// When rendering to overlay (bypasses gamma/overbright), shaders using
-		// CGEN_IDENTITY_LIGHTING need runtime color computation instead of
-		// fixed-color pipeline. Force TESS_RGBA0 to compute full-brightness colors.
-		if ( backEnd.isDrawingScreenOverlay && pStage->bundle[0].rgbGen == CGEN_IDENTITY_LIGHTING ) {
-			tess_flags |= TESS_RGBA0;
-		}
-
 		for ( i = 0;  i < pStage->numTexBundles; i++ ) {
 			if ( pStage->bundle[i].image[0] != NULL ) {
 				GL_SelectTexture( i );
@@ -1031,22 +1016,6 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 			pipeline = pStage->vk_mirror_pipeline[fog_stage];
 		} else {
 			pipeline = pStage->vk_pipeline[fog_stage];
-		}
-
-		// When rendering to overlay with CGEN_IDENTITY_LIGHTING shaders, the
-		// fixed-color pipeline optimization uses baked-in dim colors (tr.identityLightByte).
-		// We need a vertex-color pipeline instead to use the full-brightness colors
-		// computed above. Get an equivalent pipeline with TYPE_SIGNLE_TEXTURE.
-		if ( backEnd.isDrawingScreenOverlay && pStage->bundle[0].rgbGen == CGEN_IDENTITY_LIGHTING ) {
-			Vk_Pipeline_Def def;
-			vk_get_pipeline_def( pipeline, &def );
-			if ( def.shader_type == TYPE_SIGNLE_TEXTURE_FIXED_COLOR ) {
-				def.shader_type = TYPE_SIGNLE_TEXTURE;
-				pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
-			} else if ( def.shader_type == TYPE_SIGNLE_TEXTURE_FIXED_COLOR_ENV ) {
-				def.shader_type = TYPE_SIGNLE_TEXTURE;
-				pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
-			}
 		}
 
 		vk_bind_pipeline( pipeline );

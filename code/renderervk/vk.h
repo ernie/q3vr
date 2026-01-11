@@ -187,7 +187,6 @@ typedef enum {
 	RENDER_PASS_SCREENMAP,
 	RENDER_PASS_POST_BLOOM,
 	RENDER_PASS_HUD,            // HUD buffer (1280x960) for HUD mode 1 sprite
-	RENDER_PASS_OVERLAY,        // Screen overlay swapchain for HUD mode 2
 	RENDER_PASS_COUNT
 } renderPass_t;
 
@@ -304,8 +303,6 @@ void vk_end_render_pass( void );
 void vk_begin_main_render_pass( qboolean clear );
 void vk_begin_hud_render_pass( qboolean clear );
 void vk_end_hud_render_pass( void );
-void vk_begin_overlay_render_pass( qboolean clear );
-void vk_end_overlay_render_pass( void );
 qboolean vk_create_hud_buffer( void );
 qboolean vk_create_processed_image( void );  // Post-gamma output, source for all display destinations
 qboolean vk_create_virtual_screen_buffer( void );  // Virtual screen texture for menu/follow mode
@@ -397,20 +394,15 @@ typedef struct {
 	// Pointers to VR layer swapchain info (for accessing VkImages)
 	const VR_VK_SwapchainInfo* colorInfo;
 	const VR_VK_SwapchainInfo* depthInfo;
-	const VR_VK_SwapchainInfo* overlayInfo;
 
 	// VkImageViews for XR swapchain images (created by renderer)
 	VkImageView colorViews[MAX_SWAPCHAIN_IMAGES];    // Multiview array views (sRGB format)
 	VkImageView gammaViews[MAX_SWAPCHAIN_IMAGES];    // UNORM views for gamma pass
 	VkImageView depthViews[MAX_SWAPCHAIN_IMAGES];    // Multiview array views
-	VkImageView overlayViews[MAX_SWAPCHAIN_IMAGES];  // Single-layer views
 
 	// Per-eye views for sampling XR swapchain (for desktop mirror menuStyle=1)
 	VkImageView colorEyeViews[2][MAX_SWAPCHAIN_IMAGES];  // [eye][swapchain_index] - per-eye 2D views
 	VkDescriptorSet colorEyeDescriptors[2][MAX_SWAPCHAIN_IMAGES];  // [eye][swapchain_index] - pre-bound descriptors
-
-	// Overlay framebuffers (for HUD mode 2)
-	VkFramebuffer overlayFramebuffers[MAX_SWAPCHAIN_IMAGES];
 
 	// Direct XR swapchain framebuffers (used when FBO is NOT active)
 	VkFramebuffer framebuffers[MAX_SWAPCHAIN_IMAGES];
@@ -464,8 +456,6 @@ typedef struct {
 	// Current XR swapchain state
 	uint32_t colorIndex;
 	uint32_t depthIndex;
-	uint32_t overlayIndex;
-	qboolean overlayAcquired;
 
 	// XR resolution
 	uint32_t width;
@@ -520,12 +510,6 @@ typedef struct {
 	VkPipeline desktopMirrorVSPipeline;        // Virtual screen variant (gamma=1.0)
 	VkPipelineLayout desktopMirrorPipelineLayout;
 
-	// Overlay zoom shader-based rendering (gamma-correct path for weapon zoom)
-	// Note: Samples from vk.processed.layer0Descriptor, no intermediate image needed
-	VkRenderPass overlayZoomRenderPass;   // Renders to overlay swapchain with gamma correction
-	VkPipeline overlayZoomPipeline;
-	VkPipelineLayout overlayZoomPipelineLayout;
-
 	VkCommandPool command_pool;
 #ifdef USE_UPLOAD_QUEUE
 	VkCommandBuffer staging_command_buffer;
@@ -543,7 +527,6 @@ typedef struct {
 		VkRenderPass blur[VK_NUM_BLOOM_PASSES*2]; // Multiview blur passes
 		VkRenderPass post_bloom;  // Multiview post-bloom blend
 		VkRenderPass hudBuffer;   // HUD buffer (1280x960, single layer, color+depth)
-		VkRenderPass overlay;     // Screen overlay (color-only, single layer, for HUD mode 2)
 		VkRenderPass virtualScreen; // Virtual screen (multiview, color+depth, no MSAA)
 	} render_pass;
 
@@ -594,14 +577,12 @@ typedef struct {
 	} capture;
 
 	// Processed image - post-gamma output, source for all display destinations
-	// (XR swapchain, virtual screen, desktop mirror, screen overlay)
+	// (XR swapchain, virtual screen, desktop mirror)
 	struct {
 		VkImage image;
 		VkImageView view;           // 2D_ARRAY for framebuffer (UNORM)
 		VkImageView samplerView;    // 2D_ARRAY for sampling (UNORM)
-		VkImageView layer0View;     // 2D view for layer 0 only (for overlay zoom)
 		VkDescriptorSet descriptor;        // 2D_ARRAY descriptor for desktop mirror
-		VkDescriptorSet layer0Descriptor;  // 2D descriptor for overlay zoom (layer 0 only)
 		VkDeviceMemory memory;
 	} processed;
 
@@ -695,9 +676,6 @@ typedef struct {
 
 		VkShaderModule desktopmirror_fs;
 		VkShaderModule desktopmirror_vs;  // NOT multiview
-
-		VkShaderModule overlayzoom_fs;
-		VkShaderModule overlayzoom_vs;    // NOT multiview
 	} modules;
 
 	VkPipelineCache pipelineCache;

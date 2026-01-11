@@ -993,6 +993,18 @@ static void CG_CalculatePodiumPositionForVR( void )
 	vr->sp_intermission_podium_pos[0] = (horizontalDist - 10.0f) / worldscale;  // Forward distance
 	vr->sp_intermission_podium_pos[1] = verticalOffset / worldscale;  // Vertical offset
 	vr->sp_intermission_podium_pos[2] = 0.0f;  // No lateral offset
+
+	// Store absolute world position for HUD sprite (in game units)
+	// Position the HUD slightly in front of the podium, at viewer eye level
+	// podiumOrigin is 70 units below targetOrigin, so add podiumDrop to get back to eye level
+	VectorMA( podiumOrigin, -10.0f, forward, vr->sp_intermission_hud_origin );
+	vr->sp_intermission_hud_origin[2] += podiumDrop;  // Raise back to eye level
+
+	// Calculate fixed radius based on distance from camera to HUD (computed once, not per-frame)
+	vec3_t toHud;
+	VectorSubtract( vr->sp_intermission_hud_origin, actualOrigin, toHud );
+	float hudDist = VectorLength( toHud );
+	vr->sp_intermission_hud_radius = hudDist * 0.8f;
 }
 
 /*
@@ -1374,8 +1386,13 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	trap_Cvar_Set( "vr_thirdPersonSpectator", (CG_IsDeathCam() ||
                                              cg.demoPlayback ||
                                              CG_IsThirdPersonFollowMode(VRFM_QUERY) ? "1" : "0" ));
-	// If user disabled HUD, respect that in all modes
-	if (trap_Cvar_VariableValue("vr_hudDrawStatus") == 0) {
+	// SP intermission: ALWAYS force mode 1 for world-locked podium HUD
+	// This must come FIRST so user can always see and interact with UI to proceed
+	if (cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION &&
+	    cgs.gametype == GT_SINGLE_PLAYER) {
+		trap_Cvar_SetValue( "vr_currentHudDrawStatus", 1 );
+	} else if (trap_Cvar_VariableValue("vr_hudDrawStatus") == 0) {
+		// If user disabled HUD, respect that in all modes (except SP intermission above)
 		trap_Cvar_SetValue( "vr_currentHudDrawStatus", 0 );
 	} else if (vr->first_person_following) {
 		// draw mode 1 won't work with virtual screen at the moment

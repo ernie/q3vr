@@ -88,11 +88,6 @@ typedef struct {
     VkFormat depthFormat;
     uint32_t depthWidth, depthHeight, depthArraySize, depthImageCount;
     VkImage* depthImages;
-
-    // Screen overlay (single layer for HUD/overlays)
-    VkFormat overlayFormat;
-    uint32_t overlayWidth, overlayHeight, overlayImageCount;
-    VkImage* overlayImages;
 } VR_VulkanSwapchainInfo;
 
 // Get the XR swapchain info for renderer initialization

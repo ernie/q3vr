@@ -530,37 +530,3 @@ void RE_HUDBufferEnd( void )
 	cmd->start = qfalse;
 	cmd->clear = qfalse;
 }
-
-
-void RE_ScreenOverlayBufferStart( qboolean clear )
-{
-	screenOverlayBufferCommand_t *cmd;
-
-	if ( !tr.registered ) {
-		return;
-	}
-	cmd = R_GetCommandBufferReserved( sizeof( *cmd ), 0 );
-	if ( !cmd ) {
-		return;
-	}
-	cmd->commandId = RC_SCREEN_OVERLAY_BUFFER;
-	cmd->start = qtrue;
-	cmd->clear = clear;
-}
-
-
-void RE_ScreenOverlayBufferEnd( void )
-{
-	screenOverlayBufferCommand_t *cmd;
-
-	if ( !tr.registered ) {
-		return;
-	}
-	cmd = R_GetCommandBufferReserved( sizeof( *cmd ), 0 );
-	if ( !cmd ) {
-		return;
-	}
-	cmd->commandId = RC_SCREEN_OVERLAY_BUFFER;
-	cmd->start = qfalse;
-	cmd->clear = qfalse;
-}

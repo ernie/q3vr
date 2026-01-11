@@ -191,6 +191,7 @@ cvar_t	*r_saveFontData;
 cvar_t	*r_marksOnTriangleMeshes;
 
 cvar_t	*vr_currentHudDrawStatus;
+cvar_t	*vr_currentHudDepth;
 
 cvar_t	*r_aviMotionJpegQuality;
 cvar_t	*r_screenshotJpegQuality;
@@ -1714,6 +1715,7 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_marksOnTriangleMeshes, "Enables impact marks on triangle mesh surfaces (ie: MD3 models.) Requires impact marks to be enabled in the game code." );
 
 	vr_currentHudDrawStatus = ri.Cvar_Get( "vr_currentHudDrawStatus", "1", CVAR_ARCHIVE );
+	vr_currentHudDepth = ri.Cvar_Get( "vr_currentHudDepth", "3", 0 );
 
 	r_aviMotionJpegQuality = ri.Cvar_Get( "r_aviMotionJpegQuality", "90", CVAR_ARCHIVE_ND );
 	ri.Cvar_SetDescription( r_aviMotionJpegQuality, "Controls quality of Jpeg video capture when \\cl_aviMotionJpeg 1." );
@@ -2103,21 +2105,6 @@ void RE_SetVRHeadsetParms( const float projectionMatrix[16],
 	Com_Memcpy( vk_world.projectionEye[1], projectionEye1, sizeof(float) * 16 );
 }
 
-void RE_SetScreenOverlayBuffer( int overlayBuffer, int width, int height,
-								int mainSceneReadBuffer, int mainSceneWidth, int mainSceneHeight ) {
-	tr.vrParms.screenOverlayBuffer = overlayBuffer;
-	tr.vrParms.screenOverlayWidth = width;
-	tr.vrParms.screenOverlayHeight = height;
-	tr.vrParms.mainSceneReadBuffer = mainSceneReadBuffer;
-	tr.vrParms.mainSceneWidth = mainSceneWidth;
-	tr.vrParms.mainSceneHeight = mainSceneHeight;
-
-	// For Vulkan: overlayBuffer is reused as the XR swapchain image index
-	// This is called when overlay is acquired, so mark it as such
-	vk.xr.overlayIndex = (uint32_t)overlayBuffer;
-	vk.xr.overlayAcquired = qtrue;
-}
-
 void RE_ClearVRFramebuffer( int width, int height, qboolean isThirdPersonSpectator ) {
 	// XR frame already started by RE_BeginXRFrame()
 	// Clear color/depth happens in vk_begin_render_pass via VK_ATTACHMENT_LOAD_OP_CLEAR
@@ -2263,9 +2250,6 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.HUDBufferStart = RE_HUDBufferStart;
 	re.HUDBufferEnd = RE_HUDBufferEnd;
 	re.SetVRHeadsetParms = RE_SetVRHeadsetParms;
-	re.SetScreenOverlayBuffer = RE_SetScreenOverlayBuffer;
-	re.ScreenOverlayBufferStart = RE_ScreenOverlayBufferStart;
-	re.ScreenOverlayBufferEnd = RE_ScreenOverlayBufferEnd;
 	re.InitXRResources = RE_InitXRResources;
 	re.BeginXRFrame = RE_BeginXRFrame;
 	re.ClearVRFramebuffer = RE_ClearVRFramebuffer;

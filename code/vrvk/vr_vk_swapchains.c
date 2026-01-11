@@ -192,21 +192,6 @@ VR_SwapchainInfos* VR_VK_CreateSwapchains(XrInstance instance, XrSystemId system
 		swapchains->depth.width, swapchains->depth.height,
 		swapchains->depth.imageCount, swapchains->depth.arraySize);
 
-	// Create screen overlay swapchain (single layer for quad layer HUD)
-	VR_VK_CreateSwapchain(
-		session,
-		XR_TRUE,  // isColor
-		XR_FALSE,  // mutableFormat - overlay doesn't need gamma pass
-		colorFormat,
-		supersampledWidth,
-		supersampledHeight,
-		1,  // arraySize = 1 for single layer overlay
-		&swapchains->screenOverlay);
-
-	fprintf(stderr, "[VRVK] Created screen overlay swapchain: %dx%d, %u images\n",
-		swapchains->screenOverlay.width, swapchains->screenOverlay.height,
-		swapchains->screenOverlay.imageCount);
-
 	free(views);
 	return swapchains;
 }
@@ -221,7 +206,6 @@ void VR_VK_DestroySwapchains(VR_SwapchainInfos** swapchainsPtr)
 
 	// Destroy swapchains (VR layer only owns XrSwapchain handles)
 	// VkImageViews and VkFramebuffers are destroyed by the renderer
-	VR_VK_DestroySwapchain(&swapchains->screenOverlay);
 	VR_VK_DestroySwapchain(&swapchains->depth);
 	VR_VK_DestroySwapchain(&swapchains->color);
 
@@ -273,41 +257,6 @@ void VR_VK_Swapchains_Release(VR_SwapchainInfos* swapchains)
 	}
 }
 
-void VR_VK_Swapchains_AcquireOverlay(VR_VK_SwapchainInfo* overlay, uint32_t* index)
-{
-	if (!overlay || overlay->swapchain == XR_NULL_HANDLE) {
-		return;
-	}
-
-	XrSwapchainImageAcquireInfo acquireInfo = {XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO, NULL};
-
-	XR_CHECK(
-		xrAcquireSwapchainImage(overlay->swapchain, &acquireInfo, index),
-		"Failed to acquire overlay swapchain image");
-
-	XrSwapchainImageWaitInfo waitInfo = {
-		.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
-		.next = NULL,
-		.timeout = XR_INFINITE_DURATION
-	};
-
-	CHECK(
-		!XR_FAILED(xrWaitSwapchainImage(overlay->swapchain, &waitInfo)),
-		"Failed to wait for overlay swapchain image");
-}
-
-void VR_VK_Swapchains_ReleaseOverlay(VR_VK_SwapchainInfo* overlay)
-{
-	if (!overlay || overlay->swapchain == XR_NULL_HANDLE) {
-		return;
-	}
-
-	XrSwapchainImageReleaseInfo releaseInfo = {XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO, NULL};
-	XR_CHECK(
-		xrReleaseSwapchainImage(overlay->swapchain, &releaseInfo),
-		"Failed to release overlay swapchain image");
-}
-
 //
 // Accessors for renderer to get swapchain info
 //
@@ -320,9 +269,4 @@ const VR_VK_SwapchainInfo* VR_VK_GetColorSwapchain(const VR_SwapchainInfos* swap
 const VR_VK_SwapchainInfo* VR_VK_GetDepthSwapchain(const VR_SwapchainInfos* swapchains)
 {
 	return swapchains ? &swapchains->depth : NULL;
-}
-
-const VR_VK_SwapchainInfo* VR_VK_GetOverlaySwapchain(const VR_SwapchainInfos* swapchains)
-{
-	return swapchains ? &swapchains->screenOverlay : NULL;
 }

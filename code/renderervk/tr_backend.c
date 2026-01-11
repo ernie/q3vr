@@ -1808,37 +1808,6 @@ static const void* RB_HUDBuffer( const void* data ) {
 
 /*
 ====================
-RB_ScreenOverlayBuffer
-
-Switches rendering to/from the screen overlay swapchain for quad layer content.
-====================
-*/
-static const void* RB_ScreenOverlayBuffer( const void* data ) {
-	const screenOverlayBufferCommand_t *cmd = data;
-
-	// finish any 2D drawing if needed
-	if ( tess.numIndexes ) {
-		RB_EndSurface();
-		tess.shader = NULL;
-	}
-
-	if ( cmd->start && !backEnd.isDrawingScreenOverlay ) {
-		vk_begin_overlay_render_pass( cmd->clear );
-		if ( vk.renderPassIndex == RENDER_PASS_OVERLAY ) {
-			backEnd.isDrawingScreenOverlay = qtrue;
-		}
-	}
-	else if ( !cmd->start && backEnd.isDrawingScreenOverlay ) {
-		backEnd.isDrawingScreenOverlay = qfalse;
-		vk_end_overlay_render_pass();
-	}
-
-	return (const void*)(cmd + 1);
-}
-
-
-/*
-====================
 RB_ExecuteRenderCommands
 ====================
 */
@@ -1879,9 +1848,6 @@ void RB_ExecuteRenderCommands( const void *data ) {
 			break;
 		case RC_HUD_BUFFER:
 			data = RB_HUDBuffer(data);
-			break;
-		case RC_SCREEN_OVERLAY_BUFFER:
-			data = RB_ScreenOverlayBuffer(data);
 			break;
 		case RC_END_OF_LIST:
 		default:

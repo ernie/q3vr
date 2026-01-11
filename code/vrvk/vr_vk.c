@@ -165,13 +165,6 @@ const VR_VulkanSwapchainInfo* VR_Vulkan_GetSwapchainInfo(void)
     info.depthImageCount = swapchains->depth.imageCount;
     info.depthImages = swapchains->depth.images;
 
-    // Screen overlay swapchain
-    info.overlayFormat = swapchains->screenOverlay.format;
-    info.overlayWidth = swapchains->screenOverlay.width;
-    info.overlayHeight = swapchains->screenOverlay.height;
-    info.overlayImageCount = swapchains->screenOverlay.imageCount;
-    info.overlayImages = swapchains->screenOverlay.images;
-
     return &info;
 }
 

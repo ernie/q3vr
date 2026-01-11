@@ -1175,7 +1175,6 @@ typedef struct {
 
 	// VR render target tracking
 	qboolean isDrawingHUD;
-	qboolean isDrawingScreenOverlay;
 
 } backEndState_t;
 
@@ -1190,9 +1189,6 @@ typedef struct {
 	float		menuProjection[16];        // Symmetric projection for menu 3D models
 	int			renderBuffer;
 	int			renderBufferOriginal;
-	int			screenOverlayBuffer;       // Framebuffer for screen overlay quad layer
-	int			screenOverlayWidth;
-	int			screenOverlayHeight;
 	int			mainSceneReadBuffer;       // Framebuffer to read main scene from (layer 0) for mono blit
 	int			mainSceneWidth;
 	int			mainSceneHeight;
@@ -1466,6 +1462,7 @@ extern	cvar_t	*r_printShaders;
 extern cvar_t	*r_marksOnTriangleMeshes;
 
 extern cvar_t	*vr_currentHudDrawStatus;	// 0 - no hud, 1 - in-world hud, 2 - performance (overlay)
+extern cvar_t	*vr_currentHudDepth;		// Current HUD depth (0-5, copied from vr_hudDepth during gameplay)
 
 //====================================================================
 
@@ -1988,12 +1985,6 @@ typedef struct {
 	qboolean clear;
 } hudBufferCommand_t;
 
-typedef struct {
-	int commandId;
-	qboolean start;
-	qboolean clear;
-} screenOverlayBufferCommand_t;
-
 typedef enum {
 	RC_END_OF_LIST,
 	RC_SET_COLOR,
@@ -2005,8 +1996,7 @@ typedef enum {
 	RC_COLORMASK,
 	RC_CLEARDEPTH,
 	RC_CLEARCOLOR,
-	RC_HUD_BUFFER,
-	RC_SCREEN_OVERLAY_BUFFER
+	RC_HUD_BUFFER
 } renderCommand_t;
 
 
@@ -2069,10 +2059,6 @@ void RE_SetVRHeadsetParms( const float projectionMatrix[16],
 						   const float projectionEye1[16],
 						   float combinedFovX,
 						   float halfIpdMeters );
-void RE_SetScreenOverlayBuffer( int overlayBuffer, int width, int height,
-								int mainSceneReadBuffer, int mainSceneWidth, int mainSceneHeight );
-void RE_ScreenOverlayBufferStart( qboolean clear );
-void RE_ScreenOverlayBufferEnd( void );
 void RE_ClearVRFramebuffer( int width, int height, qboolean isThirdPersonSpectator );
 void RE_SwapDesktopWindow( void );
 void RE_WaitForRenderComplete( void );
