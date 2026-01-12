@@ -105,9 +105,6 @@ typedef struct {
 	qboolean sp_intermission_active;
 	float sp_intermission_yaw;  // The yaw angle the overlay is anchored to (degrees)
 
-	// Podium-based UI positioning (calculated by cgame, used by VR render loop)
-	float sp_intermission_podium_pos[3];    // UI position in VR coords (meters, relative to head position)
-
 	// SP intermission HUD sprite positioning (world-locked at podium)
 	float sp_intermission_hud_origin[3];    // Absolute world position for HUD sprite
 	float sp_intermission_hud_radius;       // Fixed radius for HUD sprite

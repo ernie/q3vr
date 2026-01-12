@@ -3570,10 +3570,10 @@ void CG_DrawActive( void ) {
 		if (isSPIntermission)
 		{
 			// SP intermission: position HUD sprite at podium (world-locked)
-			// Use the absolute world position calculated in CG_CalculatePodiumPositionForVR
+			// Use the absolute world position calculated in CG_CalculateSPIntermissionHUD
 			VectorCopy(vr->sp_intermission_hud_origin, endpos);
 
-			// Use pre-calculated fixed radius (computed once in CG_CalculatePodiumPositionForVR)
+			// Use pre-calculated fixed radius (computed once in CG_CalculateSPIntermissionHUD)
 			// This ensures the HUD doesn't resize when leaning forward/backward
 			radius = vr->sp_intermission_hud_radius;
 

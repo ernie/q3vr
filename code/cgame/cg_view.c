@@ -962,73 +962,41 @@ void CG_DamageBorderVignette( void ) {
 
 /*
 =================
-CG_CalculatePodiumPositionForVR
+CG_CalculateSPIntermissionHUD
 
-Calculates the podium position in VR (OpenXR) coordinates for UI quad placement.
+Calculates HUD sprite position for single-player intermission.
 Called during intermission when pm_type == PM_INTERMISSION.
-The position is relative to the intermission origin (camera position).
+Positions the HUD at the podium location so it's world-locked.
 =================
 */
-static void CG_CalculatePodiumPositionForVR( void )
+static void CG_CalculateSPIntermissionHUD( void )
 {
-	// Only calculate for single-player intermission
 	if ( cgs.gametype != GT_SINGLE_PLAYER ) {
 		return;
 	}
 
-	// Get intermission angle from player state
-	vec3_t intermissionAngle;
-	VectorCopy( cg.snap->ps.viewangles, intermissionAngle );
-
-	// targetOrigin: where the server intended the camera to be (used for podium placement)
-	vec3_t targetOrigin;
-	VectorCopy( cg.snap->ps.origin, targetOrigin );
-
-	// actualOrigin: where the camera actually is after wall trace
-	vec3_t actualOrigin;
-	VectorCopy( cg.refdef.vieworg, actualOrigin );
-
-	// Get podium distance cvars (with defaults matching g_arenas.c)
+	// Get podium placement cvars (defaults from g_main.c)
 	float podiumDist = trap_Cvar_VariableValue( "g_podiumDist" );
 	float podiumDrop = trap_Cvar_VariableValue( "g_podiumDrop" );
-	if ( podiumDist == 0 ) podiumDist = 80.0f;  // default from g_main.c
-	if ( podiumDrop == 0 ) podiumDrop = 70.0f;  // default from g_main.c
+	if ( podiumDist == 0 ) podiumDist = 80.0f;
+	if ( podiumDrop == 0 ) podiumDrop = 70.0f;
 
-	// Calculate podium center position (placed relative to targetOrigin)
+	// Calculate podium position from server's intended camera origin
 	vec3_t forward;
-	AngleVectors( intermissionAngle, forward, NULL, NULL );
+	AngleVectors( cg.snap->ps.viewangles, forward, NULL, NULL );
 
 	vec3_t podiumOrigin;
-	VectorMA( targetOrigin, podiumDist, forward, podiumOrigin );
+	VectorMA( cg.snap->ps.origin, podiumDist, forward, podiumOrigin );
 	podiumOrigin[2] -= podiumDrop;
 
-	// Calculate offset from actual camera position to podium
-	float worldscale = cg.worldscale;
-	if ( worldscale <= 0 ) worldscale = 32.0f;
-
-	vec3_t offset;
-	VectorSubtract( podiumOrigin, actualOrigin, offset );
-
-	// The horizontal distance is the XY distance from actual camera to podium
-	float horizontalDist = sqrtf( offset[0] * offset[0] + offset[1] * offset[1] );
-	float verticalOffset = offset[2] + 60.0f;
-
-	// Convert to meters for OpenXR
-	vr->sp_intermission_podium_pos[0] = (horizontalDist - 10.0f) / worldscale;  // Forward distance
-	vr->sp_intermission_podium_pos[1] = verticalOffset / worldscale;  // Vertical offset
-	vr->sp_intermission_podium_pos[2] = 0.0f;  // No lateral offset
-
-	// Store absolute world position for HUD sprite (in game units)
-	// Position the HUD slightly in front of the podium, at viewer eye level
-	// podiumOrigin is 70 units below targetOrigin, so add podiumDrop to get back to eye level
+	// Position HUD slightly in front of podium, at eye level
 	VectorMA( podiumOrigin, -10.0f, forward, vr->sp_intermission_hud_origin );
-	vr->sp_intermission_hud_origin[2] += podiumDrop;  // Raise back to eye level
+	vr->sp_intermission_hud_origin[2] += podiumDrop;
 
-	// Calculate fixed radius based on distance from camera to HUD (computed once, not per-frame)
+	// Fixed radius based on distance from actual camera to HUD
 	vec3_t toHud;
-	VectorSubtract( vr->sp_intermission_hud_origin, actualOrigin, toHud );
-	float hudDist = VectorLength( toHud );
-	vr->sp_intermission_hud_radius = hudDist * 0.8f;
+	VectorSubtract( vr->sp_intermission_hud_origin, cg.refdef.vieworg, toHud );
+	vr->sp_intermission_hud_radius = VectorLength( toHud ) * 0.8f;
 }
 
 /*
@@ -1090,9 +1058,9 @@ static int CG_CalcViewValues( void ) {
 		CG_Trace( &trace, ps->origin, mins, maxs, end, cg.predictedPlayerState.clientNum, MASK_SOLID );
 		VectorCopy(trace.endpos, cg.refdef.vieworg);
 
-		// Calculate podium position for VR UI placement
+		// Calculate HUD sprite position for SP intermission
 		// This must be done AFTER the trace so we know the actual camera position
-		CG_CalculatePodiumPositionForVR();
+		CG_CalculateSPIntermissionHUD();
 
 		VectorCopy(vr->hmdorientation, cg.refdefViewAngles);
 		cg.refdefViewAngles[YAW] += (ps->viewangles[YAW] - hmdYaw);
