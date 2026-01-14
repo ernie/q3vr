@@ -3590,8 +3590,10 @@ void CG_DrawActive( void ) {
 			VectorCopy(up, spriteAxis[2]);
 		}
 		else if (cg.snap->ps.stats[STAT_HEALTH] > 0 &&
+		         cg.snap->ps.pm_type != PM_INTERMISSION &&
 		         !(cg.demoPlayback || (cg.snap->ps.pm_flags & PMF_FOLLOW)))
 		{
+			// Normal gameplay: account for the yaw of the player vs worldspace
 			static float hmd_yaw_x = 0.0f;
 			static float hmd_yaw_y = 1.0f;
 			static float prevPitch = 0.0f;
@@ -3623,7 +3625,7 @@ void CG_DrawActive( void ) {
 		}
 		else
 		{
-			// Lock to face (dead, demo playback, following)
+			// Lock to face
 			VectorMA(cg.refdef.vieworg, dist, cg.refdef.viewaxis[0], endpos);
 		}
 
