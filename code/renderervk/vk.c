@@ -1127,13 +1127,10 @@ static void vk_create_render_passes( void )
 	 * [1] Depth: CLEAR each frame, STORE ensures clear completes
 	 */
 	{
-		VkRenderPassMultiviewCreateInfo hudMultiviewInfo;
 		VkSubpassDependency hudDeps[2];
 		VkAttachmentReference hudDepthRef;
-		uint32_t hudViewMask = 0b01;
-		uint32_t hudCorrelationMask = 0b01;
 
-		ri.Printf( PRINT_ALL, "Creating HUD buffer render pass (color_format=0x%x, depth_format=0x%x, multiview)...\n",
+		ri.Printf( PRINT_ALL, "Creating HUD buffer render pass (color_format=0x%x, depth_format=0x%x)...\n",
 			vk.color_format, depth_format );
 
 		attachments[0].flags = 0;

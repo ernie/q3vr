@@ -220,7 +220,7 @@ void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 
 	VR_BeginFrame(engine->appState.Session);
 
-	const XrViewState viewState = VR_LocateViews(
+	VR_LocateViews(
 		engine->appState.Session,
 		lastPredictedDisplayTime,
 		engine->appState.CurrentSpace,
@@ -437,7 +437,7 @@ void VR_UpdatePerFrameState(void)
 {
 	if (vr.weapon_zoomed)
 	{
-		vr.weapon_zoomLevel += 0.05;
+		vr.weapon_zoomLevel += 0.05f;
 		if (vr.weapon_zoomLevel > 2.5f)
 			vr.weapon_zoomLevel = 2.5f;
 	}

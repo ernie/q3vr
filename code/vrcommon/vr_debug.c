@@ -121,6 +121,7 @@ XrBool32 OpenXRMessageCallbackFunction(
 	const XrDebugUtilsMessengerCallbackDataEXT *pCallbackData,
 	void *pUserData)
 {
+	(void)pUserData;  // Unused
 	fprintf(stderr, "[OpenXR][%llu][%llu][%s] %s - %s\n",
 		messageSeverity,
 		messageType,

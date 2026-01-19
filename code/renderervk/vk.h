@@ -308,6 +308,7 @@ qboolean vk_create_processed_image( void );  // Post-gamma output, source for al
 qboolean vk_create_virtual_screen_buffer( void );  // Virtual screen texture for menu/follow mode
 qboolean vk_create_virtual_screen_meshes( void );  // Cylinder and quad geometry
 qboolean vk_create_virtual_screen_pipelines( void );  // Pipelines for virtual screen rendering
+qboolean vk_init_xr_resources( void );  // Initialize XR-related Vulkan resources
 void vk_shutdown_xr_resources( void );  // Cleanup XR-related resources
 
 void vk_bind_pipeline( uint32_t pipeline );

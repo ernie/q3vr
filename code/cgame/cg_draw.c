@@ -2904,7 +2904,6 @@ float CG_GetCombinedFovScale( void )
 {
 	float leftEyeLeft = vr->eye_fov_angle_left[0];
 	float leftEyeRight = vr->eye_fov_angle_right[0];
-	float rightEyeLeft = vr->eye_fov_angle_left[1];
 	float rightEyeRight = vr->eye_fov_angle_right[1];
 
 	float singleEyeTanWidth = tanf(leftEyeRight) - tanf(leftEyeLeft);

@@ -769,7 +769,9 @@ void CG_AddRefEntity( localEntity_t *le ) {
 CG_AddScorePlum
 ===================
 */
-#define NUMBER_SIZE		8
+#define NUMBER_SIZE				8
+#define DAMAGE_DIGIT_SPACING	1.7
+#define DAMAGE_NARROW_SPACING	1.2  // tighter spacing for '1'
 
 void CG_AddScorePlum( localEntity_t *le ) {
 	refEntity_t	*re;
@@ -927,8 +929,19 @@ void CG_AddDamagePlum( localEntity_t *le ) {
 	origin[2] += vertical_offset;
 
 	VectorSubtract(cg.refdef.vieworg, origin, dir);
+	VectorNormalize(dir);
+
+	// Set up world-oriented sprite axis so digits don't roll with head tilt
+	// but still face the camera (including vertical tilt)
+	// axis[0] = forward (toward camera)
+	// axis[1] = left (horizontal, no roll)
+	// axis[2] = up (perpendicular to forward and left)
+	re->renderfx |= RF_WORLD_ORIENTED;
+	VectorCopy(dir, re->axis[0]);
 	CrossProduct(dir, up, vec);
 	VectorNormalize(vec);
+	VectorCopy(vec, re->axis[1]);
+	CrossProduct(vec, dir, re->axis[2]);  // Derive up from forward and left
 
 	negative = qfalse;
 	if (damage < 0) {
@@ -946,10 +959,38 @@ void CG_AddDamagePlum( localEntity_t *le ) {
 		numdigits++;
 	}
 
-	for (i = 0; i < numdigits; i++) {
-		VectorMA(origin, (float) (((float) numdigits / 2) - i) * (re->radius * 2), vec, re->origin);
-		re->customShader = cgs.media.numberShaders[digits[numdigits-1-i]];
-		trap_R_AddRefEntityToScene( re );
+	{
+		float total_width = 0;
+		float pos;
+		int digit, next_digit;
+
+		// First pass: calculate total width
+		for (i = 0; i < numdigits; i++) {
+			digit = digits[numdigits - 1 - i];
+			next_digit = (i + 1 < numdigits) ? digits[numdigits - 2 - i] : -1;
+			if (digit == 1 || next_digit == 1) {
+				total_width += re->radius * DAMAGE_NARROW_SPACING;
+			} else {
+				total_width += re->radius * DAMAGE_DIGIT_SPACING;
+			}
+		}
+
+		// Second pass: render digits from left to right, centered
+		pos = total_width / 2;
+		for (i = 0; i < numdigits; i++) {
+			digit = digits[numdigits - 1 - i];
+			next_digit = (i + 1 < numdigits) ? digits[numdigits - 2 - i] : -1;
+
+			VectorMA(origin, pos, vec, re->origin);
+			re->customShader = cgs.media.damagePlumShaders[digit];
+			trap_R_AddRefEntityToScene(re);
+
+			if (digit == 1 || next_digit == 1) {
+				pos -= re->radius * DAMAGE_NARROW_SPACING;
+			} else {
+				pos -= re->radius * DAMAGE_DIGIT_SPACING;
+			}
+		}
 	}
 }
 

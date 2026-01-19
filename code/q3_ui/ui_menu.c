@@ -254,8 +254,8 @@ static void Main_MenuDraw( void ) {
 	UI_DrawString( 320, yPos, "by RippeR37", UI_CENTER|UI_SMALLFONT, color_grey );
 
 	// Version
-	vec4_t color_red = {0.65f, 0.0f, 0.0f, 1.0f};
-	UI_DrawString( 610, 455, "BETA", UI_CENTER|UI_SMALLFONT|UI_PULSE|UI_LEFT, color_red );
+	vec4_t betaColor = {0.65f, 0.0f, 0.0f, 1.0f};
+	UI_DrawString( 610, 455, "BETA", UI_CENTER|UI_SMALLFONT|UI_PULSE|UI_LEFT, betaColor );
 }
 
 

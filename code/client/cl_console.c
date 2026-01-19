@@ -961,7 +961,7 @@ Scroll it up or down
 void Con_RunConsole (void) {
 	// decide on the destination height of the console
 	if ( Key_GetCatcher( ) & KEYCATCH_CONSOLE )
-		con.finalFrac = 0.4;		// half screen
+		con.finalFrac = 0.4f;		// half screen
 	else
 		con.finalFrac = 0;				// none visible
 	

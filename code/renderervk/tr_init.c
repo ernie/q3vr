@@ -829,7 +829,7 @@ void RB_TakeScreenshotJPEG( int x, int y, int width, int height, const char *fil
 	// gamma correction
 	R_GammaCorrect( buffer + offset, memcount );
 
-	RE_SaveJPG( fileName, r_screenshotJpegQuality->integer, width, height, buffer + offset, padlen );
+	RE_SaveJPG( (char *)fileName, r_screenshotJpegQuality->integer, width, height, buffer + offset, padlen );
 	ri.Hunk_FreeTempMemory( buffer );
 }
 

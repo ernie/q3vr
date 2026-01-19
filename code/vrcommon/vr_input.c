@@ -240,10 +240,10 @@ static qboolean IN_GetInputAction(const char* inputName, char* action)
 	if (alt_key_mode_active)
 	{
 		Com_sprintf(cvarname, 256, "vr_button_map_%s", inputName);
-		char * val = Cvar_VariableString(cvarname);
-		if (val && strlen(val) > 0)
+		char * altVal = Cvar_VariableString(cvarname);
+		if (altVal && strlen(altVal) > 0)
 		{
-			Com_sprintf(action, 256, "%s", val);
+			Com_sprintf(action, 256, "%s", altVal);
 			return qtrue;
 		}
 	}
@@ -436,50 +436,50 @@ void VR_HapticEvent(const char* event, int position, int flags, int intensity, f
 		strcmp(event, "pickup_weapon") == 0 ||
 		strstr(event, "pickup_item") != NULL)
 	{
-		VR_Vibrate(100, 3, 0.6);
+		VR_Vibrate(100, 3, 0.6f);
 	}
 	else if (strcmp(event, "weapon_switch") == 0)
 	{
-		VR_Vibrate(150, vr_righthanded->integer ? 2 : 1, 0.6);
+		VR_Vibrate(150, vr_righthanded->integer ? 2 : 1, 0.6f);
 	}
 	else if (strcmp(event, "shotgun") == 0 || strcmp(event, "fireball") == 0)
 	{
-		VR_Vibrate(250, 3, 0.85);
+		VR_Vibrate(250, 3, 0.85f);
 	}
 	else if (strcmp(event, "bullet") == 0)
 	{
-		VR_Vibrate(150, 3, 0.65);
+		VR_Vibrate(150, 3, 0.65f);
 	}
 	else if (strcmp(event, "chainsaw_fire") == 0)
 	{
-		VR_Vibrate(250, weaponFireChannel, 0.9);
+		VR_Vibrate(250, weaponFireChannel, 0.9f);
 	}
 	else if (strcmp(event, "tesla_fire") == 0 || strcmp(event, "machinegun_fire") == 0)
 	{
-		VR_Vibrate(150, weaponFireChannel, 0.5);
+		VR_Vibrate(150, weaponFireChannel, 0.5f);
 	}
 	else if (strcmp(event, "plasmagun_fire") == 0)
 	{
-		VR_Vibrate(90, weaponFireChannel, 0.75);
+		VR_Vibrate(90, weaponFireChannel, 0.75f);
 	}
 	else if (strcmp(event, "shotgun_fire") == 0)
 	{
-		VR_Vibrate(150, weaponFireChannel, 1.0);
+		VR_Vibrate(150, weaponFireChannel, 1.0f);
 	}
 	else if (strcmp(event, "rocket_fire") == 0 ||
 		strcmp(event, "railgun_fire") == 0 ||
 		strcmp(event, "bfg_fire") == 0 ||
 		strcmp(event, "handgrenade_fire") == 0 )
 	{
-		VR_Vibrate(250, weaponFireChannel, 1.0);
+		VR_Vibrate(250, weaponFireChannel, 1.0f);
 	}
 	else if (strcmp(event, "selector_icon") == 0)
 	{
-		VR_Vibrate(50, (vr_righthanded->integer ? 2 : 1), 0.6);
+		VR_Vibrate(50, (vr_righthanded->integer ? 2 : 1), 0.6f);
 	}
 	else if (strcmp(event, "menu_move") == 0)
 	{
-		VR_Vibrate(30, (vr.menuLeftHanded ? 1 : 2), 0.3);
+		VR_Vibrate(30, (vr.menuLeftHanded ? 1 : 2), 0.3f);
 	}
 
 #ifdef USE_BHAPTICS
@@ -666,25 +666,29 @@ void VR_InitInstanceInput( VR_Engine* engine )
 		// Index HMD with Index controllers, etc.)
 		const char* systemName = engine->systemProperties.SystemProperties.systemName;
 
-		const XrPath interactionProfiles[3];
+		XrPath interactionProfiles[3];
 		const char* interactionProfileNames[3];
 
 		// Check for Valve Index HMD
 		if (strstr(systemName, "Index") != NULL || strstr(systemName, "index") != NULL || strstr(systemName, "lighthouse") != NULL)
 		{
 			printf("[OpenXR] Detected Valve Index HMD (%s), prioritizing Index controllers\n", systemName);
-			const XrPath profiles[] = { interactionProfilePathValveIndex, interactionProfilePathOculusTouch, interactionProfilePathKHRSimple };
-			const char* names[] = { "Valve Index", "Oculus Quest", "Simple" };
-			memcpy(interactionProfiles, profiles, sizeof(interactionProfiles));
-			memcpy(interactionProfileNames, names, sizeof(interactionProfileNames));
+			interactionProfiles[0] = interactionProfilePathValveIndex;
+			interactionProfiles[1] = interactionProfilePathOculusTouch;
+			interactionProfiles[2] = interactionProfilePathKHRSimple;
+			interactionProfileNames[0] = "Valve Index";
+			interactionProfileNames[1] = "Oculus Quest";
+			interactionProfileNames[2] = "Simple";
 		}
 		else
 		{
 			// Default to Oculus Touch controllers for all other HMDs
-			const XrPath profiles[] = { interactionProfilePathOculusTouch, interactionProfilePathValveIndex, interactionProfilePathKHRSimple };
-			const char* names[] = { "Oculus Quest", "Valve Index", "Simple" };
-			memcpy(interactionProfiles, profiles, sizeof(interactionProfiles));
-			memcpy(interactionProfileNames, names, sizeof(interactionProfileNames));
+			interactionProfiles[0] = interactionProfilePathOculusTouch;
+			interactionProfiles[1] = interactionProfilePathValveIndex;
+			interactionProfiles[2] = interactionProfilePathKHRSimple;
+			interactionProfileNames[0] = "Oculus Quest";
+			interactionProfileNames[1] = "Valve Index";
+			interactionProfileNames[2] = "Simple";
 		}
 
 		const size_t profilesCount = sizeof(interactionProfiles)/sizeof(interactionProfiles[0]);
@@ -1366,7 +1370,7 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 			{
 				// Active controller confirms selection
 				Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qtrue, 0, NULL);
-				VR_Vibrate(200, vr.menuLeftHanded ? 1 : 2, 0.8);
+				VR_Vibrate(200, vr.menuLeftHanded ? 1 : 2, 0.8f);
 			}
 			else
 			{

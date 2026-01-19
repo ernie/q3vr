@@ -117,7 +117,6 @@ UI_CreditMenu_Draw_ioq3
 */
 static void UI_CreditMenu_Draw_q3q( void ) {
 	int		y;
-	int		i;
 
 /*
 Quake3Quest by Team Beef & Friends

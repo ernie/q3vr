@@ -2325,10 +2325,10 @@ void CG_DrawWeaponSelector( void )
 				if( weaponId == WP_RAILGUN ) {
 					clientInfo_t *ci = &cgs.clientinfo[cg.predictedPlayerState.clientNum];
 					if( cg_entities[cg.predictedPlayerState.clientNum].pe.railFireTime + 1500 > cg.time ) {
-						int scale = 255 * ( cg.time - cg_entities[cg.predictedPlayerState.clientNum].pe.railFireTime ) / 1500;
-						ent.shaderRGBA.rgba[0] = ( ci->c1RGBA[0] * scale ) >> 8;
-						ent.shaderRGBA.rgba[1] = ( ci->c1RGBA[1] * scale ) >> 8;
-						ent.shaderRGBA.rgba[2] = ( ci->c1RGBA[2] * scale ) >> 8;
+						int colorScale = 255 * ( cg.time - cg_entities[cg.predictedPlayerState.clientNum].pe.railFireTime ) / 1500;
+						ent.shaderRGBA.rgba[0] = ( ci->c1RGBA[0] * colorScale ) >> 8;
+						ent.shaderRGBA.rgba[1] = ( ci->c1RGBA[1] * colorScale ) >> 8;
+						ent.shaderRGBA.rgba[2] = ( ci->c1RGBA[2] * colorScale ) >> 8;
 						ent.shaderRGBA.rgba[3] = 255;
 					}
 					else {

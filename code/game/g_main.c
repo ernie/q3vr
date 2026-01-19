@@ -77,6 +77,7 @@ vmCvar_t	g_podiumDrop;
 vmCvar_t	g_allowVote;
 vmCvar_t	g_autoJoin;
 vmCvar_t	g_teamForceBalance;
+vmCvar_t	g_teamDMSpawnThreshold;
 vmCvar_t	g_banIPs;
 vmCvar_t	g_filterBan;
 vmCvar_t	g_smoothClients;
@@ -130,6 +131,7 @@ static cvarTable_t		gameCvarTable[] = {
 
 	{ &g_autoJoin, "g_autoJoin", "1", CVAR_ARCHIVE, 0, qfalse },
 	{ &g_teamForceBalance, "g_teamForceBalance", "0", CVAR_ARCHIVE  },
+	{ &g_teamDMSpawnThreshold, "g_teamDMSpawnThreshold", "8", CVAR_ARCHIVE, 0, qfalse },
 
 	{ &g_warmup, "g_warmup", "20", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_doWarmup, "g_doWarmup", "0", CVAR_ARCHIVE, 0, qtrue  },
@@ -273,6 +275,82 @@ void QDECL G_Error( const char *fmt, ... ) {
 	va_end (argptr);
 
 	trap_Error( text );
+}
+
+/*
+================
+G_LocateSpawnSpots
+
+Locate all spawn spots and count FFA vs team spawns
+================
+*/
+static void G_LocateSpawnSpots( void ) {
+	gentity_t	*ent;
+	int			i, n;
+
+	level.spawnSpots[SPAWN_SPOT_INTERMISSION] = NULL;
+
+	// locate all spawn spots
+	n = 0;
+	ent = g_entities + MAX_CLIENTS;
+	for ( i = MAX_CLIENTS; i < MAX_GENTITIES; i++, ent++ ) {
+
+		if ( !ent->inuse || !ent->classname )
+			continue;
+
+		// intermission/ffa spots
+		if ( !Q_stricmpn( ent->classname, "info_player_", 12 ) ) {
+			if ( !Q_stricmp( ent->classname + 12, "intermission" ) ) {
+				if ( level.spawnSpots[SPAWN_SPOT_INTERMISSION] == NULL ) {
+					level.spawnSpots[SPAWN_SPOT_INTERMISSION] = ent;
+					ent->fteam = TEAM_FREE;
+				}
+				continue;
+			}
+			if ( !Q_stricmp( ent->classname + 12, "deathmatch" ) ) {
+				level.spawnSpots[n] = ent; n++;
+				level.numSpawnSpotsFFA++;
+				ent->fteam = TEAM_FREE;
+				ent->count = 1;
+				continue;
+			}
+			continue;
+		}
+
+		// team spawn spots
+		if ( !Q_stricmpn( ent->classname, "team_CTF_", 9 ) ) {
+			if ( !Q_stricmp( ent->classname + 9, "redspawn" ) ) {
+				level.spawnSpots[n] = ent; n++;
+				level.numSpawnSpotsTeam++;
+				ent->fteam = TEAM_RED;
+				ent->count = 1; // means its not initial spawn point
+				continue;
+			}
+			if ( !Q_stricmp( ent->classname + 9, "bluespawn" ) ) {
+				level.spawnSpots[n] = ent; n++;
+				level.numSpawnSpotsTeam++;
+				ent->fteam = TEAM_BLUE;
+				ent->count = 1;
+				continue;
+			}
+			// base spawn spots
+			if ( !Q_stricmp( ent->classname + 9, "redplayer" ) ) {
+				level.spawnSpots[n] = ent; n++;
+				level.numSpawnSpotsTeam++;
+				ent->fteam = TEAM_RED;
+				ent->count = 0;
+				continue;
+			}
+			if ( !Q_stricmp( ent->classname + 9, "blueplayer" ) ) {
+				level.spawnSpots[n] = ent; n++;
+				level.numSpawnSpotsTeam++;
+				ent->fteam = TEAM_BLUE;
+				ent->count = 0;
+				continue;
+			}
+		}
+	}
+	level.numSpawnSpots = n;
 }
 
 /*
@@ -503,6 +581,9 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	// parse the key/value pairs and spawn gentities
 	G_SpawnEntitiesFromString();
+
+	// locate spawn spots for g_teamDMSpawnThreshold
+	G_LocateSpawnSpots();
 
 	// general initialization
 	G_FindTeams();
@@ -1083,8 +1164,6 @@ or moved to a new level based on the "nextmap" cvar
 void ExitLevel (void) {
 	int		i;
 	gclient_t *cl;
-	char nextmap[MAX_STRING_CHARS];
-	char d1[MAX_STRING_CHARS];
 
 	//bot interbreeding
 	BotInterbreedEndMatch();

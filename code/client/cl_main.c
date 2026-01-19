@@ -3289,7 +3289,7 @@ CL_InitRef
 ============
 */
 void CL_InitRef( void ) {
-	refimport_t	ri;
+	refimport_t	refImport;
 	refexport_t	*ret;
 #ifdef USE_RENDERER_DLOPEN
 	GetRefAPI_t		GetRefAPI;
@@ -3325,100 +3325,100 @@ void CL_InitRef( void ) {
 	}
 #endif
 
-	ri.Cmd_AddCommand = Cmd_AddCommand;
-	ri.Cmd_RemoveCommand = Cmd_RemoveCommand;
-	ri.Cmd_Argc = Cmd_Argc;
-	ri.Cmd_Argv = Cmd_Argv;
-	ri.Cmd_ExecuteText = Cbuf_ExecuteText;
-	ri.Printf = CL_RefPrintf;
-	ri.Error = Com_Error;
-	ri.Milliseconds = CL_ScaledMilliseconds;
-	ri.Malloc = CL_RefMalloc;
-	ri.Free = Z_Free;
+	refImport.Cmd_AddCommand = Cmd_AddCommand;
+	refImport.Cmd_RemoveCommand = Cmd_RemoveCommand;
+	refImport.Cmd_Argc = Cmd_Argc;
+	refImport.Cmd_Argv = Cmd_Argv;
+	refImport.Cmd_ExecuteText = Cbuf_ExecuteText;
+	refImport.Printf = CL_RefPrintf;
+	refImport.Error = Com_Error;
+	refImport.Milliseconds = CL_ScaledMilliseconds;
+	refImport.Malloc = CL_RefMalloc;
+	refImport.Free = Z_Free;
 #ifdef HUNK_DEBUG
-	ri.Hunk_AllocDebug = Hunk_AllocDebug;
+	refImport.Hunk_AllocDebug = Hunk_AllocDebug;
 #else
-	ri.Hunk_Alloc = Hunk_Alloc;
+	refImport.Hunk_Alloc = Hunk_Alloc;
 #endif
-	ri.Hunk_AllocateTempMemory = Hunk_AllocateTempMemory;
-	ri.Hunk_FreeTempMemory = Hunk_FreeTempMemory;
+	refImport.Hunk_AllocateTempMemory = Hunk_AllocateTempMemory;
+	refImport.Hunk_FreeTempMemory = Hunk_FreeTempMemory;
 
-	ri.CM_ClusterPVS = CM_ClusterPVS;
-	ri.CM_DrawDebugSurface = CM_DrawDebugSurface;
+	refImport.CM_ClusterPVS = CM_ClusterPVS;
+	refImport.CM_DrawDebugSurface = CM_DrawDebugSurface;
 
-	ri.FS_ReadFile = FS_ReadFile;
-	ri.FS_FreeFile = FS_FreeFile;
-	ri.FS_WriteFile = FS_WriteFile;
-	ri.FS_FreeFileList = FS_FreeFileList;
-	ri.FS_ListFiles = FS_ListFiles;
-	ri.FS_FileIsInPAK = FS_FileIsInPAK;
-	ri.FS_FileExists = FS_FileExists;
-	ri.Cvar_Get = Cvar_Get;
-	ri.Cvar_Set = Cvar_Set;
-	ri.Cvar_SetValue = Cvar_SetValue;
-	ri.Cvar_CheckRange = Cvar_CheckRange;
-	ri.Cvar_SetDescription = Cvar_SetDescription;
-	ri.Cvar_VariableIntegerValue = Cvar_VariableIntegerValue;
-	ri.Cvar_VariableString = Cvar_VariableString;
-	ri.Cvar_VariableStringBuffer = Cvar_VariableStringBuffer;
-	ri.Cvar_SetGroup = Cvar_SetGroup;
-	ri.Cvar_CheckGroup = Cvar_CheckGroup;
-	ri.Cvar_ResetGroup = Cvar_ResetGroup;
+	refImport.FS_ReadFile = FS_ReadFile;
+	refImport.FS_FreeFile = FS_FreeFile;
+	refImport.FS_WriteFile = FS_WriteFile;
+	refImport.FS_FreeFileList = FS_FreeFileList;
+	refImport.FS_ListFiles = FS_ListFiles;
+	refImport.FS_FileIsInPAK = FS_FileIsInPAK;
+	refImport.FS_FileExists = FS_FileExists;
+	refImport.Cvar_Get = Cvar_Get;
+	refImport.Cvar_Set = Cvar_Set;
+	refImport.Cvar_SetValue = Cvar_SetValue;
+	refImport.Cvar_CheckRange = Cvar_CheckRange;
+	refImport.Cvar_SetDescription = Cvar_SetDescription;
+	refImport.Cvar_VariableIntegerValue = Cvar_VariableIntegerValue;
+	refImport.Cvar_VariableString = Cvar_VariableString;
+	refImport.Cvar_VariableStringBuffer = Cvar_VariableStringBuffer;
+	refImport.Cvar_SetGroup = Cvar_SetGroup;
+	refImport.Cvar_CheckGroup = Cvar_CheckGroup;
+	refImport.Cvar_ResetGroup = Cvar_ResetGroup;
 
 	// cinematic stuff
 
-	ri.CIN_UploadCinematic = CIN_UploadCinematic;
-	ri.CIN_PlayCinematic = CIN_PlayCinematic;
-	ri.CIN_RunCinematic = CIN_RunCinematic;
-  
-	ri.CL_WriteAVIVideoFrame = CL_WriteAVIVideoFrame;
+	refImport.CIN_UploadCinematic = CIN_UploadCinematic;
+	refImport.CIN_PlayCinematic = CIN_PlayCinematic;
+	refImport.CIN_RunCinematic = CIN_RunCinematic;
 
-	ri.IN_Init = IN_Init;
-	ri.IN_Shutdown = IN_Shutdown;
-	ri.IN_Restart = IN_Restart;
+	refImport.CL_WriteAVIVideoFrame = CL_WriteAVIVideoFrame;
 
-	ri.ftol = Q_ftol;
+	refImport.IN_Init = IN_Init;
+	refImport.IN_Shutdown = IN_Shutdown;
+	refImport.IN_Restart = IN_Restart;
 
-	ri.Sys_SetEnv = Sys_SetEnv;
-	ri.Sys_GLimpSafeInit = Sys_GLimpSafeInit;
-	ri.Sys_GLimpInit = Sys_GLimpInit;
-	ri.Sys_LowPhysicalMemory = Sys_LowPhysicalMemory;
+	refImport.ftol = Q_ftol;
 
-	ri.Com_RealTime = Com_RealTime;
+	refImport.Sys_SetEnv = Sys_SetEnv;
+	refImport.Sys_GLimpSafeInit = Sys_GLimpSafeInit;
+	refImport.Sys_GLimpInit = Sys_GLimpInit;
+	refImport.Sys_LowPhysicalMemory = Sys_LowPhysicalMemory;
+
+	refImport.Com_RealTime = Com_RealTime;
 
 	// memory cleanup (Quake3e pattern) - not used in Q3VR
-	ri.FreeAll = NULL;
+	refImport.FreeAll = NULL;
 
 	// OpenGL platform functions - using wrappers to match Quake3e signatures
-	ri.GLimp_Init = CL_GLimp_Init_Wrapper;
-	ri.GLimp_Shutdown = CL_GLimp_Shutdown_Wrapper;
-	ri.GLimp_EndFrame = GLimp_EndFrame;
-	ri.GLimp_InitGamma = GLimp_InitGamma;
-	ri.GLimp_SetGamma = GLimp_SetGamma;
-	ri.GL_GetProcAddress = CL_GL_GetProcAddress;
-	ri.GLimp_InitVR = GLimp_InitVR;
+	refImport.GLimp_Init = CL_GLimp_Init_Wrapper;
+	refImport.GLimp_Shutdown = CL_GLimp_Shutdown_Wrapper;
+	refImport.GLimp_EndFrame = GLimp_EndFrame;
+	refImport.GLimp_InitGamma = GLimp_InitGamma;
+	refImport.GLimp_SetGamma = GLimp_SetGamma;
+	refImport.GL_GetProcAddress = CL_GL_GetProcAddress;
+	refImport.GLimp_InitVR = GLimp_InitVR;
 
 	// Vulkan platform functions
 #ifdef USE_VULKAN
-	ri.VKimp_Init = VKimp_Init;
-	ri.VKimp_Shutdown = VKimp_Shutdown;
-	ri.VK_GetInstanceProcAddr = vkGetInstanceProcAddr;
-	ri.VK_CreateSurface = VK_CreateSurface;
+	refImport.VKimp_Init = VKimp_Init;
+	refImport.VKimp_Shutdown = VKimp_Shutdown;
+	refImport.VK_GetInstanceProcAddr = (void*(*)(void*, const char*))vkGetInstanceProcAddr;
+	refImport.VK_CreateSurface = VK_CreateSurface;
 #else
-	ri.VKimp_Init = NULL;
-	ri.VKimp_Shutdown = NULL;
-	ri.VK_GetInstanceProcAddr = NULL;
-	ri.VK_CreateSurface = NULL;
+	refImport.VKimp_Init = NULL;
+	refImport.VKimp_Shutdown = NULL;
+	refImport.VK_GetInstanceProcAddr = NULL;
+	refImport.VK_CreateSurface = NULL;
 #endif
 
 	// VR Vulkan accessors - renderer pulls XR-created resources during init
-	ri.VR_Vulkan_GetDeviceInfo = VR_Vulkan_GetDeviceInfo;
-	ri.VR_Vulkan_GetSwapchainInfo = VR_Vulkan_GetSwapchainInfo;
+	refImport.VR_Vulkan_GetDeviceInfo = VR_Vulkan_GetDeviceInfo;
+	refImport.VR_Vulkan_GetSwapchainInfo = VR_Vulkan_GetSwapchainInfo;
 
 	// Virtual screen state query - renderer pulls virtual screen MVP matrices
-	ri.VR_GetVirtualScreenState = VR_GetVirtualScreenMVP;
+	refImport.VR_GetVirtualScreenState = VR_GetVirtualScreenMVP;
 
-	ret = GetRefAPI( REF_API_VERSION, &ri );
+	ret = GetRefAPI( REF_API_VERSION, &refImport );
 
 #if defined __USEA3D && defined __A3D_GEOM
 	hA3Dg_ExportRenderGeom (ret);

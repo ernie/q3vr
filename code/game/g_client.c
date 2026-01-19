@@ -1077,11 +1077,15 @@ void ClientSpawn(gentity_t *ent) {
 	if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
 		spawnPoint = SelectSpectatorSpawnPoint ( 
 						spawn_origin, spawn_angles);
-	} else if (g_gametype.integer >= GT_CTF ) {
+	} else if ( g_gametype.integer >= GT_CTF ||
+				( g_gametype.integer == GT_TEAM &&
+				  level.numSpawnSpotsFFA < g_teamDMSpawnThreshold.integer &&
+				  level.numSpawnSpotsTeam > 0 ) ) {
 		// all base oriented team games use the CTF spawn points
-		spawnPoint = SelectCTFSpawnPoint ( 
-						client->sess.sessionTeam, 
-						client->pers.teamState.state, 
+		// GT_TEAM also uses them when FFA spawns are below threshold
+		spawnPoint = SelectCTFSpawnPoint (
+						client->sess.sessionTeam,
+						client->pers.teamState.state,
 						spawn_origin, spawn_angles,
 						!!(ent->r.svFlags & SVF_BOT));
 	}

@@ -170,9 +170,9 @@ void CG_DrawInformation( void ) {
 	// Use 4:3 constrained area in virtual screen mode to avoid drawing outside the viewable area
 	detail = trap_R_RegisterShader( "levelShotDetail" );
 	{
-		float x = 0, y = 0, w = SCREEN_WIDTH, h = SCREEN_HEIGHT;
-		CG_AdjustFrom640( &x, &y, &w, &h );
-		trap_R_DrawStretchPic( x, y, w, h, 0, 0, 2.5, 2, detail );
+		float detailX = 0, detailY = 0, detailW = SCREEN_WIDTH, detailH = SCREEN_HEIGHT;
+		CG_AdjustFrom640( &detailX, &detailY, &detailW, &detailH );
+		trap_R_DrawStretchPic( detailX, detailY, detailW, detailH, 0, 0, 2.5, 2, detail );
 	}
 
 	// draw the icons of things as they are loaded

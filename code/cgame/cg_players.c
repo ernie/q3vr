@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../vrcommon/vr_clientinfo.h"
 
 #define PM_SKIN "pm"
+#define FB_SKIN "fb"
 
 extern vr_clientinfo_t* vr;
 extern vmCvar_t	cg_firstPersonBodyScale;
@@ -479,7 +480,10 @@ static qboolean	CG_FindClientModelFile( char *filename, int length, clientInfo_t
 	if ( ci->coloredSkin && !Q_stricmp( skinName, PM_SKIN ) ) {
 		team = PM_SKIN;
 	}
-	
+	if ( ci->coloredSkin && !Q_stricmp( skinName, FB_SKIN ) ) {
+		team = FB_SKIN;
+	}
+
 	charactersFolder = "";
 	while(1) {
 		for ( i = 0; i < 2; i++ ) {
@@ -559,6 +563,9 @@ static qboolean	CG_FindClientHeadFile( char *filename, int length, clientInfo_t 
 	// colored skins
 	if ( ci->coloredSkin && !Q_stricmp( ci->headSkinName, PM_SKIN ) ) {
 		team = PM_SKIN;
+	}
+	if ( ci->coloredSkin && !Q_stricmp( ci->headSkinName, FB_SKIN ) ) {
+		team = FB_SKIN;
 	}
 
 	if ( headModelName[0] == '*' ) {
@@ -1017,11 +1024,13 @@ static void CG_SetSkinAndModel( clientInfo_t *newInfo,
 	char newSkin[ MAX_QPATH * 2 ];
 	char *skin, *slash;
 	qboolean	pm_model;
+	qboolean	fb_model;
 	team_t		team;
 	const char	*colors;
 
 	team = newInfo->team;
 	pm_model = ( Q_stricmp( cg_enemyModel.string, PM_SKIN ) == 0 ) ? qtrue : qfalse;
+	fb_model = ( Q_stricmp( cg_enemyModel.string, FB_SKIN ) == 0 ) ? qtrue : qfalse;
 
 	if ( cg_forceModel.integer || cg_enemyModel.string[0] || cg_teamModel.string[0] )
 	{
@@ -1029,18 +1038,29 @@ static void CG_SetSkinAndModel( clientInfo_t *newInfo,
 		{
 			// enemy model
 			if ( cg_enemyModel.string[0] && team != myTeam && team != TEAM_SPECTATOR ) {
-				if ( pm_model )
+				if ( pm_model || fb_model ) {
 					Q_strncpyz( modelName, infomodel, modelNameSize );
-				else
+					skin = strchr( modelName, '/' );
+					// force skin
+					if ( pm_model )
+						strcpy( newSkin, PM_SKIN );
+					else
+						strcpy( newSkin, FB_SKIN );
+					if ( skin )
+						*skin = '\0';
+				}
+				else {
 					Q_strncpyz( modelName, cg_enemyModel.string, modelNameSize );
+					skin = strchr( modelName, '/' );
+					if ( !skin ) {
+						Q_strncpyz( newSkin, PM_SKIN, sizeof( newSkin ) );
+					} else {
+						Q_strncpyz( newSkin, skin + 1, sizeof( newSkin ) );
+						*skin = '\0';
+					}
+				}
 
-				skin = strchr( modelName, '/' );
-				// force skin
-				strcpy( newSkin, PM_SKIN );
-				if ( skin )
-					*skin = '\0';
-
-				if ( pm_model && !CG_IsKnownModel( modelName ) ) {
+				if ( ( pm_model || fb_model ) && !CG_IsKnownModel( modelName ) ) {
 					// revert to default model if specified skin is not known
 					Q_strncpyz( modelName, "sarge", modelNameSize );
 				}
@@ -1059,19 +1079,30 @@ static void CG_SetSkinAndModel( clientInfo_t *newInfo,
 			} else if ( cg_teamModel.string[0] && team == myTeam && team != TEAM_SPECTATOR && clientNum != myClientNum ) {
 				// teammodel
 				pm_model = ( Q_stricmp( cg_teamModel.string, PM_SKIN ) == 0 ) ? qtrue : qfalse;
+				fb_model = ( Q_stricmp( cg_teamModel.string, FB_SKIN ) == 0 ) ? qtrue : qfalse;
 
-				if ( pm_model )
+				if ( pm_model || fb_model ) {
 					Q_strncpyz( modelName, infomodel, modelNameSize );
-				else
+					skin = strchr( modelName, '/' );
+					// force skin
+					if ( pm_model )
+						strcpy( newSkin, PM_SKIN );
+					else
+						strcpy( newSkin, FB_SKIN );
+					if ( skin )
+						*skin = '\0';
+				} else {
 					Q_strncpyz( modelName, cg_teamModel.string, modelNameSize );
+					skin = strchr( modelName, '/' );
+					if ( !skin ) {
+						Q_strncpyz( newSkin, PM_SKIN, sizeof( newSkin ) );
+					} else {
+						Q_strncpyz( newSkin, skin + 1, sizeof( newSkin ) );
+						*skin = '\0';
+					}
+				}
 
-				skin = strchr( modelName, '/' );
-				// force skin
-				strcpy( newSkin, PM_SKIN );
-				if ( skin )
-					*skin = '\0';
-
-				if ( pm_model && !CG_IsKnownModel( modelName ) ) {
+				if ( ( pm_model || fb_model ) && !CG_IsKnownModel( modelName ) ) {
 					// revert to default model if specified skin is not known
 					Q_strncpyz( modelName, "sarge", modelNameSize );
 				}
@@ -1114,17 +1145,18 @@ static void CG_SetSkinAndModel( clientInfo_t *newInfo,
 			}
 		} else { // not team game
 
-			if ( pm_model && myClientNum != clientNum && cgs.gametype != GT_SINGLE_PLAYER ) {
+			if ( ( pm_model || fb_model ) && myClientNum != clientNum && cgs.gametype != GT_SINGLE_PLAYER ) {
 				Q_strncpyz( modelName, infomodel, modelNameSize );
 
 				// strip skin name from model name
 				slash = strchr( modelName, '/' );
-				if ( !slash ) {
+				if ( pm_model ) {
 					Q_strncpyz( skinName, PM_SKIN, skinNameSize );
 				} else {
-					Q_strncpyz( skinName, PM_SKIN, skinNameSize );
-					*slash = '\0';
+					Q_strncpyz( skinName, FB_SKIN, skinNameSize );
 				}
+				if ( slash )
+					*slash = '\0';
 
 				if ( !CG_IsKnownModel( modelName ) )
 					Q_strncpyz( modelName, "sarge", modelNameSize );
@@ -2704,10 +2736,10 @@ void CG_Player( centity_t *cent ) {
 	// get the rotation information
 	if (firstPersonBody)
 	{
-		vec3_t angles;
-		VectorClear(angles);
-		angles[YAW] = cg.refdefViewAngles[YAW] + vr->hmdorientation[YAW] - vr->weaponangles[YAW];
-		AnglesToAxis(angles, legs.axis);
+		vec3_t bodyAngles;
+		VectorClear(bodyAngles);
+		bodyAngles[YAW] = cg.refdefViewAngles[YAW] + vr->hmdorientation[YAW] - vr->weaponangles[YAW];
+		AnglesToAxis(bodyAngles, legs.axis);
 		VectorScale( legs.axis[0], cg_firstPersonBodyScale.value, legs.axis[0] );
 		VectorScale( legs.axis[1], cg_firstPersonBodyScale.value, legs.axis[1] );
 		VectorScale( legs.axis[2], cg_firstPersonBodyScale.value, legs.axis[2] );

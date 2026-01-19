@@ -121,6 +121,7 @@ struct gentity_s {
 	char		*target;
 	char		*targetname;
 	char		*team;
+	team_t		fteam;			// team for spawn spot
 	char		*targetShaderName;
 	char		*targetShaderNewName;
 	gentity_t	*target_ent;
@@ -360,6 +361,9 @@ struct gclient_s {
 #define	MAX_SPAWN_VARS			64
 #define	MAX_SPAWN_VARS_CHARS	4096
 
+#define NUM_SPAWN_SPOTS MAX_GENTITIES
+#define SPAWN_SPOT_INTERMISSION NUM_SPAWN_SPOTS-1
+
 typedef struct {
 	struct gclient_s	*clients;		// [maxclients]
 
@@ -445,6 +449,12 @@ typedef struct {
 
 	// unlagged
 	int			frameStartTime;
+
+	// spawn spots
+	gentity_t	*spawnSpots[NUM_SPAWN_SPOTS];
+	int			numSpawnSpots;
+	int			numSpawnSpotsTeam;
+	int			numSpawnSpotsFFA;
 } level_locals_t;
 
 
@@ -790,6 +800,7 @@ extern	vmCvar_t	g_blood;
 extern	vmCvar_t	g_allowVote;
 extern	vmCvar_t	g_autoJoin;
 extern	vmCvar_t	g_teamForceBalance;
+extern	vmCvar_t	g_teamDMSpawnThreshold;
 extern	vmCvar_t	g_banIPs;
 extern	vmCvar_t	g_filterBan;
 extern	vmCvar_t	g_obeliskHealth;

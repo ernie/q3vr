@@ -158,13 +158,13 @@ add_custom_command(TARGET ${CLIENT_BINARY} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
     "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3"
     "$<TARGET_FILE_DIR:${CLIENT_BINARY}>/missionpack/"
-    # Copy baseq3a pak
+    # Copy Trinity pak (baseq3)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/assets/third_party/baseq3a/pak8a.pk3"
+    "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak8t.pk3"
     "$<TARGET_FILE_DIR:${CLIENT_BINARY}>/baseq3/"
-    # Copy missionpackplus pak
+    # Copy Trinity pak (missionpack)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/assets/third_party/missionpackplus/pak3a.pk3"
+    "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak3t.pk3"
     "$<TARGET_FILE_DIR:${CLIENT_BINARY}>/missionpack/"
     # Copy point release files
 		COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -186,12 +186,12 @@ install(FILES "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3" DESTINATION
 install(FILES "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3" DESTINATION
     $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${CLIENT_BINARY}>/missionpack/,${CMAKE_BINARY_DIR}/$<CONFIG>>
 		COMPONENT game_engine)
-install(FILES "${CMAKE_SOURCE_DIR}/assets/third_party/baseq3a/pak8a.pk3" DESTINATION
+install(FILES "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak8t.pk3" DESTINATION
     $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${CLIENT_BINARY}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-		COMPONENT baseq3a_mod)
-install(FILES "${CMAKE_SOURCE_DIR}/assets/third_party/missionpackplus/pak3a.pk3" DESTINATION
+		COMPONENT trinity_mod)
+install(FILES "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak3t.pk3" DESTINATION
     $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${CLIENT_BINARY}>/missionpack/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-		COMPONENT missionpackplus_mod)
+		COMPONENT trinity_mod)
 install(
     DIRECTORY "${CMAKE_SOURCE_DIR}/assets/third_party/point_release_v1.32/" DESTINATION
 		$<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${CLIENT_BINARY}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
