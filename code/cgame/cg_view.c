@@ -847,8 +847,6 @@ static void CG_DamageBlendBlob( void ) {
 CG_DamageBorderVignette
 
 Modern damage indicator using red-tinted borders.
-Uses 8-piece geometry (4 corners + 4 edges) with UV slicing for smooth gradients.
-Accounts for VR stereo FOV coverage and vertical asymmetry.
 ===============
 */
 void CG_DamageBorderVignette( void ) {
