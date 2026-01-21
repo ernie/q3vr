@@ -41,9 +41,108 @@ static char		*g_arenaInfos[MAX_ARENAS];
 typedef struct {
 	int		clientNum;
 	int		spawnTime;
+	char	botName[MAX_NETNAME];
 } botSpawnQueue_t;
 
 static botSpawnQueue_t	botSpawnQueue[BOT_SPAWN_QUEUE_DEPTH];
+
+// Track bots that have been selected for addition but whose addbot commands
+// haven't executed yet. This prevents duplicates when G_AddRandomBot is called
+// multiple times in the same frame.
+#define PENDING_BOT_TIMEOUT		1000	// Clear pending entries after 1 second
+#define MAX_PENDING_BOTS		16
+
+typedef struct {
+	char	name[MAX_NETNAME];
+	int		addTime;
+} pendingBot_t;
+
+static pendingBot_t	pendingBots[MAX_PENDING_BOTS];
+
+/*
+===============
+G_IsBotNameQueued
+
+Check if a bot name is already in the spawn queue
+===============
+*/
+static qboolean G_IsBotNameQueued( const char *name ) {
+	int n;
+
+	for ( n = 0; n < BOT_SPAWN_QUEUE_DEPTH; n++ ) {
+		if ( !botSpawnQueue[n].spawnTime ) {
+			continue;
+		}
+		if ( !Q_stricmp( name, botSpawnQueue[n].botName ) ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+/*
+===============
+G_IsBotPending
+
+Check if a bot name is pending addition (addbot command queued but not yet executed)
+===============
+*/
+static qboolean G_IsBotPending( const char *name ) {
+	int n;
+
+	for ( n = 0; n < MAX_PENDING_BOTS; n++ ) {
+		if ( !pendingBots[n].addTime ) {
+			continue;
+		}
+		// Clear expired entries
+		if ( level.time - pendingBots[n].addTime > PENDING_BOT_TIMEOUT ) {
+			pendingBots[n].addTime = 0;
+			continue;
+		}
+		if ( !Q_stricmp( name, pendingBots[n].name ) ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+/*
+===============
+G_MarkBotPending
+
+Mark a bot as pending addition
+===============
+*/
+static void G_MarkBotPending( const char *name ) {
+	int n;
+
+	// Find an empty slot
+	for ( n = 0; n < MAX_PENDING_BOTS; n++ ) {
+		if ( !pendingBots[n].addTime || level.time - pendingBots[n].addTime > PENDING_BOT_TIMEOUT ) {
+			Q_strncpyz( pendingBots[n].name, name, sizeof(pendingBots[n].name) );
+			pendingBots[n].addTime = level.time;
+			return;
+		}
+	}
+}
+
+/*
+===============
+G_ClearBotPending
+
+Remove a bot from the pending list (called when bot actually joins)
+===============
+*/
+static void G_ClearBotPending( const char *name ) {
+	int n;
+
+	for ( n = 0; n < MAX_PENDING_BOTS; n++ ) {
+		if ( pendingBots[n].addTime && !Q_stricmp( name, pendingBots[n].name ) ) {
+			pendingBots[n].addTime = 0;
+			return;
+		}
+	}
+}
 
 vmCvar_t bot_minplayers;
 
@@ -313,18 +412,102 @@ int G_SelectRandomBotInfo( int team ) {
 
 /*
 ===============
+G_IsBotInUse
+
+Check if a bot is pending, in the spawn queue, or already connected/connecting
+===============
+*/
+static qboolean G_IsBotInUse( const char *name ) {
+	int i;
+	gclient_t *cl;
+
+	// Check pending bots (addbot command queued but not yet executed)
+	if ( G_IsBotPending( name ) ) {
+		return qtrue;
+	}
+
+	// Check spawn queue
+	if ( G_IsBotNameQueued( name ) ) {
+		return qtrue;
+	}
+
+	// Check connected/connecting clients
+	for ( i = 0; i < level.maxclients; i++ ) {
+		cl = level.clients + i;
+		if ( cl->pers.connected == CON_DISCONNECTED ) {
+			continue;
+		}
+		if ( !(g_entities[i].r.svFlags & SVF_BOT) ) {
+			continue;
+		}
+		if ( !Q_stricmp( name, cl->pers.netname ) ) {
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+
+/*
+===============
 G_AddRandomBot
 ===============
 */
-void G_AddRandomBot( int team ) {
-	char	*teamstr;
+void G_AddRandomBot( team_t team ) {
+	int		n, num, selection;
 	float	skill;
+	char	*value, netname[36], *teamstr, *skillstr;
+	int		available[MAX_BOTS];
 
-	skill = trap_Cvar_VariableValue( "g_spSkill" );
-	if (team == TEAM_RED) teamstr = "red";
-	else if (team == TEAM_BLUE) teamstr = "blue";
-	else teamstr = "free";
-	trap_SendConsoleCommand( EXEC_INSERT, va("addbot random %f %s %i\n", skill, teamstr, 0) );
+	// First pass: collect indices of bots not currently in use
+	num = 0;
+	for ( n = 0; n < g_numBots; n++ ) {
+		value = Info_ValueForKey( g_botInfos[n], "name" );
+		if ( !G_IsBotInUse( value ) ) {
+			available[num++] = n;
+		}
+	}
+
+	// Fallback: if no unique bots available, use all bots
+	if ( num == 0 ) {
+		for ( n = 0; n < g_numBots; n++ ) {
+			available[num++] = n;
+		}
+	}
+
+	// No bots loaded at all
+	if ( num == 0 ) {
+		return;
+	}
+
+	// Pick a random bot from available list
+	selection = available[(int)(random() * num)];
+
+	// Get bot info and add it
+	value = Info_ValueForKey( g_botInfos[selection], "name" );
+	skillstr = Info_ValueForKey( g_botInfos[selection], "skill" );
+	if ( *skillstr ) {
+		skill = atof( skillstr );
+	} else {
+		skill = trap_Cvar_VariableValue( "g_spSkill" );
+	}
+
+	if ( team == TEAM_RED ) {
+		teamstr = "red";
+	} else if ( team == TEAM_BLUE ) {
+		teamstr = "blue";
+	} else {
+		teamstr = "";
+	}
+
+	Q_strncpyz( netname, value, sizeof(netname) );
+	Q_CleanStr( netname );
+
+	// Mark this bot as pending so subsequent calls to G_AddRandomBot
+	// in the same frame won't select the same bot
+	G_MarkBotPending( value );
+
+	trap_SendConsoleCommand( EXEC_INSERT, va( "addbot %s %1.2f %s 0\n", netname, skill, teamstr ) );
 }
 
 /*
@@ -516,18 +699,22 @@ void G_CheckBotSpawn( void ) {
 AddBotToSpawnQueue
 ===============
 */
-static void AddBotToSpawnQueue( int clientNum, int delay ) {
+static void AddBotToSpawnQueue( int clientNum, int delay, const char *botName ) {
 	int		n;
 
 	for( n = 0; n < BOT_SPAWN_QUEUE_DEPTH; n++ ) {
 		if( !botSpawnQueue[n].spawnTime ) {
 			botSpawnQueue[n].spawnTime = level.time + delay;
 			botSpawnQueue[n].clientNum = clientNum;
+			Q_strncpyz( botSpawnQueue[n].botName, botName, sizeof(botSpawnQueue[n].botName) );
+			G_ClearBotPending( botName );
 			return;
 		}
 	}
 
-	G_Printf( S_COLOR_YELLOW "Unable to delay spawn\n" );
+	G_Printf( S_COLOR_YELLOW "Unable to delay bot spawn\n" );
+
+	G_ClearBotPending( botName );
 	ClientBegin( clientNum );
 }
 
@@ -735,12 +922,13 @@ static void G_AddBot( const char *name, float skill, const char *team, int delay
 		return;
 	}
 
-	if( delay == 0 ) {
+	if ( delay == 0 ) {
+		G_ClearBotPending( name );
 		ClientBegin( clientNum );
 		return;
 	}
 
-	AddBotToSpawnQueue( clientNum, delay );
+	AddBotToSpawnQueue( clientNum, delay, name );
 }
 
 
@@ -931,6 +1119,7 @@ G_LoadBots
 */
 static void G_LoadBots( void ) {
 	vmCvar_t	botsFile;
+	vmCvar_t	skipBotFiles;
 	int			numdirs;
 	char		filename[128];
 	char		dirlist[1024];
@@ -945,6 +1134,8 @@ static void G_LoadBots( void ) {
 	g_numBots = 0;
 
 	trap_Cvar_Register( &botsFile, "g_botsFile", "", CVAR_INIT|CVAR_ROM );
+	trap_Cvar_Register( &skipBotFiles, "g_skipBotFiles", "0", CVAR_ARCHIVE|CVAR_LATCH );
+
 	if( *botsFile.string ) {
 		G_LoadBotsFromFile(botsFile.string);
 	}
@@ -952,14 +1143,16 @@ static void G_LoadBots( void ) {
 		G_LoadBotsFromFile("scripts/bots.txt");
 	}
 
-	// get all bots from .bot files
-	numdirs = trap_FS_GetFileList("scripts", ".bot", dirlist, 1024 );
-	dirptr  = dirlist;
-	for (i = 0; i < numdirs; i++, dirptr += dirlen+1) {
-		dirlen = strlen(dirptr);
-		strcpy(filename, "scripts/");
-		strcat(filename, dirptr);
-		G_LoadBotsFromFile(filename);
+	// get all bots from .bot files (unless g_skipBotFiles is set)
+	if ( !skipBotFiles.integer ) {
+		numdirs = trap_FS_GetFileList("scripts", ".bot", dirlist, 1024 );
+		dirptr  = dirlist;
+		for (i = 0; i < numdirs; i++, dirptr += dirlen+1) {
+			dirlen = strlen(dirptr);
+			strcpy(filename, "scripts/");
+			strcat(filename, dirptr);
+			G_LoadBotsFromFile(filename);
+		}
 	}
 	trap_Print( va( "%i bots parsed\n", g_numBots ) );
 }
