@@ -1476,6 +1476,9 @@ R_Register
 */
 static void R_Register( void )
 {
+	// Renderer identification for cgame runtime checks
+	ri.Cvar_Get("r_opengl", "0", CVAR_ROM);
+
 	// make sure all the commands added here are also removed in R_Shutdown
 	ri.Cmd_AddCommand( "imagelist", R_ImageList_f );
 	ri.Cmd_AddCommand( "shaderlist", R_ShaderList_f );

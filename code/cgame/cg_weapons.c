@@ -2105,9 +2105,11 @@ void CG_DrawWeaponSelector( void )
 		VectorCopy(vr->hmdorientation, cg.weaponSelectorAngles);
 		VectorCopy(vr->hmdposition, cg.weaponSelectorOrigin);
 		VectorClear(cg.weaponSelectorOffset);
-		dist = (trap_Cvar_VariableValue("vr_currentHudDepth")+3) * 3;
+		// Distance formula: depth 0-5 maps to 9-54 units (matches HUD distance)
+		dist = (trap_Cvar_VariableValue("vr_currentHudDepth") + 1) * 9;
 		radius = dist / 3.0f;
-		scale = 0.04f + 0.01f * (trap_Cvar_VariableValue("vr_currentHudDepth")+1);
+		// Scale formula: depth 0-5 maps to 0.05-0.20 (preserves old range)
+		scale = 0.05f + 0.03f * trap_Cvar_VariableValue("vr_currentHudDepth");
 	}
 
 	float frac = (cg.time - cg.weaponSelectorTime) / 100.0f;

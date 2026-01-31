@@ -40,6 +40,8 @@ int enemyColorsModificationCount = -1;
 int teamModelModificationCount = -1;
 int teamColorsModificationCount = -1;
 
+qboolean cg_usingOpenGL = qfalse;
+
 void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum );
 void CG_Shutdown( void );
 
@@ -2017,6 +2019,13 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 
 	cgs.processedSnapshotNum = serverMessageNum;
 	cgs.serverCommandSequence = serverCommandSequence;
+
+	// Check which renderer is active (for OpenGL-specific workarounds)
+	{
+		char buffer[8];
+		trap_Cvar_VariableStringBuffer("r_opengl", buffer, sizeof(buffer));
+		cg_usingOpenGL = (atoi(buffer) != 0);
+	}
 
 	// load a few needed things before we do any screen updates
 	cgs.media.charsetShader		= trap_R_RegisterShader( "gfx/2d/bigchars" );

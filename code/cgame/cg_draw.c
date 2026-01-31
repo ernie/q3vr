@@ -3233,12 +3233,7 @@ static void CG_DrawScreen2D(void)
     }
 }
 
-#ifndef USE_VULKAN
-// HACK HACK HACK
-//
-// Render an empty scene - seems to sort the weird out-of-body thing
-// when the HUD isn't being drawn. Need to get to the bottom of this
-// it shouldn't cost frames, but it is ugly
+// OpenGL workaround: Render an empty scene to fix out-of-body issue when HUD isn't drawn
 static void CG_EmptySceneHackHackHack( void )
 {
 	refdef_t refdef;
@@ -3260,7 +3255,6 @@ static void CG_EmptySceneHackHackHack( void )
 	trap_R_ClearScene();
 	trap_R_RenderScene( &refdef );
 }
-#endif
 
 static void CG_CalculatePing( void ) {
 	int count, i, v;
@@ -3563,7 +3557,8 @@ void CG_DrawActive( void ) {
 		qboolean worldOrientedSprite = qfalse;
 
 		float scale = trap_Cvar_VariableValue("vr_worldscaleScaler");
-		float dist = (trap_Cvar_VariableValue("vr_currentHudDepth")+3) * 3 * scale;
+		// Distance formula: depth 0-5 maps to 9-54 units (before worldscale)
+		float dist = (trap_Cvar_VariableValue("vr_currentHudDepth") + 1) * 9 * scale;
 		float radius = (dist / 3.0f) * trap_Cvar_VariableValue("vr_hudScale");
 
 		if (isSPIntermission)
@@ -3713,7 +3708,7 @@ void CG_DrawActive( void ) {
 		}
 	}
 
-#ifndef USE_VULKAN
-	CG_EmptySceneHackHackHack();
-#endif
+	if (cg_usingOpenGL) {
+		CG_EmptySceneHackHackHack();
+	}
 }

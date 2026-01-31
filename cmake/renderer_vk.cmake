@@ -37,14 +37,8 @@ set(RENDERER_VK_SOURCES
 )
 
 # VR sources for Vulkan renderer
-# Uses vrcommon (shared) + vrvk (Vulkan-specific) instead of vrgl2 (OpenGL-specific)
+# VR_SOURCES_VK is defined in vr.cmake (vrcommon + vrvk)
 include(vr)
-
-# Override VR_SOURCES to use Vulkan-specific files instead of OpenGL
-set(VR_SOURCES_VK
-    ${VR_COMMON_SOURCES}
-    ${VR_VK_SOURCES}
-)
 
 set(RENDERER_VK_BASENAME renderer_vulkan)
 set(RENDERER_VK_BINARY ${RENDERER_VK_BASENAME})
@@ -55,7 +49,6 @@ find_package(Vulkan REQUIRED)
 list(APPEND RENDERER_VK_BINARY_SOURCES
     ${RENDERER_COMMON_SOURCES}
     ${RENDERER_VK_SOURCES}
-    ${VR_SOURCES_VK}
     ${SDL_RENDERER_SOURCES}
     ${RENDERER_LIBRARY_SOURCES})
 

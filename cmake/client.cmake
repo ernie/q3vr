@@ -44,18 +44,18 @@ set(CLIENT_SOURCES
 
 add_git_dependency(${SOURCE_DIR}/client/cl_console.c)
 
-set(CLIENT_BINARY ${CLIENT_NAME})
-
+# CLIENT_DEFINITIONS is populated by library cmake files (opus.cmake, etc.)
+# Add our core definitions here
 list(APPEND CLIENT_DEFINITIONS Q3VR_VERSION_MAJOR=${PROJECT_VERSION_MAJOR})
 if (PROJECT_VERSION_MINOR STREQUAL "")
     list(APPEND CLIENT_DEFINITIONS Q3VR_VERSION_MINOR=0)
 else()
-		list(APPEND CLIENT_DEFINITIONS Q3VR_VERSION_MINOR=${PROJECT_VERSION_MINOR})
+    list(APPEND CLIENT_DEFINITIONS Q3VR_VERSION_MINOR=${PROJECT_VERSION_MINOR})
 endif()
 if (PROJECT_VERSION_PATCH STREQUAL "")
     list(APPEND CLIENT_DEFINITIONS Q3VR_VERSION_PATCH=0)
 else()
-		list(APPEND CLIENT_DEFINITIONS Q3VR_VERSION_PATCH=${PROJECT_VERSION_PATCH})
+    list(APPEND CLIENT_DEFINITIONS Q3VR_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 endif()
 
 list(APPEND CLIENT_DEFINITIONS BOTLIB)
@@ -85,7 +85,7 @@ if(USE_DEBUG_STACKTRACE)
     list(APPEND CLIENT_DEFINITIONS USE_DEBUG_STACKTRACE)
 endif()
 
-list(APPEND CLIENT_BINARY_SOURCES
+set(CLIENT_BINARY_SOURCES_COMMON
     ${SERVER_SOURCES}
     ${CLIENT_SOURCES}
     ${COMMON_SOURCES}
@@ -93,110 +93,127 @@ list(APPEND CLIENT_BINARY_SOURCES
     ${SYSTEM_SOURCES}
     ${ASM_SOURCES}
     ${CLIENT_ASM_SOURCES}
-    ${VR_SOURCES}
     ${CLIENT_LIBRARY_SOURCES})
 
-add_executable(${CLIENT_BINARY} ${CLIENT_EXECUTABLE_OPTIONS} ${CLIENT_BINARY_SOURCES})
+# Function to create a client executable with a specific renderer
+function(add_client_executable TARGET_NAME RENDERER_TYPE VR_SOURCES_LIST)
+    add_executable(${TARGET_NAME} ${CLIENT_EXECUTABLE_OPTIONS}
+        ${CLIENT_BINARY_SOURCES_COMMON}
+        ${VR_SOURCES_LIST})
 
-target_include_directories(     ${CLIENT_BINARY} PRIVATE ${CLIENT_INCLUDE_DIRS})
-target_compile_definitions(     ${CLIENT_BINARY} PRIVATE ${CLIENT_DEFINITIONS})
-target_compile_options(         ${CLIENT_BINARY} PRIVATE ${CLIENT_COMPILE_OPTIONS})
-target_link_libraries(          ${CLIENT_BINARY} PRIVATE ${COMMON_LIBRARIES} ${CLIENT_LIBRARIES} ${VR_LIBRARIES})
-target_link_options(            ${CLIENT_BINARY} PRIVATE ${CLIENT_LINK_OPTIONS})
+    target_include_directories(${TARGET_NAME} PRIVATE ${CLIENT_INCLUDE_DIRS})
+    target_compile_definitions(${TARGET_NAME} PRIVATE ${CLIENT_DEFINITIONS})
+    target_compile_options(${TARGET_NAME} PRIVATE ${CLIENT_COMPILE_OPTIONS})
+    target_link_libraries(${TARGET_NAME} PRIVATE ${COMMON_LIBRARIES} ${CLIENT_LIBRARIES} ${VR_LIBRARIES})
+    target_link_options(${TARGET_NAME} PRIVATE ${CLIENT_LINK_OPTIONS})
 
-set_output_dirs(${CLIENT_BINARY})
+    set_output_dirs(${TARGET_NAME})
 
-if(NOT USE_RENDERER_DLOPEN)
-    target_sources(${CLIENT_BINARY} PRIVATE
-        # These are never simultaneously populated (only one renderer can be enabled)
-        ${RENDERER_GL1_BINARY_SOURCES}
-        ${RENDERER_GL2_BINARY_SOURCES}
-        ${RENDERER_VK_BINARY_SOURCES})
+    if(NOT USE_RENDERER_DLOPEN)
+        if(RENDERER_TYPE STREQUAL "VK")
+            target_sources(${TARGET_NAME} PRIVATE ${RENDERER_VK_BINARY_SOURCES})
+            target_include_directories(${TARGET_NAME} PRIVATE ${RENDERER_INCLUDE_DIRS} ${VR_VK_INCLUDE_DIRS})
+            target_compile_definitions(${TARGET_NAME} PRIVATE ${RENDERER_DEFINITIONS} ${RENDERER_VK_DEFINITIONS})
+            target_compile_options(${TARGET_NAME} PRIVATE ${RENDERER_COMPILE_OPTIONS})
+            target_link_libraries(${TARGET_NAME} PRIVATE ${RENDERER_LIBRARIES} ${RENDERER_VK_LIBRARIES})
+            add_dependencies(${TARGET_NAME} compile_shaders)
+        elseif(RENDERER_TYPE STREQUAL "GL2")
+            target_sources(${TARGET_NAME} PRIVATE ${RENDERER_GL2_BINARY_SOURCES})
+            target_include_directories(${TARGET_NAME} PRIVATE ${RENDERER_INCLUDE_DIRS} ${VR_INCLUDE_DIRS})
+            target_compile_definitions(${TARGET_NAME} PRIVATE ${RENDERER_DEFINITIONS})
+            target_compile_options(${TARGET_NAME} PRIVATE ${RENDERER_COMPILE_OPTIONS})
+            target_link_libraries(${TARGET_NAME} PRIVATE ${RENDERER_LIBRARIES})
+        endif()
+    endif()
 
-    target_include_directories( ${CLIENT_BINARY} PRIVATE ${RENDERER_INCLUDE_DIRS})
-    target_compile_definitions( ${CLIENT_BINARY} PRIVATE ${RENDERER_DEFINITIONS})
-    target_compile_options(     ${CLIENT_BINARY} PRIVATE ${RENDERER_COMPILE_OPTIONS})
-    target_link_libraries(      ${CLIENT_BINARY} PRIVATE ${RENDERER_LIBRARIES})
+    foreach(LIBRARY IN LISTS CLIENT_DEPLOY_LIBRARIES)
+        add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+                ${LIBRARY}
+                $<TARGET_FILE_DIR:${TARGET_NAME}>)
 
-    # Add Vulkan-specific settings when building Vulkan renderer
-    if(BUILD_RENDERER_VK)
-        target_compile_definitions( ${CLIENT_BINARY} PRIVATE ${RENDERER_VK_DEFINITIONS})
-        target_link_libraries(      ${CLIENT_BINARY} PRIVATE ${RENDERER_VK_LIBRARIES})
-        # Ensure shaders are compiled before building client with Vulkan renderer
-        add_dependencies(${CLIENT_BINARY} compile_shaders)
+        install(FILES ${LIBRARY} DESTINATION
+            $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${TARGET_NAME}>,${CMAKE_BINARY_DIR}/$<CONFIG>>
+            COMPONENT game_engine)
+    endforeach()
+endfunction()
+
+# Build Vulkan renderer executable (q3vr.exe)
+if(BUILD_RENDERER_VK)
+    # Use Vulkan-specific VR sources (vrcommon + vrvk)
+    add_client_executable(${CLIENT_NAME} "VK" "${VR_SOURCES_VK}")
+    set(PRIMARY_CLIENT ${CLIENT_NAME})
+endif()
+
+# Build OpenGL renderer executable (glq3vr.exe)
+if(BUILD_RENDERER_GL2)
+    # Use OpenGL-specific VR sources (vrcommon + vrgl2)
+    add_client_executable(gl${CLIENT_NAME} "GL2" "${VR_SOURCES}")
+    if(NOT DEFINED PRIMARY_CLIENT)
+        set(PRIMARY_CLIENT gl${CLIENT_NAME})
     endif()
 endif()
 
-foreach(LIBRARY IN LISTS CLIENT_DEPLOY_LIBRARIES)
-    add_custom_command(TARGET ${CLIENT_BINARY} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-            ${LIBRARY}
-            $<TARGET_FILE_DIR:${CLIENT_BINARY}>)
-
-    install(FILES ${LIBRARY} DESTINATION
-        # install() requires a relative path hence:
-        $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${CLIENT_BINARY}>,${CMAKE_BINARY_DIR}/$<CONFIG>>
-				COMPONENT game_engine)
-endforeach()
-
 # Build pakQ3VR.pk3 from source (always regenerate to catch new files)
 add_custom_target(pakQ3VR ALL
-		COMMAND ${CMAKE_COMMAND} -E remove -f "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3"
-		COMMAND ${CMAKE_COMMAND} -E tar cf 
-		    ${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3 --format=zip 
-				.
-		WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/assets/pakQ3VR"
-		COMMENT "Building pakQ3VR.pk3 from source"
+    COMMAND ${CMAKE_COMMAND} -E remove -f "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3"
+    COMMAND ${CMAKE_COMMAND} -E tar cf
+        ${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3 --format=zip
+        .
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/assets/pakQ3VR"
+    COMMENT "Building pakQ3VR.pk3 from source"
 )
 
-# Copy assets to output dir
-add_custom_command(TARGET ${CLIENT_BINARY} POST_BUILD
-    # Copy pakQ3VR.pk3 to both baseq3 and missionpack
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3"
-    "$<TARGET_FILE_DIR:${CLIENT_BINARY}>/baseq3/"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3"
-    "$<TARGET_FILE_DIR:${CLIENT_BINARY}>/missionpack/"
-    # Copy Trinity pak (baseq3)
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak8t.pk3"
-    "$<TARGET_FILE_DIR:${CLIENT_BINARY}>/baseq3/"
-    # Copy Trinity pak (missionpack)
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak3t.pk3"
-    "$<TARGET_FILE_DIR:${CLIENT_BINARY}>/missionpack/"
-    # Copy point release files
-		COMMAND ${CMAKE_COMMAND} -E copy_directory
-		"${CMAKE_SOURCE_DIR}/assets/third_party/point_release_v1.32"
-		"$<TARGET_FILE_DIR:${CLIENT_BINARY}>/baseq3/"
-    # Copy demo files
-		COMMAND ${CMAKE_COMMAND} -E copy_directory
-		"${CMAKE_SOURCE_DIR}/assets/third_party/demo"
-		"$<TARGET_FILE_DIR:${CLIENT_BINARY}>/baseq3/"
-)
-if(ZIP_EXECUTABLE)
-    add_dependencies(${CLIENT_BINARY} pakQ3VR)
+# Copy assets to output dir (attach to primary client only)
+if(DEFINED PRIMARY_CLIENT)
+    add_custom_command(TARGET ${PRIMARY_CLIENT} POST_BUILD
+        # Copy pakQ3VR.pk3 to both baseq3 and missionpack
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3"
+        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3"
+        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/missionpack/"
+        # Copy Trinity pak (baseq3)
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak8t.pk3"
+        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/"
+        # Copy Trinity pak (missionpack)
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak3t.pk3"
+        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/missionpack/"
+        # Copy point release files
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/assets/third_party/point_release_v1.32"
+        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/"
+        # Copy demo files
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/assets/third_party/demo"
+        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/"
+    )
+    if(ZIP_EXECUTABLE)
+        add_dependencies(${PRIMARY_CLIENT} pakQ3VR)
+    endif()
 endif()
 
 # Install targets
 install(FILES "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3" DESTINATION
-    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${CLIENT_BINARY}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-		COMPONENT game_engine)
+    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
+    COMPONENT game_engine)
 install(FILES "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3" DESTINATION
-    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${CLIENT_BINARY}>/missionpack/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-		COMPONENT game_engine)
+    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/missionpack/,${CMAKE_BINARY_DIR}/$<CONFIG>>
+    COMPONENT game_engine)
 install(FILES "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak8t.pk3" DESTINATION
-    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${CLIENT_BINARY}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-		COMPONENT trinity_mod)
+    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
+    COMPONENT trinity_mod)
 install(FILES "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak3t.pk3" DESTINATION
-    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${CLIENT_BINARY}>/missionpack/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-		COMPONENT trinity_mod)
+    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/missionpack/,${CMAKE_BINARY_DIR}/$<CONFIG>>
+    COMPONENT trinity_mod)
 install(
     DIRECTORY "${CMAKE_SOURCE_DIR}/assets/third_party/point_release_v1.32/" DESTINATION
-		$<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${CLIENT_BINARY}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-		COMPONENT point_release_patch)
+    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
+    COMPONENT point_release_patch)
 install(
     DIRECTORY "${CMAKE_SOURCE_DIR}/assets/third_party/demo/" DESTINATION
-		$<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${CLIENT_BINARY}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-		COMPONENT q3a_demo)
+    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
+    COMPONENT q3a_demo)

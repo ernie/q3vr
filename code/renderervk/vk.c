@@ -6812,76 +6812,69 @@ void vk_update_mvp( const float *m ) {
 	//
 
 	if ( backEnd.projection2D ) {
-		// For 2D, build orthographic MVP directly
-		// Use vk.renderWidth/Height which are set to HUD buffer dimensions
-		// when rendering to the HUD buffer, otherwise they're glConfig dimensions
-		float mvp0 = 2.0f / vk.renderWidth;
-		float mvp5 = 2.0f / vk.renderHeight;
+		// 2D orthographic MVP for HUD/UI rendering
+		int hudStatus = vr_currentHudDrawStatus ? vr_currentHudDrawStatus->integer : -1;
+		qboolean isVirtualScreen = VR_Gameplay_ShouldRenderInVirtualScreen();
+
+		// HUD mode 2 scale (2/3 factor aligns with mode 1's sprite size)
+		float hudScale = 1.0f;
+		if ( backEnd.isDrawingHUD && hudStatus == 2 && !isVirtualScreen ) {
+			hudScale = (vr_hudScale ? vr_hudScale->value : 1.0f) * (2.0f / 3.0f);
+		}
+
+		float mvp0 = 2.0f * hudScale / vk.renderWidth;
+		float mvp5 = 2.0f * hudScale / vk.renderHeight;
 
 		Com_Memset( push_constants, 0, sizeof( push_constants ) );
 
-		// Per-eye asymmetry compensation for <100% binocular overlap
-		// VR headsets have asymmetric horizontal FOV per eye (more to the outside than nose).
-		// The per-eye projection matrices have element [8] = (tanRight + tanLeft) / tanWidth
-		// which represents how far the optical center is offset from screen center:
-		//   Left eye:  negative [8] = optical center is LEFT of screen center
-		//   Right eye: positive [8] = optical center is RIGHT of screen center
-		//
-		// For 2D content rendered directly to eye buffers (not virtual screen), we SUBTRACT
-		// the asymmetry offset to shift content toward each eye's optical center, allowing
-		// comfortable fusion at optical infinity. Without this, content rendered at screen
-		// center would require wall-eyed viewing.
-		float asymmetryOffset[2] = { 0.0f, 0.0f };
-		int hudStatus = vr_currentHudDrawStatus ? vr_currentHudDrawStatus->integer : -1;
+		// Per-eye asymmetry compensation (shifts content toward optical center for comfortable fusion)
+		float asymmetryOffsetX[2] = { 0.0f, 0.0f };
+		float asymmetryOffsetY = 0.0f;
 		qboolean isHudMode1 = ( backEnd.isDrawingHUD && hudStatus == 1 );
-		// vr.virtual_screen can be stale when we are between levels showing loading screens
-		qboolean isVirtualScreen = VR_Gameplay_ShouldRenderInVirtualScreen();
 		if ( tr.vrParms.valid && !isVirtualScreen && !isHudMode1 ) {
-			// For weapon zoom, scale asymmetry by 2x to account for full IPD
-			// (each eye normally shifts half IPD from center, so mono content needs 2x)
 			float scale = vr.weapon_zoomed ? 2.0f : 1.0f;
-			asymmetryOffset[0] = tr.vrParms.projectionEye[0][8] * scale;
-			asymmetryOffset[1] = tr.vrParms.projectionEye[1][8] * scale;
+			asymmetryOffsetX[0] = tr.vrParms.projectionEye[0][8] * scale;
+			asymmetryOffsetX[1] = tr.vrParms.projectionEye[1][8] * scale;
+			asymmetryOffsetY = tr.vrParms.projectionEye[0][9];
 		}
 
-		// Calculate stereo parallax offset for HUD depth perception
-		// Only apply stereo offset for HUD mode 2 (direct-to-screen HUD)
+		// Stereo parallax for HUD mode 2 depth perception
+		// Uses height-fraction for resolution/aspect-ratio independence (prevents convergence issues on ultrawide)
+		// Inverse relationship (0.05 / (depth+1)) matches mode 1's linear distance scaling
 		float depthOffset = 0.0f;
 		if ( backEnd.isDrawingHUD && hudStatus == 2 && !vr.first_person_following ) {
-			// HUD mode 2: apply stereo offset based on depth setting
-			// Formula matches renderergles3's STEREO_ORTHO_PROJECTION
-			// vr_currentHudDepth ranges 0-5: 0=closest, 5=farthest
 			float hudDepth = vr_currentHudDepth ? vr_currentHudDepth->value : 3.0f;
-			depthOffset = (5.0f - powf(hudDepth, 0.7f)) * 16.0f;
+			float heightFraction = 0.05f / (hudDepth + 1.0f);
+			depthOffset = heightFraction * (float)vk.renderHeight * mvp0;
 		}
 
-		// Eye 0 (left)
-		// Base translation: -1.0 maps input 0 to NDC -1
-		// Asymmetry compensation: SUBTRACT asymmetryOffset to shift content TOWARD optical center
-		//   Left eye has negative asymmetry (optical center LEFT of screen center)
-		//   Subtracting negative offset shifts content RIGHT toward optical center
-		// Depth offset: add (depthOffset * mvp0) to shift content RIGHT for convergence
+		// Y offset for HUD mode 2: vertical asymmetry compensation + user offset
+		float yOffset = 0.0f;
+		if ( backEnd.isDrawingHUD && hudStatus == 2 && !isVirtualScreen ) {
+			yOffset = -asymmetryOffsetY * 0.5f;
+			float userOffset = vr_hudYOffset ? vr_hudYOffset->value : 0.0f;
+			yOffset += -userOffset * mvp5 * 0.5f;
+		}
+
+		// Eye 0 (left): asymmetry shifts content toward optical center, depth adds parallax
 		push_constants[0]  = mvp0;
 		push_constants[5]  = mvp5;
 #ifdef USE_REVERSED_DEPTH
-		push_constants[12] = -1.0f - asymmetryOffset[0] + (depthOffset * mvp0);
-		push_constants[13] = -1.0f;
+		push_constants[12] = -hudScale - asymmetryOffsetX[0] + depthOffset;
+		push_constants[13] = -hudScale + yOffset;
 		push_constants[14] = 1.0f;
 		push_constants[15] = 1.0f;
 #else
 		push_constants[10] = 1.0f;
-		push_constants[12] = -1.0f - asymmetryOffset[0] + (depthOffset * mvp0);
-		push_constants[13] = -1.0f;
+		push_constants[12] = -hudScale - asymmetryOffsetX[0] + depthOffset;
+		push_constants[13] = -hudScale + yOffset;
 		push_constants[15] = 1.0f;
 #endif
 
-		// Eye 1 (right)
-		// Asymmetry compensation: SUBTRACT asymmetryOffset[1] (positive for right eye)
-		//   Right eye has positive asymmetry (optical center RIGHT of screen center)
-		//   Subtracting positive offset shifts content LEFT toward optical center
-		// Depth offset: subtract (depthOffset * mvp0) to shift content LEFT for convergence
+		// Eye 1 (right): opposite parallax direction for stereo convergence
 		Com_Memcpy( &push_constants[16], push_constants, sizeof(float) * 16 );
-		push_constants[28] = -1.0f - asymmetryOffset[1] - (depthOffset * mvp0);
+		push_constants[28] = -hudScale - asymmetryOffsetX[1] - depthOffset;
+		push_constants[29] = -hudScale + yOffset;
 
 		qvkCmdPushConstants( vk.cmd->command_buffer, vk.pipeline_layout,
 			VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof( push_constants ), push_constants );

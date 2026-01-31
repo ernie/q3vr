@@ -61,8 +61,10 @@ if(BUILD_RENDERER_GL2)
     list(APPEND VR_INCLUDE_DIRS ${SOURCE_DIR}/vrgl2)
 endif()
 
-# Note: VR_VK_SOURCES are NOT added to VR_SOURCES here
-# They are explicitly used in renderer_vk.cmake via the VR_SOURCES_VK variable
-# which combines VR_COMMON_SOURCES + VR_VK_SOURCES
+# VR_SOURCES_VK combines vrcommon + vrvk for Vulkan clients
+if(BUILD_RENDERER_VK)
+    set(VR_SOURCES_VK ${VR_COMMON_SOURCES} ${VR_VK_SOURCES})
+    list(APPEND VR_VK_INCLUDE_DIRS ${SOURCE_DIR}/vrcommon ${SOURCE_DIR}/vrvk)
+endif()
 
 list(APPEND RENDERER_INCLUDE_DIRS ${VR_INCLUDE_DIRS})

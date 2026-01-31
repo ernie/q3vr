@@ -1235,11 +1235,14 @@ void GfxMemInfo_f( void )
 R_Register
 ===============
 */
-void R_Register( void ) 
+void R_Register( void )
 {
 	#ifdef USE_RENDERER_DLOPEN
 	com_altivec = ri.Cvar_Get("com_altivec", "1", CVAR_ARCHIVE);
-	#endif	
+	#endif
+
+	// Renderer identification for cgame runtime checks
+	ri.Cvar_Get("r_opengl", "1", CVAR_ROM);
 
 	//
 	// latched and archived variables

@@ -5,7 +5,7 @@
 * `ioquake3` - community maintained fork of idTech3 engine,
 * `Quake3Quest` - port of `ioquake3` to Quest 2/3 mobile headsets.
 
-It includes several bugfixes, improvements and QoL features built specifically
+It includes many bugfixes, improvements and QoL features built specifically
 for VR.
 
 ### Main features
@@ -174,7 +174,7 @@ This project uses CMake so building it on supported platforms should be
 straightforward, e.g. on Windows with MSVC you can build it with:
 
 ```bash
-cmake -S . -B build # add -DBUILD_RENDERER_GL2=ON for legacy renderer
+cmake -S . -B build
 cmake --build build --config Release
 ```
 

@@ -49,8 +49,6 @@ COMFORT OPTIONS MENU
 #define ID_HUDYOFFSET		    134
 #define ID_HUDSCALE			    135
 
-#define	NUM_HUDDEPTH			21
-
 #define ID_BACK					136
 
 typedef struct {
@@ -83,7 +81,7 @@ static void Comfort_SetMenuItems( void ) {
 	s_comfort.smoothfollow.curvalue				= trap_Cvar_VariableValue( "cg_smoothFollow" ) != 0;
 	s_comfort.bhaptics.curvalue				= trap_Cvar_VariableValue( "vr_bhaptics" ) != 0;
 	s_comfort.hapticintensity.curvalue		= trap_Cvar_VariableValue( "vr_hapticIntensity" );
-	s_comfort.huddepth.curvalue						= (int)trap_Cvar_VariableValue( "vr_hudDepth" ) % NUM_HUDDEPTH;
+	s_comfort.huddepth.curvalue						= trap_Cvar_VariableValue( "vr_hudDepth" );
 	s_comfort.hudyoffset.curvalue					= trap_Cvar_VariableValue( "vr_hudYOffset" ) + 200;
 	s_comfort.hudscale.curvalue						= trap_Cvar_VariableValue( "vr_hudScale" );
 }
@@ -120,7 +118,7 @@ static void Comfort_MenuEvent( void* ptr, int notification ) {
 			break;
 
 		case ID_HUDDEPTH:
-			trap_Cvar_SetValue( "vr_hudDepth", ((int)s_comfort.huddepth.curvalue % NUM_HUDDEPTH));
+			trap_Cvar_SetValue( "vr_hudDepth", s_comfort.huddepth.curvalue );
 			break;
 
 		case ID_HUDYOFFSET:
@@ -241,7 +239,7 @@ static void Comfort_MenuInit( void ) {
 	s_comfort.huddepth.generic.callback	= Comfort_MenuEvent;
 	s_comfort.huddepth.generic.id		= ID_HUDDEPTH;
 	s_comfort.huddepth.minvalue		     = 0;
-	s_comfort.huddepth.maxvalue		     = 20;
+	s_comfort.huddepth.maxvalue		     = 5;
 
 	y += BIGCHAR_HEIGHT+2;
 	s_comfort.hudyoffset.generic.type	     = MTYPE_SLIDER;

@@ -225,11 +225,10 @@ static void GLSL_ViewMatricesUniformBuffer(const float eyeView[2][16], const flo
         break;
       case STEREO_ORTHO_PROJECTION:
         {
-          //This is a bit of a fiddle this calc.. it is just done like this to
-          //make the HUD depths line up with the weapon wheel depth. I _know_ there
-          //would be a proper calculation to do this exactly, but this is good enough
-          //and I've just had enough messing about with this
-				  const int depthOffset = (5-powf(vr_currentHudDepth->integer, 0.7f)) * 16;
+          // Stereo parallax using height-fraction for resolution/aspect-ratio independence
+          // Inverse relationship (0.05 / (depth+1)) matches mode 1's linear distance scaling
+          float heightFraction = 0.05f / (vr_currentHudDepth->value + 1.0f);
+          float depthOffset = heightFraction * glConfig.vidHeight;
           vec3_t translate;
           VectorSet(translate, depthOffset, 0, 0);
           Mat4Translation( translate, viewMatrices );
@@ -1820,16 +1819,29 @@ void GLSL_PrepareUniformBuffers(void)
   GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[FULLSCREEN_ORTHO_PROJECTION],
           orthoProjectionMatrix, orthoProjectionMatrix);
 
-  // STEREO_ORTHO - per-eye asymmetry for comfortable stereo fusion
-  // Weapon zoom uses 2x scale since mono content needs full IPD compensation
+  // STEREO_ORTHO - HUD mode 2 with scale (2/3 factor aligns with mode 1) and asymmetry
   {
     float orthoEye0[16], orthoEye1[16];
-    Com_Memcpy(orthoEye0, orthoProjectionMatrix, sizeof(orthoEye0));
-    Com_Memcpy(orthoEye1, orthoProjectionMatrix, sizeof(orthoEye1));
 
+    float hudScale = (vr_hudScale ? vr_hudScale->value : 1.0f) * (2.0f / 3.0f);
+    float invScale = 1.0f / hudScale;
+    float left = width * (1.0f - invScale) / 2.0f;
+    float right = width * (1.0f + invScale) / 2.0f;
+    float top = height * (1.0f - invScale) / 2.0f;
+    float bottom = height * (1.0f + invScale) / 2.0f;
+
+    float scaledOrtho[16];
+    Mat4Ortho(left, right, bottom, top, 0, 1, scaledOrtho);
+    Com_Memcpy(orthoEye0, scaledOrtho, sizeof(orthoEye0));
+    Com_Memcpy(orthoEye1, scaledOrtho, sizeof(orthoEye1));
+
+    // Asymmetry compensation (X differs per eye, Y same for both)
     float scale = vr.weapon_zoomed ? 2.0f : 1.0f;
     orthoEye0[12] -= tr.vrParms.projectionEye[0][8] * scale;
     orthoEye1[12] -= tr.vrParms.projectionEye[1][8] * scale;
+    float yAsymmetry = tr.vrParms.projectionEye[0][9] * 0.5f;
+    orthoEye0[13] -= yAsymmetry;
+    orthoEye1[13] -= yAsymmetry;
 
     GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[STEREO_ORTHO_PROJECTION],
             orthoEye0, orthoEye1);

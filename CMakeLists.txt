@@ -14,23 +14,15 @@ project(${PROJECT_NAME} VERSION ${PROJECT_VERSION} LANGUAGES C CXX)
 
 option(BUILD_SERVER "Build dedicated server" OFF)
 option(BUILD_CLIENT "Build client" ON)
-option(BUILD_RENDERER_GL2 "Build GL2 renderer" OFF)
-option(BUILD_RENDERER_VK "Build Vulkan renderer" ON)
+option(BUILD_RENDERER_GL2 "Build GL2 renderer (glq3vr.exe)" ON)
+option(BUILD_RENDERER_VK "Build Vulkan renderer (q3vr.exe)" ON)
 option(BUILD_GAME_LIBRARIES "Build game module libraries" ON)
 option(BUILD_GAME_QVMS "Build game module qvms" OFF)
 option(BUILD_STANDALONE "Build binaries for standalone games" OFF)
 
 # Q3VR: Dynamic renderer loading is not supported due to tight VR integration
-# The renderer must be statically linked with the client
+# Both renderers are statically linked into separate executables (q3vr.exe and q3vrgl.exe)
 set(USE_RENDERER_DLOPEN OFF CACHE BOOL "Dynamically load renderer - NOT SUPPORTED in Q3VR" FORCE)
-
-# Renderers are mutually exclusive when statically linked
-if(NOT USE_RENDERER_DLOPEN)
-    if(BUILD_RENDERER_GL2)
-        set(BUILD_RENDERER_VK OFF CACHE BOOL "Build Vulkan renderer" FORCE)
-        message(STATUS "BUILD_RENDERER_GL2 enabled (static linking) - disabling BUILD_RENDERER_VK")
-    endif()
-endif()
 option(USE_OPENAL "OpenAL audio" ON)
 option(USE_OPENAL_DLOPEN "Dynamically load OpenAL" ON)
 option(USE_HTTP "HTTP download support" ON)
