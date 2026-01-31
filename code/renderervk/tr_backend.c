@@ -1150,13 +1150,22 @@ static const void *RB_SetColor( const void *data ) {
 
 	cmd = (const setColorCommand_t *)data;
 
-	// Apply dimming to 2D colors to compensate for gamma pass.
-	// The gamma pass applies pow(color, 1/r_gamma), so we pre-multiply by 1/r_gamma
-	// to counteract this and keep 2D UI at correct brightness.
-	float dim2D = 1.0f / r_gamma->value;
-	backEnd.color2D.rgba[0] = cmd->color[0] * 255 * dim2D;
-	backEnd.color2D.rgba[1] = cmd->color[1] * 255 * dim2D;
-	backEnd.color2D.rgba[2] = cmd->color[2] * 255 * dim2D;
+	// Compensate 2D colors for the gamma post-processing pass.
+	// The gamma shader applies: out = pow(in, 1/r_gamma) * obScale
+	// Apply inverse gamma only (pow with r_gamma), let overbright pass through.
+	if ( r_gamma->value != 1.0f ) {
+		float gamma = r_gamma->value;
+
+		backEnd.color2D.rgba[0] = (byte)(powf(cmd->color[0], gamma) * 255.0f + 0.5f);
+		backEnd.color2D.rgba[1] = (byte)(powf(cmd->color[1], gamma) * 255.0f + 0.5f);
+		backEnd.color2D.rgba[2] = (byte)(powf(cmd->color[2], gamma) * 255.0f + 0.5f);
+	} else {
+		backEnd.color2D.rgba[0] = cmd->color[0] * 255;
+		backEnd.color2D.rgba[1] = cmd->color[1] * 255;
+		backEnd.color2D.rgba[2] = cmd->color[2] * 255;
+	}
+
+	// Alpha is not affected by gamma correction
 	backEnd.color2D.rgba[3] = cmd->color[3] * 255;
 
 	return (const void *)(cmd + 1);
