@@ -46,7 +46,6 @@ typedef struct VR_VK_SwapchainInfo_s {
 struct VR_SwapchainInfos_s {
 	uint32_t viewCount;
 	VR_VK_SwapchainInfo color;             // 2-layer multiview for stereo
-	VR_VK_SwapchainInfo depth;             // 2-layer multiview for stereo
 };
 
 #endif

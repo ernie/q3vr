@@ -2063,7 +2063,7 @@ void RE_ClearVRFramebuffer( int width, int height, qboolean isThirdPersonSpectat
 void RE_SwapDesktopWindow( void );
 void RE_WaitForRenderComplete( void );
 qboolean RE_InitXRResources( void );
-void RE_BeginXRFrame( uint32_t colorIndex, uint32_t depthIndex );
+void RE_BeginXRFrame( uint32_t colorIndex );
 
 #ifndef USE_VULKAN
 #define GLE( ret, name, ... ) extern ret ( APIENTRY * q##name )( __VA_ARGS__ );

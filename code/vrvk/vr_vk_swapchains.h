@@ -24,24 +24,22 @@
 // - VR_GetSwapchainFormats()
 // - VR_HasFormatInList()
 
-// Create all XR swapchains for VR rendering
-// Creates: color (2-layer), depth (2-layer)
+// Create XR color swapchain for VR rendering (2-layer for stereo)
 // Returns NULL on failure
 VR_SwapchainInfos* VR_VK_CreateSwapchains(XrInstance instance, XrSystemId systemId, XrSession session);
 
 // Destroy all swapchains and free resources
 void VR_VK_DestroySwapchains(VR_SwapchainInfos** swapchains);
 
-// Acquire swapchain images for rendering
-// Returns indices into the swapchain image arrays
-void VR_VK_Swapchains_Acquire(VR_SwapchainInfos* swapchains, uint32_t* colorIndex, uint32_t* depthIndex);
+// Acquire color swapchain image for rendering
+// Returns index into the swapchain image array
+void VR_VK_Swapchains_Acquire(VR_SwapchainInfos* swapchains, uint32_t* colorIndex);
 
 // Release swapchain images after rendering
 void VR_VK_Swapchains_Release(VR_SwapchainInfos* swapchains);
 
-// Get swapchain info for renderer
-// The renderer uses these to create VkImageViews and VkFramebuffers
+// Get color swapchain info for renderer
+// The renderer uses this to create VkImageViews and VkFramebuffers
 const VR_VK_SwapchainInfo* VR_VK_GetColorSwapchain(const VR_SwapchainInfos* swapchains);
-const VR_VK_SwapchainInfo* VR_VK_GetDepthSwapchain(const VR_SwapchainInfos* swapchains);
 
 #endif // __VR_VK_SWAPCHAINS

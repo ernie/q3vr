@@ -236,9 +236,8 @@ VR_SwapchainInfos* VR_CreateSwapchains(XrInstance instance, XrSystemId systemId,
 	int64_t* formats = NULL;
 	const uint32_t formatCount = VR_GetSwapchainFormats(session, &formats);
 	const int64_t colorFormat = VR_GL_GetBestColorSwapchainFormat(formats, formatCount);
-	const int64_t depthFormat = VR_GL_GetBestDepthSwapchainFormat(formats, formatCount);
 	free(formats);
-	fprintf(stderr, "[OpenXR] Chosen GL formats: {color: %llx, depth: %llx}\n", colorFormat, depthFormat);
+	fprintf(stderr, "[OpenXR] Chosen GL color format: %llx\n", colorFormat);
 
 	//
 	// OpenGL Multiview rendering feature sanity check
@@ -263,13 +262,22 @@ VR_SwapchainInfos* VR_CreateSwapchains(XrInstance instance, XrSystemId systemId,
 	VR_SwapchainInfos* swapchains = calloc(1, sizeof(VR_SwapchainInfos));
 	swapchains->viewCount = viewCount;
 	VR_CreateSwapchain(session, XR_TRUE,  colorFormat, &views[0], viewCount, &swapchains->color, supersampledWidth, supersampledHeight);
-	VR_CreateSwapchain(session, XR_FALSE, depthFormat, &views[0], viewCount, &swapchains->depth, supersampledWidth, supersampledHeight);
-	fprintf(stderr, "[OpenXR] Created color and depth swapchains: %dx%d, %u images\n", swapchains->color.width, swapchains->color.height, swapchains->color.imageCount);
+	fprintf(stderr, "[OpenXR] Created color swapchain: %dx%d, %u images\n", swapchains->color.width, swapchains->color.height, swapchains->color.imageCount);
+
+	//
+	// Create native depth texture (replaces XR depth swapchain for driver compatibility)
+	//
+	qglGenTextures(1, &swapchains->nativeDepthTexture);
+	qglBindTexture(GL_TEXTURE_2D_ARRAY, swapchains->nativeDepthTexture);
+	qglTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F,
+		supersampledWidth, supersampledHeight, viewCount,
+		0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	qglBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+	fprintf(stderr, "[OpenXR] Created native depth texture: %dx%d, %u layers\n", supersampledWidth, supersampledHeight, viewCount);
 
 	//
 	// Framebuffers
 	//
-	CHECK(swapchains->color.imageCount == swapchains->depth.imageCount, "");
 	swapchains->framebuffers = calloc(swapchains->color.imageCount, sizeof(GLuint));
 	swapchains->eyeFramebuffers = calloc(viewCount, sizeof(GLuint*));
 	for (uint32_t view = 0; view < viewCount; ++view)
@@ -279,7 +287,7 @@ VR_SwapchainInfos* VR_CreateSwapchains(XrInstance instance, XrSystemId systemId,
 
 	for (uint32_t idx = 0; idx < swapchains->color.imageCount; ++idx)
 	{
-		swapchains->framebuffers[idx] = VR_CreateImageView(swapchains->color.images[idx], swapchains->depth.images[idx], viewCount);
+		swapchains->framebuffers[idx] = VR_CreateImageView(swapchains->color.images[idx], swapchains->nativeDepthTexture, viewCount);
 		for (uint32_t view = 0; view < viewCount; ++view)
 		{
 			swapchains->eyeFramebuffers[view][idx] = VR_CreateEyeImageView(swapchains->color.images[idx], view);
@@ -331,13 +339,19 @@ void VR_DestroySwapchains(VR_SwapchainInfos** swapchainsPtr)
 	swapchains->eyeFramebuffers = NULL;
 
 	VR_DestroySwapchain(&swapchains->color);
-	VR_DestroySwapchain(&swapchains->depth);
+
+	// Destroy native depth texture
+	if (swapchains->nativeDepthTexture)
+	{
+		qglDeleteTextures(1, &swapchains->nativeDepthTexture);
+		swapchains->nativeDepthTexture = 0;
+	}
 
 	free(swapchains);
 	*swapchainsPtr = NULL;
 }
 
-void VR_Swapchains_BindFramebuffers(VR_SwapchainInfos* swapchains, uint32_t swapchainColorIndex, uint32_t swapchainDepthIndex)
+void VR_Swapchains_BindFramebuffers(VR_SwapchainInfos* swapchains, uint32_t swapchainColorIndex)
 {
 	if (!swapchains)
 	{
@@ -348,13 +362,10 @@ void VR_Swapchains_BindFramebuffers(VR_SwapchainInfos* swapchains, uint32_t swap
 	CHECK(
 		swapchainColorIndex < swapchains->color.imageCount,
 		"Invalid swapchainImageIndex value - out of bounds");
-	CHECK(
-		swapchainDepthIndex < swapchains->depth.imageCount,
-		"Invalid swapchainImageIndex value - out of bounds");
 
 	qglBindFramebuffer(GL_DRAW_FRAMEBUFFER, swapchains->framebuffers[swapchainColorIndex]);
 	qglFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, swapchains->color.images[swapchainColorIndex], 0, 0, 2);
-	qglFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, swapchains->depth.images[swapchainDepthIndex], 0, 0, 2);
+	qglFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, swapchains->nativeDepthTexture, 0, 0, 2);
 }
 
 void VR_Swapchains_BlitXRToMainFbo(VR_SwapchainInfos* swapchains, uint32_t swapchainImageIndex, XrDesktopViewConfiguration viewConfig, qboolean useVirtualScreen)
@@ -591,38 +602,28 @@ void VR_Swapchains_BlitXRToVirtualScreen(VR_SwapchainInfos* swapchains, uint32_t
 		GL_NEAREST);
 }
 
-void VR_Swapchains_Acquire(VR_SwapchainInfos* swapchainInfos, uint32_t* colorIndex, uint32_t* depthIndex)
+void VR_Swapchains_Acquire(VR_SwapchainInfos* swapchainInfos, uint32_t* colorIndex)
 {
-	XrSwapchain swapchains[2] = {swapchainInfos->color.swapchain, swapchainInfos->depth.swapchain};
-	uint32_t* indexPtrs[2] = {colorIndex, depthIndex};
-	for (uint32_t idx = 0; idx < 2; ++idx)
-	{
-		XrSwapchainImageAcquireInfo acquireInfo = {XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO, NULL};
+	XrSwapchainImageAcquireInfo acquireInfo = {XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO, NULL};
 
-		XR_CHECK(
-			xrAcquireSwapchainImage(swapchains[idx], &acquireInfo, indexPtrs[idx]),
-			"Failed to acquire swapchain image");
+	XR_CHECK(
+		xrAcquireSwapchainImage(swapchainInfos->color.swapchain, &acquireInfo, colorIndex),
+		"Failed to acquire color swapchain image");
 
-		XrSwapchainImageWaitInfo waitInfo;
-		waitInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO;
-		waitInfo.next = NULL;
-		waitInfo.timeout = XR_INFINITE_DURATION;
-		CHECK(
-			!XR_FAILED(xrWaitSwapchainImage(swapchains[idx], &waitInfo)), 
-			"Failed to wait for swapchain image");
-	}
+	XrSwapchainImageWaitInfo waitInfo;
+	waitInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO;
+	waitInfo.next = NULL;
+	waitInfo.timeout = XR_INFINITE_DURATION;
+	CHECK(
+		!XR_FAILED(xrWaitSwapchainImage(swapchainInfos->color.swapchain, &waitInfo)),
+		"Failed to wait for color swapchain image");
 }
 
 void VR_Swapchains_Release(VR_SwapchainInfos* swapchainInfos)
 {
-	XrSwapchain swapchains[2] = {swapchainInfos->color.swapchain, swapchainInfos->depth.swapchain};
-
-	for (uint32_t idx = 0; idx < 2; ++idx)
-	{
-		XrSwapchainImageReleaseInfo releaseInfo = {XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO, NULL};
-		XR_CHECK(
-			xrReleaseSwapchainImage(swapchains[idx], &releaseInfo),
-			"Failed to release swapchain image");
-	}
+	XrSwapchainImageReleaseInfo releaseInfo = {XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO, NULL};
+	XR_CHECK(
+		xrReleaseSwapchainImage(swapchainInfos->color.swapchain, &releaseInfo),
+		"Failed to release color swapchain image");
 }
 

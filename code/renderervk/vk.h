@@ -294,7 +294,7 @@ void vk_clear_color( const vec4_t color );
 void vk_clear_depth( qboolean clear_stencil );
 
 // Frame functions (Q3VR is XR-only)
-void vk_begin_frame( uint32_t colorIndex, uint32_t depthIndex );
+void vk_begin_frame( uint32_t colorIndex );
 void vk_end_frame( void );
 void vk_finish_frame( void );  // Force-end an interrupted frame (for shutdown)
 void vk_present_desktop_mirror( void );  // Desktop mirror: acquire, blit, present
@@ -386,20 +386,26 @@ struct VR_VK_SwapchainInfo_s;
 typedef struct VR_VK_SwapchainInfo_s VR_VK_SwapchainInfo;
 
 
-// XR-specific resources that don't have Quake3e equivalents
+// XR-specific resources that don't have Quake3e/renderervk equivalents
 // VR layer provides XrSwapchain handles and VkImages via VR_VK_SwapchainInfo.
 // Renderer creates and owns VkImageViews, VkFramebuffers for XR swapchains.
 // Note: FBO intermediate buffers (color_image, bloom_image[], etc.) use
 // the existing Quake3e fields in Vk_Instance, made multiview-compatible.
+// Depth buffer is created natively by the renderer, not from OpenXR,
+// to avoid compatibility issues with some XR runtimes that fail depth swapchain creation.
 typedef struct {
-	// Pointers to VR layer swapchain info (for accessing VkImages)
+	// Pointer to VR layer color swapchain info (for accessing VkImages)
 	const VR_VK_SwapchainInfo* colorInfo;
-	const VR_VK_SwapchainInfo* depthInfo;
 
-	// VkImageViews for XR swapchain images (created by renderer)
+	// VkImageViews for XR color swapchain images (created by renderer)
 	VkImageView colorViews[MAX_SWAPCHAIN_IMAGES];    // Multiview array views (sRGB format)
 	VkImageView gammaViews[MAX_SWAPCHAIN_IMAGES];    // UNORM views for gamma pass
-	VkImageView depthViews[MAX_SWAPCHAIN_IMAGES];    // Multiview array views
+
+	// Native depth buffer for XR rendering (replaces OpenXR depth swapchain)
+	// Single 2-layer multiview depth buffer, shared across all frames
+	VkImage xrDepthImage;
+	VkImageView xrDepthView;
+	VkDeviceMemory xrDepthMemory;
 
 	// Per-eye views for sampling XR swapchain (for desktop mirror menuStyle=1)
 	VkImageView colorEyeViews[2][MAX_SWAPCHAIN_IMAGES];  // [eye][swapchain_index] - per-eye 2D views
@@ -456,7 +462,6 @@ typedef struct {
 
 	// Current XR swapchain state
 	uint32_t colorIndex;
-	uint32_t depthIndex;
 
 	// XR resolution
 	uint32_t width;

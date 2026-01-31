@@ -83,11 +83,6 @@ typedef struct {
     VkFormat colorFormat;
     uint32_t colorWidth, colorHeight, colorArraySize, colorImageCount;
     VkImage* colorImages;          // NOT owned - from OpenXR
-
-    // Depth (multiview stereo, arraySize=2)
-    VkFormat depthFormat;
-    uint32_t depthWidth, depthHeight, depthArraySize, depthImageCount;
-    VkImage* depthImages;
 } VR_VulkanSwapchainInfo;
 
 // Get the XR swapchain info for renderer initialization

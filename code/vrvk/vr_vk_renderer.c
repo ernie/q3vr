@@ -48,7 +48,6 @@ XrFovf fov = { 0 };
 XrView views[2];
 uint32_t viewCount = 2;
 uint32_t swapchainColorIndex = 0;
-uint32_t swapchainDepthIndex = 0;
 
 // Forward declarations
 void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter);
@@ -255,11 +254,11 @@ void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 
 	VR_SwapchainInfos* swapchains = engine->appState.Renderer.Swapchains;
 
-	// Acquire XR swapchains
-	VR_VK_Swapchains_Acquire(swapchains, &swapchainColorIndex, &swapchainDepthIndex);
+	// Acquire XR color swapchain (depth is native Vulkan buffer, not from OpenXR)
+	VR_VK_Swapchains_Acquire(swapchains, &swapchainColorIndex);
 
 	// Begin XR rendering - sets up Vulkan command buffer and binds XR framebuffers
-	re.BeginXRFrame(swapchainColorIndex, swapchainDepthIndex);
+	re.BeginXRFrame(swapchainColorIndex);
 
 	// Clear framebuffer
 	VR_ClearFrameBuffer(swapchains->color.width, swapchains->color.height);

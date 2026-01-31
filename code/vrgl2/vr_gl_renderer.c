@@ -38,7 +38,6 @@ XrFovf fov = { 0 };
 XrView views[2];
 uint32_t viewCount = 2;
 uint32_t swapchainColorIndex = 0;
-uint32_t swapchainDepthIndex = 0;
 
 void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter);
 void VR_Renderer_EndFrame(VR_Engine* engine);
@@ -207,8 +206,8 @@ void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 
 	VR_SwapchainInfos* swapchains = engine->appState.Renderer.Swapchains;
 
-	VR_Swapchains_Acquire(swapchains, &swapchainColorIndex, &swapchainDepthIndex);
-	VR_Swapchains_BindFramebuffers(swapchains, swapchainColorIndex, swapchainDepthIndex);
+	VR_Swapchains_Acquire(swapchains, &swapchainColorIndex);
+	VR_Swapchains_BindFramebuffers(swapchains, swapchainColorIndex);
 	VR_ClearFrameBuffer(swapchains->color.width, swapchains->color.height);
 
 	// Set renderer params
@@ -287,7 +286,7 @@ void VR_Renderer_EndFrame(VR_Engine* engine)
 
 	VR_Swapchains_Release(swapchains);
 
-	VR_Swapchains_BindFramebuffers(NULL, 0, 0);
+	VR_Swapchains_BindFramebuffers(NULL, 0);
 
 	// Blit to main FBO (desktop window) - use virtual screen if active, otherwise eye view
 	VR_Swapchains_BlitXRToMainFbo(swapchains, swapchainColorIndex, VR_GetDesktopViewConfiguration(), use_virtual_screen);

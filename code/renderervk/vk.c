@@ -7740,7 +7740,7 @@ XR swapchain images are owned by OpenXR, not Vulkan.
 ==============================================================================
 */
 
-void vk_begin_frame( uint32_t colorIndex, uint32_t depthIndex )
+void vk_begin_frame( uint32_t colorIndex )
 {
 	VkCommandBufferBeginInfo begin_info;
 
@@ -7792,9 +7792,8 @@ void vk_begin_frame( uint32_t colorIndex, uint32_t depthIndex )
 		return;
 	}
 
-	// Store current XR swapchain indices (after validation)
+	// Store current XR swapchain index (after validation)
 	vk.xr.colorIndex = colorIndex;
-	vk.xr.depthIndex = depthIndex;
 
 	// Validate framebuffer exists based on rendering mode
 	// When FBO is active: use vk.framebuffers.main for main rendering
@@ -9664,9 +9663,107 @@ qboolean vk_bloom( void )
 #include "../vrvk/vr_vk_types.h"
 
 /*
+ * vk_create_xr_native_depth - Create native Vulkan depth buffer for XR framebuffers
+ *
+ * Creates a single 2-layer multiview depth buffer that replaces the
+ * OpenXR-provided depth swapchain. This fixes compatibility issues
+ * with some XR runtimes that fail to create valid depth swapchains.
+ */
+static qboolean vk_create_xr_native_depth( void )
+{
+	VkXrResources *xr = &vk.xr;
+	VkImageCreateInfo imageCI;
+	VkMemoryRequirements memReqs;
+	VkMemoryAllocateInfo allocInfo;
+	VkImageViewCreateInfo viewCI;
+	uint32_t memoryType;
+
+	if ( xr->width == 0 || xr->height == 0 ) {
+		ri.Printf( PRINT_WARNING, "vk_create_xr_native_depth: XR resolution not set\n" );
+		return qfalse;
+	}
+
+	ri.Printf( PRINT_ALL, "Creating native XR depth buffer (%ux%u, format=0x%x)...\n",
+		xr->width, xr->height, vk.depth_format );
+
+	// Create depth image (2-layer for stereo multiview)
+	Com_Memset( &imageCI, 0, sizeof( imageCI ) );
+	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCI.imageType = VK_IMAGE_TYPE_2D;
+	imageCI.format = vk.depth_format;
+	imageCI.extent.width = xr->width;
+	imageCI.extent.height = xr->height;
+	imageCI.extent.depth = 1;
+	imageCI.mipLevels = 1;
+	imageCI.arrayLayers = 2;  // Stereo multiview
+	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageCI.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	imageCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	VK_CHECK( qvkCreateImage( vk.device, &imageCI, NULL, &xr->xrDepthImage ) );
+	SET_OBJECT_NAME( xr->xrDepthImage, "XR native depth image", VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT );
+
+	// Allocate device-local memory
+	qvkGetImageMemoryRequirements( vk.device, xr->xrDepthImage, &memReqs );
+
+	memoryType = find_memory_type(
+		memReqs.memoryTypeBits,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
+
+	Com_Memset( &allocInfo, 0, sizeof( allocInfo ) );
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = memReqs.size;
+	allocInfo.memoryTypeIndex = memoryType;
+
+	VK_CHECK( qvkAllocateMemory( vk.device, &allocInfo, NULL, &xr->xrDepthMemory ) );
+	VK_CHECK( qvkBindImageMemory( vk.device, xr->xrDepthImage, xr->xrDepthMemory, 0 ) );
+
+	// Create image view (2D_ARRAY for multiview)
+	Com_Memset( &viewCI, 0, sizeof( viewCI ) );
+	viewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewCI.image = xr->xrDepthImage;
+	viewCI.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+	viewCI.format = vk.depth_format;
+	viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	viewCI.subresourceRange.baseMipLevel = 0;
+	viewCI.subresourceRange.levelCount = 1;
+	viewCI.subresourceRange.baseArrayLayer = 0;
+	viewCI.subresourceRange.layerCount = 2;  // Stereo
+
+	VK_CHECK( qvkCreateImageView( vk.device, &viewCI, NULL, &xr->xrDepthView ) );
+	SET_OBJECT_NAME( xr->xrDepthView, "XR native depth view", VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT );
+
+	ri.Printf( PRINT_ALL, "Native XR depth buffer created successfully\n" );
+	return qtrue;
+}
+
+/*
+ * vk_destroy_xr_native_depth - Destroy native XR depth buffer resources
+ */
+static void vk_destroy_xr_native_depth( void )
+{
+	VkXrResources *xr = &vk.xr;
+
+	if ( xr->xrDepthView != VK_NULL_HANDLE ) {
+		qvkDestroyImageView( vk.device, xr->xrDepthView, NULL );
+		xr->xrDepthView = VK_NULL_HANDLE;
+	}
+	if ( xr->xrDepthImage != VK_NULL_HANDLE ) {
+		qvkDestroyImage( vk.device, xr->xrDepthImage, NULL );
+		xr->xrDepthImage = VK_NULL_HANDLE;
+	}
+	if ( xr->xrDepthMemory != VK_NULL_HANDLE ) {
+		qvkFreeMemory( vk.device, xr->xrDepthMemory, NULL );
+		xr->xrDepthMemory = VK_NULL_HANDLE;
+	}
+}
+
+/*
  * vk_create_xr_image_views - Create VkImageViews for XR swapchain images
  *
- * Creates multiview array views for the color and depth swapchains,
+ * Creates multiview array views for the color swapchain,
  * and per-eye views for desktop mirror blitting.
  *
  * This function is called after the VR layer creates XR swapchains
@@ -9676,8 +9773,8 @@ qboolean vk_create_xr_image_views( void )
 {
 	VkXrResources *xr = &vk.xr;
 
-	if ( !xr->colorInfo || !xr->depthInfo ) {
-		ri.Printf( PRINT_WARNING, "vk_create_xr_image_views: XR swapchain info not set\n" );
+	if ( !xr->colorInfo ) {
+		ri.Printf( PRINT_WARNING, "vk_create_xr_image_views: XR color swapchain info not set\n" );
 		return qfalse;
 	}
 
@@ -9751,35 +9848,7 @@ qboolean vk_create_xr_image_views( void )
 		}
 	}
 
-	// Create depth views (multiview array)
-	for ( uint32_t i = 0; i < xr->depthInfo->imageCount && i < MAX_SWAPCHAIN_IMAGES; i++ ) {
-		VkImageViewCreateInfo viewInfo = {
-			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-			.pNext = NULL,
-			.flags = 0,
-			.image = xr->depthInfo->images[i],
-			.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-			.format = xr->depthInfo->format,
-			.components = {
-				.r = VK_COMPONENT_SWIZZLE_IDENTITY,
-				.g = VK_COMPONENT_SWIZZLE_IDENTITY,
-				.b = VK_COMPONENT_SWIZZLE_IDENTITY,
-				.a = VK_COMPONENT_SWIZZLE_IDENTITY,
-			},
-			.subresourceRange = {
-				.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-				.baseMipLevel = 0,
-				.levelCount = 1,
-				.baseArrayLayer = 0,
-				.layerCount = xr->depthInfo->arraySize,
-			},
-		};
-
-		VK_CHECK( qvkCreateImageView( vk.device, &viewInfo, NULL, &xr->depthViews[i] ) );
-	}
-
-	ri.Printf( PRINT_ALL, "XR image views created: color=%u, depth=%u\n",
-		xr->colorInfo->imageCount, xr->depthInfo->imageCount );
+	ri.Printf( PRINT_ALL, "XR color image views created: %u\n", xr->colorInfo->imageCount );
 
 	// Allocate and initialize per-eye descriptors for desktop mirror VR view mode
 	// These are pre-bound to specific swapchain images so we don't need to update them at runtime
@@ -9851,14 +9920,6 @@ void vk_destroy_xr_image_views( void )
 			xr->colorEyeDescriptors[eye][i] = VK_NULL_HANDLE;
 		}
 	}
-
-	// Destroy depth views
-	for ( uint32_t i = 0; i < MAX_SWAPCHAIN_IMAGES; i++ ) {
-		if ( xr->depthViews[i] != VK_NULL_HANDLE ) {
-			qvkDestroyImageView( vk.device, xr->depthViews[i], NULL );
-			xr->depthViews[i] = VK_NULL_HANDLE;
-		}
-	}
 }
 
 /*
@@ -9895,16 +9956,21 @@ qboolean vk_create_xr_framebuffers( void )
 		return qfalse;
 	}
 
-	if ( xr->colorInfo == NULL || xr->depthInfo == NULL ) {
-		ri.Printf( PRINT_WARNING, "vk_create_xr_framebuffers: swapchain info not set\n" );
+	if ( xr->colorInfo == NULL ) {
+		ri.Printf( PRINT_WARNING, "vk_create_xr_framebuffers: color swapchain info not set\n" );
+		return qfalse;
+	}
+
+	if ( xr->xrDepthView == VK_NULL_HANDLE ) {
+		ri.Printf( PRINT_WARNING, "vk_create_xr_framebuffers: native depth buffer not created\n" );
 		return qfalse;
 	}
 
 	// Create XR swapchain framebuffers (direct render when !r_fbo, virtual screen otherwise)
 	for ( i = 0; i < xr->colorInfo->imageCount && i < MAX_SWAPCHAIN_IMAGES; i++ ) {
-		// Color and depth image views should already be created
-		if ( xr->colorViews[i] == VK_NULL_HANDLE || xr->depthViews[i] == VK_NULL_HANDLE ) {
-			ri.Printf( PRINT_WARNING, "vk_create_xr_framebuffers: image view %d not created\n", i );
+		// Color image views should already be created
+		if ( xr->colorViews[i] == VK_NULL_HANDLE ) {
+			ri.Printf( PRINT_WARNING, "vk_create_xr_framebuffers: color view %d not created\n", i );
 			return qfalse;
 		}
 
@@ -9914,7 +9980,7 @@ qboolean vk_create_xr_framebuffers( void )
 		} else {
 			attachments[0] = xr->colorViews[i];  // Fallback to sRGB view
 		}
-		attachments[1] = xr->depthViews[i];  // 2-layer depth array
+		attachments[1] = xr->xrDepthView;  // Single shared native depth buffer
 
 		Com_Memset( &fbInfo, 0, sizeof( fbInfo ) );
 		fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -11963,9 +12029,8 @@ static qboolean vk_reallocate_xr_fbo_descriptors( void )
 	return qtrue;
 }
 
-// Static swapchain info storage - populated from VR layer pull
+// Static color swapchain info storage - populated from VR layer pull
 static VR_VK_SwapchainInfo s_colorSwapchainInfo;
-static VR_VK_SwapchainInfo s_depthSwapchainInfo;
 
 /*
  * vk_recreate_xr_render_pass - Recreate main render pass with correct XR formats
@@ -12419,12 +12484,12 @@ qboolean vk_init_xr_resources( void )
 	const VR_VulkanSwapchainInfo* xrInfo =
 		(const VR_VulkanSwapchainInfo*)ri.VR_Vulkan_GetSwapchainInfo();
 
-	if ( !xrInfo || !xrInfo->colorImages || !xrInfo->depthImages ) {
-		ri.Printf( PRINT_WARNING, "vk_init_xr_resources: XR swapchains not available\n" );
+	if ( !xrInfo || !xrInfo->colorImages ) {
+		ri.Printf( PRINT_WARNING, "vk_init_xr_resources: XR color swapchain not available\n" );
 		return qfalse;
 	}
 
-	// Populate static swapchain info from pulled data
+	// Populate static color swapchain info from pulled data
 	Com_Memset( &s_colorSwapchainInfo, 0, sizeof( s_colorSwapchainInfo ) );
 	s_colorSwapchainInfo.format = xrInfo->colorFormat;
 	s_colorSwapchainInfo.width = xrInfo->colorWidth;
@@ -12433,29 +12498,20 @@ qboolean vk_init_xr_resources( void )
 	s_colorSwapchainInfo.imageCount = xrInfo->colorImageCount;
 	s_colorSwapchainInfo.images = xrInfo->colorImages;
 
-	Com_Memset( &s_depthSwapchainInfo, 0, sizeof( s_depthSwapchainInfo ) );
-	s_depthSwapchainInfo.format = xrInfo->depthFormat;
-	s_depthSwapchainInfo.width = xrInfo->depthWidth;
-	s_depthSwapchainInfo.height = xrInfo->depthHeight;
-	s_depthSwapchainInfo.arraySize = xrInfo->depthArraySize;
-	s_depthSwapchainInfo.imageCount = xrInfo->depthImageCount;
-	s_depthSwapchainInfo.images = xrInfo->depthImages;
-
-	// Point vk.xr to the static info
+	// Point vk.xr to the static color info
 	vk.xr.colorInfo = &s_colorSwapchainInfo;
-	vk.xr.depthInfo = &s_depthSwapchainInfo;
 
 	// Set XR render dimensions from color swapchain
 	vk.xr.width = xrInfo->colorWidth;
 	vk.xr.height = xrInfo->colorHeight;
 
-	ri.Printf( PRINT_ALL, "XR swapchain info: color=%ux%u (%u images), depth=%ux%u (%u images)\n",
-		xrInfo->colorWidth, xrInfo->colorHeight, xrInfo->colorImageCount,
-		xrInfo->depthWidth, xrInfo->depthHeight, xrInfo->depthImageCount );
+	ri.Printf( PRINT_ALL, "XR color swapchain info: %ux%u (%u images)\n",
+		xrInfo->colorWidth, xrInfo->colorHeight, xrInfo->colorImageCount );
 
 	// Recreate main render pass with correct XR swapchain formats
 	// The initial render pass was created with desktop swapchain format which may differ
-	if ( !vk_recreate_xr_render_pass( xrInfo->colorFormat, xrInfo->depthFormat ) ) {
+	// Use vk.depth_format for depth (native buffer) instead of XR-provided format
+	if ( !vk_recreate_xr_render_pass( xrInfo->colorFormat, vk.depth_format ) ) {
 		ri.Printf( PRINT_WARNING, "vk_init_xr_resources: Failed to recreate XR render pass\n" );
 		return qfalse;
 	}
@@ -12464,7 +12520,14 @@ qboolean vk_init_xr_resources( void )
 		return qfalse;
 	}
 
+	// Create native depth buffer (replaces OpenXR depth swapchain)
+	if ( !vk_create_xr_native_depth() ) {
+		vk_destroy_xr_image_views();
+		return qfalse;
+	}
+
 	if ( !vk_create_xr_framebuffers() ) {
+		vk_destroy_xr_native_depth();
 		vk_destroy_xr_image_views();
 		return qfalse;
 	}
@@ -12473,6 +12536,7 @@ qboolean vk_init_xr_resources( void )
 	// Main FBO, bloom images, and bloom framebuffers are created in vk_create_attachments/vk_create_framebuffers
 	if ( !vk_create_xr_gamma_framebuffers() ) {
 		vk_destroy_xr_framebuffers();
+		vk_destroy_xr_native_depth();
 		vk_destroy_xr_image_views();
 		return qfalse;
 	}
@@ -12480,6 +12544,7 @@ qboolean vk_init_xr_resources( void )
 	if ( !vk_create_xr_fbo_descriptors() ) {
 		vk_destroy_gamma_framebuffers();
 		vk_destroy_xr_framebuffers();
+		vk_destroy_xr_native_depth();
 		vk_destroy_xr_image_views();
 		return qfalse;
 	}
@@ -12527,11 +12592,11 @@ void vk_shutdown_xr_resources( void )
 	vk_destroy_processed_image();
 	vk_destroy_hud_buffer();
 	vk_destroy_xr_framebuffers();
+	vk_destroy_xr_native_depth();  // Native depth buffer (replaces XR depth swapchain)
 	vk_destroy_xr_image_views();
 
-	// Clear swapchain info pointers
+	// Clear swapchain info pointer
 	vk.xr.colorInfo = NULL;
-	vk.xr.depthInfo = NULL;
 
 	vk.xr.initialized = qfalse;
 	ri.Printf( PRINT_ALL, "XR resources shutdown complete\n" );

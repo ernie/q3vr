@@ -29,7 +29,7 @@ typedef VR_GL_SwapchainInfo VR_SwapchainInfo;
 struct VR_SwapchainInfos_s {
 	uint32_t viewCount;
 	VR_GL_SwapchainInfo color;
-	VR_GL_SwapchainInfo depth;
+	GLuint nativeDepthTexture;             // Native GL multiview depth texture (replaces XR depth swapchain)
 	GLuint* framebuffers;
 	GLuint** eyeFramebuffers;              // separate FBOs with bound only single eye image
 	GLuint virtualScreenFramebuffer;

@@ -110,7 +110,7 @@ typedef struct {
 
 	// VR framebuffer operations - called from vrcommon, implemented by each renderer
 	qboolean (*InitXRResources)( void );  // Initialize XR resources after swapchains created (Vulkan)
-	void	(*BeginXRFrame)( uint32_t colorIndex, uint32_t depthIndex );  // Begin XR frame with swapchain indices (Vulkan)
+	void	(*BeginXRFrame)( uint32_t colorIndex );  // Begin XR frame with swapchain index (Vulkan)
 	void	(*ClearVRFramebuffer)( int width, int height, qboolean isThirdPersonSpectator );
 	void	(*SwapDesktopWindow)( void );
 	void	(*WaitForRenderComplete)( void );  // Wait for GPU to finish current frame (Vulkan needs explicit sync)

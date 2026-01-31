@@ -140,13 +140,11 @@ VR_SwapchainInfos* VR_VK_CreateSwapchains(XrInstance instance, XrSystemId system
 	int64_t* formats = NULL;
 	const uint32_t formatCount = VR_GetSwapchainFormats(session, &formats);
 
-	// Select best formats for Vulkan
+	// Select best color format for Vulkan
 	const VkFormat colorFormat = VR_Vulkan_SelectColorFormat(formats, formatCount);
-	const VkFormat depthFormat = VR_Vulkan_SelectDepthFormat(formats, formatCount);
 	free(formats);
 
-	fprintf(stderr, "[VRVK] Chosen VK formats: {color: 0x%x, depth: 0x%x}\n",
-		(unsigned int)colorFormat, (unsigned int)depthFormat);
+	fprintf(stderr, "[VRVK] Chosen VK color format: 0x%x\n", (unsigned int)colorFormat);
 
 	// Calculate supersampled resolution
 	int supersampledWidth = views[0].recommendedImageRectWidth;
@@ -177,21 +175,6 @@ VR_SwapchainInfos* VR_VK_CreateSwapchains(XrInstance instance, XrSystemId system
 		swapchains->color.width, swapchains->color.height,
 		swapchains->color.imageCount, swapchains->color.arraySize);
 
-	// Create depth swapchain (multiview - 2 layers for stereo)
-	VR_VK_CreateSwapchain(
-		session,
-		XR_FALSE,  // isColor
-		XR_FALSE,  // mutableFormat - not needed for depth
-		depthFormat,
-		supersampledWidth,
-		supersampledHeight,
-		viewCount,  // arraySize = 2 for stereo
-		&swapchains->depth);
-
-	fprintf(stderr, "[VRVK] Created depth swapchain: %dx%d, %u images, %u layers\n",
-		swapchains->depth.width, swapchains->depth.height,
-		swapchains->depth.imageCount, swapchains->depth.arraySize);
-
 	free(views);
 	return swapchains;
 }
@@ -206,39 +189,33 @@ void VR_VK_DestroySwapchains(VR_SwapchainInfos** swapchainsPtr)
 
 	// Destroy swapchains (VR layer only owns XrSwapchain handles)
 	// VkImageViews and VkFramebuffers are destroyed by the renderer
-	VR_VK_DestroySwapchain(&swapchains->depth);
 	VR_VK_DestroySwapchain(&swapchains->color);
 
 	free(swapchains);
 	*swapchainsPtr = NULL;
 }
 
-void VR_VK_Swapchains_Acquire(VR_SwapchainInfos* swapchains, uint32_t* colorIndex, uint32_t* depthIndex)
+void VR_VK_Swapchains_Acquire(VR_SwapchainInfos* swapchains, uint32_t* colorIndex)
 {
 	if (!swapchains) {
 		return;
 	}
 
-	XrSwapchain xrSwapchains[2] = {swapchains->color.swapchain, swapchains->depth.swapchain};
-	uint32_t* indices[2] = {colorIndex, depthIndex};
+	XrSwapchainImageAcquireInfo acquireInfo = {XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO, NULL};
 
-	for (uint32_t idx = 0; idx < 2; ++idx) {
-		XrSwapchainImageAcquireInfo acquireInfo = {XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO, NULL};
+	XR_CHECK(
+		xrAcquireSwapchainImage(swapchains->color.swapchain, &acquireInfo, colorIndex),
+		"Failed to acquire color swapchain image");
 
-		XR_CHECK(
-			xrAcquireSwapchainImage(xrSwapchains[idx], &acquireInfo, indices[idx]),
-			"Failed to acquire swapchain image");
+	XrSwapchainImageWaitInfo waitInfo = {
+		.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
+		.next = NULL,
+		.timeout = XR_INFINITE_DURATION
+	};
 
-		XrSwapchainImageWaitInfo waitInfo = {
-			.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,
-			.next = NULL,
-			.timeout = XR_INFINITE_DURATION
-		};
-
-		CHECK(
-			!XR_FAILED(xrWaitSwapchainImage(xrSwapchains[idx], &waitInfo)),
-			"Failed to wait for swapchain image");
-	}
+	CHECK(
+		!XR_FAILED(xrWaitSwapchainImage(swapchains->color.swapchain, &waitInfo)),
+		"Failed to wait for color swapchain image");
 }
 
 void VR_VK_Swapchains_Release(VR_SwapchainInfos* swapchains)
@@ -247,14 +224,10 @@ void VR_VK_Swapchains_Release(VR_SwapchainInfos* swapchains)
 		return;
 	}
 
-	XrSwapchain xrSwapchains[2] = {swapchains->color.swapchain, swapchains->depth.swapchain};
-
-	for (uint32_t idx = 0; idx < 2; ++idx) {
-		XrSwapchainImageReleaseInfo releaseInfo = {XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO, NULL};
-		XR_CHECK(
-			xrReleaseSwapchainImage(xrSwapchains[idx], &releaseInfo),
-			"Failed to release swapchain image");
-	}
+	XrSwapchainImageReleaseInfo releaseInfo = {XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO, NULL};
+	XR_CHECK(
+		xrReleaseSwapchainImage(swapchains->color.swapchain, &releaseInfo),
+		"Failed to release color swapchain image");
 }
 
 //
@@ -264,9 +237,4 @@ void VR_VK_Swapchains_Release(VR_SwapchainInfos* swapchains)
 const VR_VK_SwapchainInfo* VR_VK_GetColorSwapchain(const VR_SwapchainInfos* swapchains)
 {
 	return swapchains ? &swapchains->color : NULL;
-}
-
-const VR_VK_SwapchainInfo* VR_VK_GetDepthSwapchain(const VR_SwapchainInfos* swapchains)
-{
-	return swapchains ? &swapchains->depth : NULL;
 }

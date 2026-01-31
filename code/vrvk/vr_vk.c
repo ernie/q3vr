@@ -149,21 +149,13 @@ const VR_VulkanSwapchainInfo* VR_Vulkan_GetSwapchainInfo(void)
     // Return pointer to static info populated from swapchain data
     static VR_VulkanSwapchainInfo info;
 
-    // Color swapchain
+    // Color swapchain only - depth is renderer-managed
     info.colorFormat = swapchains->color.format;
     info.colorWidth = swapchains->color.width;
     info.colorHeight = swapchains->color.height;
     info.colorArraySize = swapchains->color.arraySize;
     info.colorImageCount = swapchains->color.imageCount;
     info.colorImages = swapchains->color.images;
-
-    // Depth swapchain
-    info.depthFormat = swapchains->depth.format;
-    info.depthWidth = swapchains->depth.width;
-    info.depthHeight = swapchains->depth.height;
-    info.depthArraySize = swapchains->depth.arraySize;
-    info.depthImageCount = swapchains->depth.imageCount;
-    info.depthImages = swapchains->depth.images;
 
     return &info;
 }

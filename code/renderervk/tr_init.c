@@ -2140,10 +2140,10 @@ void RE_WaitForRenderComplete( void ) {
 	vk.cmd->waitForFence = qfalse;
 }
 
-void RE_BeginXRFrame( uint32_t colorIndex, uint32_t depthIndex ) {
+void RE_BeginXRFrame( uint32_t colorIndex ) {
 	// Begin frame - sets up command buffer, transitions images, begins render pass
 	// This is called from VR layer after acquiring XR swapchain images
-	vk_begin_frame( colorIndex, depthIndex );
+	vk_begin_frame( colorIndex );
 }
 
 qboolean RE_InitXRResources( void ) {
