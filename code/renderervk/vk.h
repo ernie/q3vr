@@ -787,6 +787,7 @@ typedef struct {
 	renderPass_t renderPassIndex;
 	qboolean inRenderPass;		// true when actually inside a render pass
 	qboolean recordingCommands;	// true when command buffer is recording (between Begin/End)
+	qboolean colorNeedsTransitionToAttachment;	// true after ending post_bloom (color in SHADER_READ_ONLY)
 
 	uint32_t screenMapWidth;
 	uint32_t screenMapHeight;

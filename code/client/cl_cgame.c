@@ -708,6 +708,9 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_HUDBUFFER_END:
 		re.HUDBufferEnd();
 		return 0;
+	case CG_R_FINISHBLOOM:
+		re.FinishBloom();
+		return 0;
 
 	default:
 	        assert(0);

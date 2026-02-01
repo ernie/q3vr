@@ -955,7 +955,8 @@ static void vk_create_render_passes( void )
 		attachments[1].format = depth_format;
 		attachments[1].samples = vk.msaaActive ? vkSamples : VK_SAMPLE_COUNT_1_BIT;
 		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // Needed for mainResume
+		// Only STORE depth when MSAA is active - non-MSAA mainResume uses CLEAR instead of LOAD
+		attachments[1].storeOp = vk.msaaActive ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1017,12 +1018,18 @@ static void vk_create_render_passes( void )
 		// initialLayout must NOT be UNDEFINED with LOAD_OP_LOAD
 		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachments[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		if ( vk.msaaActive ) {
+			// MSAA: main pass stored depth, so we can LOAD it
+			attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+			attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 			attachments[2].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		} else {
+			// Non-MSAA: main pass used DONT_CARE for depth, so we must CLEAR instead of LOAD
+			attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		}
 
 		VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.mainResume ) );
@@ -1081,16 +1088,16 @@ static void vk_create_render_passes( void )
 			attachments[1].format = depth_format;
 			attachments[1].samples = vkSamples;
 			attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-			attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;  // Store for mainResume after HUD
 			attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-			attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;  // Store for mainResume after HUD
 			attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 			attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
 			attachments[2].format = vk.color_format;
 			attachments[2].samples = vkSamples;
 			attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-			attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;  // Store for mainResume after HUD
 			attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			attachments[2].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -1106,16 +1113,30 @@ static void vk_create_render_passes( void )
 			subpass.pDepthStencilAttachment = &depthRef0;
 			subpass.pResolveAttachments = &colorResolveRef;
 		} else {
-			// Non-MSAA: color only
+			// Non-MSAA: color + depth (for pipeline compatibility with RENDER_PASS_MAIN)
+			// RENDER_PASS_MAIN has 2 attachments in non-MSAA, so post_bloom must match
 			attachments[0].format = vk.color_format;
+			attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
 			attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 			attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			attachments[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			attachments[0].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-			desc.attachmentCount = 1;
-			desc.dependencyCount = 1;
-			desc.pDependencies = &deps[2];
+			attachments[1].format = depth_format;
+			attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
+			attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+			attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+			desc.attachmentCount = 2;
+			desc.dependencyCount = 2;
+			desc.pDependencies = deps;
+			subpass.pDepthStencilAttachment = &depthRef0;
 		}
 
 		VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.post_bloom ) );
@@ -3591,12 +3612,10 @@ static void vk_create_framebuffers( void )
 				VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.framebuffers.main ) );
 				SET_OBJECT_NAME( vk.framebuffers.main, "framebuffer - main (multiview)", VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
 
-				// Post-bloom framebuffer - same attachments but for post_bloom render pass
-				// When MSAA, uses same 3 attachments; otherwise just color
+				// Post-bloom framebuffer - same attachments as main for pipeline compatibility
+				// Post_bloom render pass must match RENDER_PASS_MAIN attachment structure
 				desc.renderPass = vk.render_pass.post_bloom;
-				if ( !vk.msaaActive ) {
-					desc.attachmentCount = 1;  // Post-bloom only needs color without MSAA
-				}
+				// Keep same attachmentCount as main (2 for non-MSAA, 3 for MSAA)
 				VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.framebuffers.post_bloom ) );
 				SET_OBJECT_NAME( vk.framebuffers.post_bloom, "framebuffer - post_bloom (multiview)", VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
 			}
@@ -7586,6 +7605,11 @@ void vk_begin_hud_render_pass( qboolean clear )
 
 	// End current render pass if active
 	if ( vk.inRenderPass ) {
+		// Track if we're ending post_bloom - its finalLayout transitions color to SHADER_READ_ONLY
+		// Only post_bloom does this; main keeps color in COLOR_ATTACHMENT
+		if ( vk.renderPassIndex == RENDER_PASS_POST_BLOOM ) {
+			vk.colorNeedsTransitionToAttachment = qtrue;
+		}
 		qvkCmdEndRenderPass( vk.cmd->command_buffer );
 		vk.inRenderPass = qfalse;
 	}
@@ -7691,6 +7715,18 @@ void vk_end_hud_render_pass( void )
 	vk.inRenderPass = qfalse;
 
 	// HUD image is now in SHADER_READ_ONLY_OPTIMAL layout (from render pass finalLayout)
+
+	// If we ended post_bloom when starting HUD, the FBO color was transitioned to SHADER_READ_ONLY
+	// (post_bloom's finalLayout). We need to transition it back to COLOR_ATTACHMENT before
+	// resuming the main render pass. Only do this if we actually ended post_bloom, not main.
+	if ( vk.colorNeedsTransitionToAttachment ) {
+		record_image_layout_transition( vk.cmd->command_buffer,
+			vk.color_image, VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0, 0 );
+		vk.colorNeedsTransitionToAttachment = qfalse;
+	}
+
 	// Resume main XR render pass without clearing (preserve existing content)
 	vk_begin_main_render_pass( qfalse );
 }
@@ -7936,9 +7972,9 @@ void vk_end_frame( void )
 		vk_end_render_pass();
 
 		// Transition FBO color to shader read for gamma pass
-		// After bloom: FBO is in SHADER_READ_ONLY_OPTIMAL (from post_bloom finalLayout)
-		// Without bloom: FBO is in COLOR_ATTACHMENT_OPTIMAL (from main render) - needs transition
-		if ( !backEnd.doneBloom ) {
+		// If we just ended post_bloom: FBO is already in SHADER_READ_ONLY_OPTIMAL (from finalLayout)
+		// Otherwise (main, mainResume, or HUD after bloom): FBO is in COLOR_ATTACHMENT_OPTIMAL - needs transition
+		if ( vk.renderPassIndex != RENDER_PASS_POST_BLOOM ) {
 			record_image_layout_transition( vk.cmd->command_buffer,
 				vk.color_image, VK_IMAGE_ASPECT_COLOR_BIT,
 				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -9667,20 +9703,45 @@ qboolean vk_bloom( void )
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0, 0 );
 
 		// Post-bloom blends back to FBO with LOAD_OP_LOAD (preserves base image)
-		// Uses post_bloom framebuffer which has only color attachment (no depth)
-		// to match post_bloom render pass which has 1 attachment
+		// Post_bloom render pass must match RENDER_PASS_MAIN attachment structure
+		// for 2D pipeline compatibility (2D pipelines created for RENDER_PASS_MAIN)
 		vk.renderWidth = width;
 		vk.renderHeight = height;
 		vk.renderScaleX = vk.renderScaleY = 1.0f;
 
 		vk_begin_render_pass( vk.render_pass.post_bloom, vk.framebuffers.post_bloom,
 			qfalse, width, height );
+		vk.renderPassIndex = RENDER_PASS_POST_BLOOM;
+
 		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 			vk.bloom_blend_pipeline );
 		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 			vk.pipeline_layout_blend, 0, ARRAY_LEN(dset), dset, 0, NULL );
 		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
-		vk_end_render_pass();
+		// NOTE: Do NOT end render pass here - keep post_bloom open for 2D rendering
+		// The render pass will be ended by vk_end_frame() or next vk_end_render_pass() call
+	}
+
+	// Restore pipeline state for continued 2D rendering (Quake3e pattern)
+	if ( vk.cmd->last_pipeline != VK_NULL_HANDLE )
+	{
+		// restore last pipeline
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.cmd->last_pipeline );
+
+		vk_update_mvp( NULL );
+
+		// force depth range and viewport/scissor updates
+		vk.cmd->depth_range = DEPTH_RANGE_COUNT;
+
+		// restore clobbered descriptor sets
+		for ( i = 0; i < VK_NUM_BLOOM_PASSES; i++ ) {
+			if ( vk.cmd->descriptor_set.current[i] != VK_NULL_HANDLE ) {
+				if ( i == VK_DESC_UNIFORM )
+					qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeline_layout, i, 1, &vk.cmd->descriptor_set.current[i], 1, &vk.cmd->descriptor_set.offset[i] );
+				else
+					qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeline_layout, i, 1, &vk.cmd->descriptor_set.current[i], 0, NULL );
+			}
+		}
 	}
 
 	backEnd.doneBloom = qtrue;
@@ -12217,13 +12278,8 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 		attachments[1].format = vk.depth_format;
 		attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
 		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		// Only STORE depth when MSAA is active, because empty HUD render passes cause
-		// crashes with MSAA without a stored depth attachment to read from.
-		if ( vk.msaaActive ) {
-			attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		} else {
-			attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		}
+		// Non-MSAA: DONT_CARE for depth (mainResume will use CLEAR instead of LOAD)
+		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -12302,12 +12358,12 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 		attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachments[2].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	} else {
-		// Non-MSAA mode: load 2 attachments
+		// Non-MSAA mode: load color, but CLEAR depth (main pass used DONT_CARE for depth storeOp)
 		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachments[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	}
 
 	// mainResume uses same deps as main (both now include depth synchronization)
@@ -12509,10 +12565,8 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 		SET_OBJECT_NAME( vk.framebuffers.main, "framebuffer - main (recreated)", VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
 
 		// Recreate post-bloom framebuffer with new render pass
+		// Keep same attachmentCount as main for pipeline compatibility
 		desc.renderPass = vk.render_pass.post_bloom;
-		if ( !vk.msaaActive ) {
-			desc.attachmentCount = 1;  // Post-bloom only needs color without MSAA
-		}
 		VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.framebuffers.post_bloom ) );
 		SET_OBJECT_NAME( vk.framebuffers.post_bloom, "framebuffer - post_bloom (recreated)", VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
 

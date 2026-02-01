@@ -1677,13 +1677,25 @@ static const void *RB_ClearColor( const void *data )
 /*
 =============
 RB_FinishBloom
+
+Called after 3D scene rendering to apply bloom BEFORE 2D drawing begins.
+This ensures bloom only affects the 3D scene, not UI elements.
 =============
 */
 static const void *RB_FinishBloom( const void *data )
 {
 	const finishBloomCommand_t *cmd = data;
 
+	// Flush any pending 3D surfaces
 	RB_EndSurface();
+
+#ifdef USE_VULKAN
+	// Apply bloom now, before 2D drawing starts
+	// vk_bloom() keeps post_bloom render pass open for subsequent 2D commands
+	if ( r_bloom->integer && !backEnd.doneBloom ) {
+		vk_bloom();
+	}
+#endif
 
 	// texture swapping test
 	if ( r_showImages->integer ) {

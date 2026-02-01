@@ -3645,6 +3645,10 @@ void CG_DrawActive( void ) {
 	// draw 3D view
 	trap_R_RenderScene( &cg.refdef );
 
+	// Apply bloom now, BEFORE 2D drawing begins
+	// This ensures bloom only affects the 3D scene, not UI elements
+	trap_R_FinishBloom();
+
 	VectorCopy( baseOrg, cg.refdef.vieworg );
 
 	{

@@ -296,6 +296,10 @@ void	trap_R_HUDBufferEnd( void ) {
 	syscall( CG_R_HUDBUFFER_END );
 }
 
+void	trap_R_FinishBloom( void ) {
+	syscall( CG_R_FINISHBLOOM );
+}
+
 void	trap_R_SetColor( const float *rgba ) {
 	syscall( CG_R_SETCOLOR, rgba );
 }
