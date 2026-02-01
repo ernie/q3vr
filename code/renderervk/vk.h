@@ -411,6 +411,9 @@ typedef struct {
 	VkImageView colorEyeViews[2][MAX_SWAPCHAIN_IMAGES];  // [eye][swapchain_index] - per-eye 2D views
 	VkDescriptorSet colorEyeDescriptors[2][MAX_SWAPCHAIN_IMAGES];  // [eye][swapchain_index] - pre-bound descriptors
 
+	// 2D_ARRAY descriptors for XR swapchain (for desktop mirror shader with sampler2DArray)
+	VkDescriptorSet colorArrayDescriptors[MAX_SWAPCHAIN_IMAGES];
+
 	// Direct XR swapchain framebuffers (used when FBO is NOT active)
 	VkFramebuffer framebuffers[MAX_SWAPCHAIN_IMAGES];
 

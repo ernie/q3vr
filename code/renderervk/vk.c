@@ -293,6 +293,9 @@ static const char *vk_result_string( VkResult code ) {
 	} \
 }
 
+// Forward declarations
+static VkFormat vk_get_unorm_format( VkFormat format );
+
 
 /*
 static VkFlags get_composite_alpha( VkCompositeAlphaFlagsKHR flags )
@@ -1030,9 +1033,10 @@ static void vk_create_render_passes( void )
 		subpass.pResolveAttachments = NULL;
 		colorRef0.attachment = 0;
 
-		// Gamma pass: outputs to XR swapchain (placeholder format, recreated later with UNORM)
+		// Gamma pass: outputs to XR swapchain (uses UNORM format to bypass automatic sRGB conversion)
+		// The gamma shader outputs sRGB-encoded values directly
 		attachments[0].flags = 0;
-		attachments[0].format = vk.color_format;
+		attachments[0].format = vk_get_unorm_format( vk.color_format );
 		attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
 		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -1661,6 +1665,26 @@ static VkFormat vk_get_srgb_format( VkFormat format )
 		case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
 			return format;  // Already sRGB
 		default: return format;  // Unknown format, return as-is
+	}
+}
+
+
+/*
+ * vk_format_has_stencil - Check if depth format includes stencil component
+ *
+ * Used to determine the correct aspect mask for image barriers and views
+ * when working with depth/stencil images. Without separateDepthStencilLayouts
+ * feature, barriers must include both aspects.
+ */
+static qboolean vk_format_has_stencil( VkFormat format )
+{
+	switch ( format ) {
+		case VK_FORMAT_D16_UNORM_S8_UINT:
+		case VK_FORMAT_D24_UNORM_S8_UINT:
+		case VK_FORMAT_D32_SFLOAT_S8_UINT:
+			return qtrue;
+		default:
+			return qfalse;
 	}
 }
 
@@ -7818,9 +7842,14 @@ void vk_begin_frame( uint32_t colorIndex )
 	}
 
 	if ( vk.depth_image != VK_NULL_HANDLE ) {
+		// For depth/stencil formats, barriers must include both aspects
+		VkImageAspectFlags depthAspects = VK_IMAGE_ASPECT_DEPTH_BIT;
+		if ( vk_format_has_stencil( vk.depth_format ) ) {
+			depthAspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		}
 		record_image_layout_transition( vk.cmd->command_buffer,
 			vk.depth_image,
-			VK_IMAGE_ASPECT_DEPTH_BIT,
+			depthAspects,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
 			0, 0 );
@@ -8190,6 +8219,9 @@ static void vk_destroy_desktop_mirror_resources( void )
 		for ( int i = 0; i < MAX_SWAPCHAIN_IMAGES; i++ ) {
 			vk.xr.colorEyeDescriptors[eye][i] = VK_NULL_HANDLE;
 		}
+	}
+	for ( int i = 0; i < MAX_SWAPCHAIN_IMAGES; i++ ) {
+		vk.xr.colorArrayDescriptors[i] = VK_NULL_HANDLE;
 	}
 }
 
@@ -8692,7 +8724,7 @@ void vk_present_desktop_mirror( void )
 
 		// Lazy-init descriptors if they weren't created during vk_create_xr_image_views
 		// (can happen if XR resources were created before vk_initialize)
-		if ( vk.xr.colorEyeDescriptors[0][colorIndex] == VK_NULL_HANDLE ) {
+		if ( vk.xr.colorArrayDescriptors[colorIndex] == VK_NULL_HANDLE ) {
 			if ( vk.linearSampler == VK_NULL_HANDLE || vk.descriptor_pool == VK_NULL_HANDLE ||
 			     vk.set_layout_sampler == VK_NULL_HANDLE ) {
 				goto finish_desktop_mirror;
@@ -8729,6 +8761,14 @@ void vk_present_desktop_mirror( void )
 						descriptorWrite.dstSet = vk.xr.colorEyeDescriptors[eye][i];
 						qvkUpdateDescriptorSets( vk.device, 1, &descriptorWrite, 0, NULL );
 					}
+				}
+				// Create 2D_ARRAY descriptor for desktop mirror shader (sampler2DArray)
+				if ( vk.xr.colorArrayDescriptors[i] == VK_NULL_HANDLE &&
+				     vk.xr.colorViews[i] != VK_NULL_HANDLE ) {
+					VK_CHECK( qvkAllocateDescriptorSets( vk.device, &descAllocInfo, &vk.xr.colorArrayDescriptors[i] ) );
+					imageInfo.imageView = vk.xr.colorViews[i];  // 2D_ARRAY view
+					descriptorWrite.dstSet = vk.xr.colorArrayDescriptors[i];
+					qvkUpdateDescriptorSets( vk.device, 1, &descriptorWrite, 0, NULL );
 				}
 			}
 
@@ -8865,8 +8905,9 @@ void vk_present_desktop_mirror( void )
 					partScissor.extent.height = dstHeight;
 					qvkCmdSetScissor( vk.desktopBlitCmd, 0, 1, &partScissor );
 
+					// Use 2D_ARRAY descriptor with sampler2DArray shader
 					qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-						vk.desktopMirrorPipelineLayout, 0, 1, &vk.xr.colorEyeDescriptors[eye][colorIndex], 0, NULL );
+						vk.desktopMirrorPipelineLayout, 0, 1, &vk.xr.colorArrayDescriptors[colorIndex], 0, NULL );
 
 					pushConstants.offsetX = 0.0f;
 					pushConstants.offsetY = 0.0f;
@@ -8874,7 +8915,7 @@ void vk_present_desktop_mirror( void )
 					pushConstants.scaleY = quadScaleY;
 					pushConstants.texCropX = texCropX;
 					pushConstants.texCropY = texCropY;
-					pushConstants.eyeLayer = 0;  // Per-eye descriptors are 2D, not array
+					pushConstants.eyeLayer = eye;  // Select layer in 2D_ARRAY
 
 					qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 						VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
@@ -8884,8 +8925,9 @@ void vk_present_desktop_mirror( void )
 				// Single eye (left=0, right=1)
 				int eye = ( contentType == 1 ) ? 1 : 0;
 
+				// Use 2D_ARRAY descriptor with sampler2DArray shader
 				qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					vk.desktopMirrorPipelineLayout, 0, 1, &vk.xr.colorEyeDescriptors[eye][colorIndex], 0, NULL );
+					vk.desktopMirrorPipelineLayout, 0, 1, &vk.xr.colorArrayDescriptors[colorIndex], 0, NULL );
 
 				pushConstants.offsetX = 0.0f;
 				pushConstants.offsetY = 0.0f;
@@ -8893,7 +8935,7 @@ void vk_present_desktop_mirror( void )
 				pushConstants.scaleY = quadScaleY;
 				pushConstants.texCropX = texCropX;
 				pushConstants.texCropY = texCropY;
-				pushConstants.eyeLayer = 0;  // Per-eye descriptors are 2D, not array
+				pushConstants.eyeLayer = eye;  // Select layer in 2D_ARRAY
 
 				qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 					VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
@@ -9876,9 +9918,16 @@ qboolean vk_create_xr_image_views( void )
 				descriptorWrite.dstSet = xr->colorEyeDescriptors[eye][i];
 				qvkUpdateDescriptorSets( vk.device, 1, &descriptorWrite, 0, NULL );
 			}
+
+			// Create 2D_ARRAY descriptor for desktop mirror shader (sampler2DArray)
+			VK_CHECK( qvkAllocateDescriptorSets( vk.device, &descAllocInfo, &xr->colorArrayDescriptors[i] ) );
+			imageInfo.imageView = xr->colorViews[i];  // 2D_ARRAY view
+			descriptorWrite.dstSet = xr->colorArrayDescriptors[i];
+			qvkUpdateDescriptorSets( vk.device, 1, &descriptorWrite, 0, NULL );
 		}
 
 		ri.Printf( PRINT_ALL, "XR per-eye descriptors created: %u per eye\n", xr->colorInfo->imageCount );
+		ri.Printf( PRINT_ALL, "XR 2D_ARRAY descriptors created: %u\n", xr->colorInfo->imageCount );
 	} else {
 		ri.Printf( PRINT_WARNING, "XR per-eye descriptors deferred: waiting for vk_initialize\n" );
 	}
@@ -9912,6 +9961,8 @@ void vk_destroy_xr_image_views( void )
 			// Descriptors are freed when descriptor pool is reset, just clear handles
 			xr->colorEyeDescriptors[eye][i] = VK_NULL_HANDLE;
 		}
+		// Reset 2D_ARRAY descriptors
+		xr->colorArrayDescriptors[i] = VK_NULL_HANDLE;
 	}
 }
 
@@ -10258,13 +10309,20 @@ qboolean vk_create_hud_buffer( void )
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
 
 		// Initialize depth image: transition to TRANSFER_DST and clear to 0.0 (reversed depth)
-		record_image_layout_transition( cmdBuf, xr->hudDepthImage, VK_IMAGE_ASPECT_DEPTH_BIT,
+		// For depth/stencil formats, barriers must include both aspects (Vulkan spec requirement
+		// when separateDepthStencilLayouts is not enabled)
+		VkImageAspectFlags depthAspects = VK_IMAGE_ASPECT_DEPTH_BIT;
+		if ( vk_format_has_stencil( vk.depth_format ) ) {
+			depthAspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		}
+
+		record_image_layout_transition( cmdBuf, xr->hudDepthImage, depthAspects,
 			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, 0 );
 
 		clearDepth.depth = 0.0f;  // USE_REVERSED_DEPTH: 0.0 = farthest
 		clearDepth.stencil = 0;
 
-		range.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+		range.aspectMask = depthAspects;
 
 		qvkCmdClearDepthStencilImage( cmdBuf, xr->hudDepthImage,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearDepth, 1, &range );
@@ -10273,7 +10331,7 @@ qboolean vk_create_hud_buffer( void )
 		// The render pass requires initialLayout=DEPTH_STENCIL_ATTACHMENT_OPTIMAL because
 		// the HUD pass may run multiple times per frame (cgame + console notify), and
 		// subsequent passes need the image in the correct layout
-		record_image_layout_transition( cmdBuf, xr->hudDepthImage, VK_IMAGE_ASPECT_DEPTH_BIT,
+		record_image_layout_transition( cmdBuf, xr->hudDepthImage, depthAspects,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 0, 0 );
 
 		VK_CHECK( qvkEndCommandBuffer( cmdBuf ) );
@@ -11804,8 +11862,8 @@ static qboolean vk_create_xr_gamma_framebuffers( void )
 
 	for ( i = 0; i < xr->colorInfo->imageCount && i < MAX_SWAPCHAIN_IMAGES; i++ ) {
 		// Use UNORM views for gamma framebuffer - gamma shader outputs sRGB-encoded
-		// values directly (like Quake3e), so we need to bypass Vulkan's automatic
-		// linear-to-sRGB conversion that would occur with sRGB attachment format
+		// values directly, so we need to bypass Vulkan's automatic linear-to-sRGB
+		// conversion that would occur with sRGB attachment format
 		if ( xr->gammaViews[i] == VK_NULL_HANDLE ) {
 			continue;
 		}
@@ -12015,6 +12073,16 @@ static qboolean vk_reallocate_xr_fbo_descriptors( void )
 
 					qvkUpdateDescriptorSets( vk.device, 1, &writeSet, 0, NULL );
 				}
+			}
+
+			// Also reallocate 2D_ARRAY descriptors for desktop mirror shader
+			if ( vk.xr.colorViews[i] != VK_NULL_HANDLE ) {
+				VK_CHECK( qvkAllocateDescriptorSets( vk.device, &allocInfo, &vk.xr.colorArrayDescriptors[i] ) );
+
+				imageInfo.imageView = vk.xr.colorViews[i];  // 2D_ARRAY view
+				writeSet.dstSet = vk.xr.colorArrayDescriptors[i];
+
+				qvkUpdateDescriptorSets( vk.device, 1, &writeSet, 0, NULL );
 			}
 		}
 	}
@@ -12248,8 +12316,8 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 	ri.Printf( PRINT_ALL, "Recreated mainResume render pass: %p\n", (void*)vk.render_pass.mainResume );
 
 	// Recreate gamma render pass with UNORM format (outputs to vk.processed via UNORM view)
-	// The gamma shader outputs sRGB-encoded values directly (like Quake3e), so we use
-	// UNORM format to bypass Vulkan's automatic linear-to-sRGB conversion on write.
+	// The gamma shader outputs sRGB-encoded values directly, so we use UNORM format
+	// to bypass Vulkan's automatic linear-to-sRGB conversion on write.
 	// OpenXR will read the sRGB data correctly because the underlying image is sRGB format.
 	{
 		VkSubpassDependency gammaDep;
@@ -12315,9 +12383,9 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 			vk.render_pass.virtualScreen = VK_NULL_HANDLE;
 		}
 
-		// Color attachment (XR swapchain format)
+		// Color attachment (UNORM format to match gammaViews used by framebuffers)
 		attachments[0].flags = 0;
-		attachments[0].format = colorFormat;  // XR swapchain color format
+		attachments[0].format = vk_get_unorm_format( colorFormat );  // Must match gammaViews format
 		attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;  // No MSAA
 		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
