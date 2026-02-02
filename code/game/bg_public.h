@@ -455,11 +455,12 @@ typedef enum {
 	EV_TAUNT_FOLLOWME,
 	EV_TAUNT_GETFLAG,
 	EV_TAUNT_GUARDBASE,
-	EV_TAUNT_PATROL,
-
-	EV_DAMAGEPLUM
+	EV_TAUNT_PATROL
 
 } entity_event_t;
+
+// plum type flags for EV_SCOREPLUM eventParm
+#define PLUM_DAMAGE		0x01
 
 typedef enum {
 	TAG_NONE = 0,
