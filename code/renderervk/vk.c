@@ -8745,9 +8745,9 @@ void vk_present_desktop_mirror( void )
 		uint32_t colorIndex = vk.xr.colorIndex;
 
 		// Lazy-init desktop mirror resources
-		if ( vk.desktopMirrorPipeline == VK_NULL_HANDLE ) {
+		if ( vk.desktopMirrorVSPipeline == VK_NULL_HANDLE ) {
 			vk_create_desktop_mirror_resources();
-			if ( vk.desktopMirrorPipeline == VK_NULL_HANDLE ) {
+			if ( vk.desktopMirrorVSPipeline == VK_NULL_HANDLE ) {
 				goto finish_desktop_mirror;
 			}
 		}
@@ -8849,8 +8849,8 @@ void vk_present_desktop_mirror( void )
 			qvkCmdBeginRenderPass( vk.desktopBlitCmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE );
 		}
 
-		// Use the main pipeline (gamma=2.2) for VR view - XR swapchain has sRGB values that need decoding
-		qvkCmdBindPipeline( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.desktopMirrorPipeline );
+		// Use VS pipeline (gamma=1.0) for VR view - sRGB texture view auto-decodes, sRGB framebuffer auto-encodes
+		qvkCmdBindPipeline( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.desktopMirrorVSPipeline );
 
 		// Set viewport/scissor
 		{
