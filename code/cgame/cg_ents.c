@@ -23,7 +23,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // cg_ents.c -- present snapshot entities, happens every single frame
 
 #include "cg_local.h"
+#include "../vrcommon/vr_clientinfo.h"
 
+extern vr_clientinfo_t* vr;
 
 /*
 ======================
@@ -1082,6 +1084,14 @@ void CG_AddPacketEntities( void ) {
 	// generate and add the entity from the playerstate
 	ps = &cg.predictedPlayerState;
 	BG_PlayerStateToEntityState( ps, &cg.predictedPlayerEntity.currentState, qfalse );
+
+	// Set VR head orientation for local player (mirrors).
+	if (vr) {
+		cg.predictedPlayerEntity.currentState.angles2[PITCH] = vr->hmdorientation[PITCH];
+		cg.predictedPlayerEntity.currentState.angles2[ROLL] = AngleSubtract(vr->hmdorientation[YAW], vr->weaponangles[YAW]);
+		cg.predictedPlayerEntity.currentState.eFlags |= EF_VR_PLAYER;
+	}
+
 	CG_AddCEntity( &cg.predictedPlayerEntity );
 
 	// lerp the non-predicted value for lightning gun origins

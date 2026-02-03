@@ -199,6 +199,9 @@ typedef struct client_s {
 #ifdef LEGACY_PROTOCOL
 	qboolean		compat;
 #endif
+
+	// VR support
+	qboolean		isVR;				// Client is VR (from userinfo)
 } client_t;
 
 //=============================================================================

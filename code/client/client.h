@@ -263,6 +263,9 @@ typedef struct {
 	qboolean compat;
 #endif
 
+	// VR support
+	qboolean	serverSupportsVR;	// Server has vr_support=1 in serverinfo
+
 	// big stuff at end of structure so most offsets are 15 bits or less
 	netchan_t	netchan;
 } clientConnection_t;

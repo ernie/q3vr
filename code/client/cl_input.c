@@ -335,7 +335,7 @@ void CL_AdjustAngles( void ) {
 	}
 
 	cl.viewangles[PITCH] = vr.hmdorientation[PITCH];
-	cl.viewangles[ROLL] = vr.hmdorientation[ROLL];
+	cl.viewangles[ROLL] = Com_Clamp(-60.0f, 60.0f, vr.hmdorientation[ROLL]);
 
 	VectorCopy(cl.viewangles, vr.clientviewangles);
 }
@@ -628,13 +628,10 @@ void CL_FinishMove( usercmd_t *cmd ) {
 		float deltaPitch = SHORT2ANGLE(cl.snap.ps.delta_angles[PITCH]);
 		angles[PITCH] -= deltaPitch;
 		angles[YAW] += (cl.viewangles[YAW] - vr.hmdorientation[YAW]);
-		if (!vr_sendRollToServer->integer)
-		{
-			angles[ROLL] = 0; // suppress roll
-		}
-		else
-		{
-			angles[ROLL] = vr.hmdorientation[ROLL];
+		if (!vr_sendRollToServer->integer && !clc.serverSupportsVR) {
+			angles[ROLL] = 0;
+		} else {
+			angles[ROLL] = Com_Clamp(-60.0f, 60.0f, vr.hmdorientation[ROLL]);
 		}
 
 		for (i = 0; i < 3; i++) {
@@ -664,6 +661,19 @@ void CL_FinishMove( usercmd_t *cmd ) {
 			// Integrate original upmove input with pitch-based vertical movement
 			cmd->upmove = ClampChar((int)(originalUp + originalForward * -sin(pitchRad)));
 		}
+	}
+
+	// Pack VR head orientation into buttons bits 12-25 for VR-aware servers
+	// (roll is sent via cmd->angles[ROLL] separately)
+	if (clc.serverSupportsVR) {
+		float headPitch = Com_Clamp(-90.0f, 90.0f, vr.hmdorientation[PITCH]);
+		int pitchPacked = ((int)((headPitch + 90.0f) * 127.0f / 180.0f)) & 0x7F;
+
+		float headYawOffset = Com_Clamp(-80.0f, 80.0f,
+			AngleSubtract(vr.hmdorientation[YAW], vr.weaponangles[YAW]));
+		int yawPacked = ((int)((headYawOffset + 90.0f) * 127.0f / 180.0f)) & 0x7F;
+
+		cmd->buttons |= (pitchPacked << 12) | (yawPacked << 19);
 	}
 }
 
@@ -973,7 +983,7 @@ void CL_WritePacket( void ) {
 		for ( i = 0 ; i < count ; i++ ) {
 			j = (cl.cmdNumber - count + i + 1) & CMD_MASK;
 			cmd = &cl.cmds[j];
-			MSG_WriteDeltaUsercmdKey (&buf, key, oldcmd, cmd);
+			MSG_WriteDeltaUsercmdKey (&buf, key, oldcmd, cmd, clc.serverSupportsVR ? 32 : 16);
 			oldcmd = cmd;
 		}
 	}

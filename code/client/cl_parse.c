@@ -452,6 +452,9 @@ static void CL_ParseServerInfo(void)
 	Q_strncpyz(clc.sv_dlURL,
 		Info_ValueForKey(serverInfo, "sv_dlURL"),
 		sizeof(clc.sv_dlURL));
+
+	// Check if server supports VR head tracking
+	clc.serverSupportsVR = (atoi(Info_ValueForKey(serverInfo, "vr_support")) == 1);
 }
 
 /*
