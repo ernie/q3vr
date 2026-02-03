@@ -666,7 +666,7 @@ void CL_FinishMove( usercmd_t *cmd ) {
 	// Pack VR head orientation into buttons bits 12-25 for VR-aware servers
 	// (roll is sent via cmd->angles[ROLL] separately)
 	if (clc.serverSupportsVR) {
-		float headPitch = Com_Clamp(-90.0f, 90.0f, vr.hmdorientation[PITCH]);
+		float headPitch = Com_Clamp(-80.0f, 80.0f, vr.hmdorientation[PITCH]);
 		int pitchPacked = ((int)((headPitch + 90.0f) * 127.0f / 180.0f)) & 0x7F;
 
 		float headYawOffset = Com_Clamp(-80.0f, 80.0f,

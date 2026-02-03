@@ -1086,7 +1086,8 @@ void CG_AddPacketEntities( void ) {
 	BG_PlayerStateToEntityState( ps, &cg.predictedPlayerEntity.currentState, qfalse );
 
 	// Set VR head orientation for local player (mirrors).
-	if (vr) {
+	// Skip during demo playback to avoid replacing recorded angles.
+	if (vr && !cg.demoPlayback) {
 		cg.predictedPlayerEntity.currentState.angles2[PITCH] = vr->hmdorientation[PITCH];
 		cg.predictedPlayerEntity.currentState.angles2[ROLL] = AngleSubtract(vr->hmdorientation[YAW], vr->weaponangles[YAW]);
 		cg.predictedPlayerEntity.currentState.eFlags |= EF_VR_PLAYER;
