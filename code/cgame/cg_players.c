@@ -1282,6 +1282,10 @@ void CG_NewClientInfo( int clientNum ) {
 	v = Info_ValueForKey( configstring, "skill" );
 	newInfo.botSkill = atoi( v );
 
+	// vr player
+	v = Info_ValueForKey( configstring, "vr" );
+	newInfo.vrPlayer = atoi( v ) ? qtrue : qfalse;
+
 	// handicap
 	v = Info_ValueForKey( configstring, "hc" );
 	newInfo.handicap = atoi( v );
