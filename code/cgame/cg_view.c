@@ -225,6 +225,22 @@ static void CG_CalcVrect (void) {
 
 /*
 ===============
+CG_InitSmoothFollow
+
+Initialize or recenter smooth follow camera behind the player
+===============
+*/
+static void CG_InitSmoothFollow( void ) {
+	cg.smoothFollow_distance = 200.0f;
+	cg.smoothFollow_distanceTarget = 200.0f;
+	cg.smoothFollow_yaw = cg.snap->ps.viewangles[YAW] + 180.0f;
+	cg.smoothFollow_pitch = 0.0f;
+	cg.smoothFollow_hmdYawOffset = vr->hmdorientation[YAW];
+	cg.smoothFollow_initialized = qtrue;
+}
+
+/*
+===============
 CG_OffsetVRThirdPersonView
 
 ===============
@@ -258,51 +274,35 @@ static void CG_OffsetVRThirdPersonView( void ) {
 
 		if (cg_smoothFollow.integer)
 		{
-			// Smooth follow with thumbstick camera controls
-			static qboolean initialized = qfalse;
-			static float hmdYawOffset = 0.0f;  // Captures HMD yaw at recenter to offset view direction
-
 			// Handle camera recentering when B button is pressed or followed player changes
 			if (vr->recenter_follow_camera)
 			{
-				// Reset camera behind player at default distance and pitch
-				cg.smoothFollow_distance = 200.0f;
-				// Set yaw to place camera behind player (180 degrees from their facing)
-				cg.smoothFollow_yaw = cg.snap->ps.viewangles[YAW] + 180.0f;
-				cg.smoothFollow_pitch = 0.0f;
-				// Capture current HMD yaw so we can offset the view direction
-				// This makes the current head orientation become "forward" toward the player
-				hmdYawOffset = vr->hmdorientation[YAW];
+				CG_InitSmoothFollow();
 				vr->recenter_follow_camera = qfalse;
 			}
 
-			// Initialize camera spherical coordinates on first use
-			if (!initialized) {
-				cg.smoothFollow_distance = 200.0f;
-				cg.smoothFollow_yaw = cg.snap->ps.viewangles[YAW] + 180.0f;
-				cg.smoothFollow_pitch = 0.0f;
-				hmdYawOffset = vr->hmdorientation[YAW];
-				initialized = qtrue;
+			// Initialize on first use
+			if (!cg.smoothFollow_initialized) {
+				CG_InitSmoothFollow();
 			}
 
-			// Primary thumbstick (right): controls camera rotation and height
-			// [0] = left/right (affects yaw), [1] = up/down (affects pitch)
+			// Primary thumbstick: controls camera rotation and height
 			int primaryThumb = vr->right_handed ? THUMB_RIGHT : THUMB_LEFT;
 			float yawInput = vr->virtual_screen ? 0.0f : vr->thumbstick_location[primaryThumb][0];
 			float pitchInput = vr->virtual_screen ? 0.0f : vr->thumbstick_location[primaryThumb][1];
 
-			// Secondary thumbstick (left): controls camera distance
-			// [1] = up/down (affects distance)
+			// Secondary thumbstick: controls camera distance
 			int secondaryThumb = vr->right_handed ? THUMB_LEFT : THUMB_RIGHT;
 			float distanceInput = vr->virtual_screen ? 0.0f : vr->thumbstick_location[secondaryThumb][1];
 
-			// Update camera spherical coordinates based on thumbstick input
+			// Framerate-independent input scaling
+			float dt = cg.frametime / 1000.0f;
+
 			// Yaw: rotate around player (left/right on primary stick)
-			cg.smoothFollow_yaw += yawInput * 3.0f;  // degrees per frame
+			cg.smoothFollow_yaw += yawInput * 180.0f * dt;
 
 			// Pitch: move up/down on sphere surface (up/down on primary stick)
-			cg.smoothFollow_pitch += pitchInput * 2.0f;  // degrees per frame
-			// Clamp pitch to prevent camera from going too high or low
+			cg.smoothFollow_pitch += pitchInput * 120.0f * dt;
 			// FIXME: It would be great to allow near-vertical rotation, but
 			// doing so makes it obvious that moving forward/backward with the
 			// HMD isn't getting closer to the player, but moving along the game's
@@ -310,33 +310,58 @@ static void CG_OffsetVRThirdPersonView( void ) {
 			if (cg.smoothFollow_pitch > 45.0f) cg.smoothFollow_pitch = 45.0f;
 			if (cg.smoothFollow_pitch < 0.0f) cg.smoothFollow_pitch = 0.0f;
 
-			// Distance: move closer/farther (up/down on secondary stick)
-			// Up = decrease distance, Down = increase distance
-			cg.smoothFollow_distance -= distanceInput * 2.0f;  // units per frame
-			// Clamp distance to reasonable range
-			if (cg.smoothFollow_distance < 60.0f) cg.smoothFollow_distance = 60.0f;
-			if (cg.smoothFollow_distance > 600.0f) cg.smoothFollow_distance = 600.0f;
+			// Distance: adjust target (up = closer, down = farther)
+			cg.smoothFollow_distanceTarget -= distanceInput * 120.0f * dt;
+			if (cg.smoothFollow_distanceTarget < 40.0f) cg.smoothFollow_distanceTarget = 40.0f;
+			if (cg.smoothFollow_distanceTarget > 512.0f) cg.smoothFollow_distanceTarget = 512.0f;
 
-			// Convert spherical coordinates to Cartesian offset
-			// Camera orbits around player independently of player's facing direction
-			float absoluteYaw = cg.smoothFollow_yaw;
-			float pitch = cg.smoothFollow_pitch;
+			// Compute camera direction
+			// Negate pitch because AngleVectors uses forward[2] = -sin(pitch),
+			// but our pitch convention is positive = camera above player
+			vec3_t orbitAngles, forward, right, up;
+			VectorSet(orbitAngles, -cg.smoothFollow_pitch, cg.smoothFollow_yaw, 0.0f);
+			AngleVectors(orbitAngles, forward, right, up);
 
-			// Calculate camera position on sphere surface
-			vec3_t offset;
-			offset[0] = cg.smoothFollow_distance * cos(DEG2RAD(pitch)) * cos(DEG2RAD(absoluteYaw));
-			offset[1] = cg.smoothFollow_distance * cos(DEG2RAD(pitch)) * sin(DEG2RAD(absoluteYaw));
-			offset[2] = cg.smoothFollow_distance * sin(DEG2RAD(pitch));
+			vec3_t playerEye;
+			VectorCopy(cg.refdef.vieworg, playerEye);
 
-			VectorCopy(cg.refdef.vieworg, cg.vr_vieworigin);
-			VectorAdd(cg.vr_vieworigin, offset, cg.vr_vieworigin);
+			// Trace at the target distance to find max safe distance
+			{
+				vec3_t testPos;
+				trace_t trace;
+				static vec3_t mins = { -4, -4, -4 };
+				static vec3_t maxs = { 4, 4, 4 };
 
-			// Point camera at player: calculate direction vector from camera to player
+				VectorMA(playerEye, cg.smoothFollow_distanceTarget, forward, testPos);
+				CG_Trace(&trace, playerEye, mins, maxs, testPos,
+					cg.predictedPlayerState.clientNum, MASK_SOLID);
+
+				float safeDistance = trace.fraction * cg.smoothFollow_distanceTarget;
+				float effectiveTarget = (safeDistance < cg.smoothFollow_distanceTarget)
+					? safeDistance : cg.smoothFollow_distanceTarget;
+
+				// Lerp distance - faster when pulling in for walls
+				float factor;
+				if (cg.smoothFollow_distance > effectiveTarget) {
+					factor = 16.0f * dt;  // pull in quickly to avoid clipping
+				} else {
+					factor = 8.0f * dt;   // push out gently
+				}
+				if (factor > 1.0f) factor = 1.0f;
+				cg.smoothFollow_distance += (effectiveTarget - cg.smoothFollow_distance) * factor;
+			}
+
+			// Final camera position at the lerped distance
+			vec3_t camPos;
+			VectorMA(playerEye, cg.smoothFollow_distance, forward, camPos);
+
+			VectorCopy(camPos, cg.vr_vieworigin);
+
+			// Point camera at player
 			vec3_t lookDir;
-			VectorSubtract(cg.refdef.vieworg, cg.vr_vieworigin, lookDir);
+			VectorSubtract(playerEye, cg.vr_vieworigin, lookDir);
 			vectoangles(lookDir, vr->clientviewangles);
-			// Apply HMD yaw offset so the view direction accounts for head orientation at recenter
-			vr->clientviewangles[YAW] -= hmdYawOffset;
+			vr->clientviewangles[YAW] -= cg.smoothFollow_hmdYawOffset;
 		}
 		else
 		{

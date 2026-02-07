@@ -552,9 +552,12 @@ typedef struct {
 	vec3_t		vr_vieworigin;
 
 	// smooth follow camera control (spherical coordinates)
-	float		smoothFollow_distance;          // radius from player
-	float		smoothFollow_yaw;                       // horizontal angle around player
-	float		smoothFollow_pitch;                     // vertical angle (elevation)
+	float		smoothFollow_distance;          // current radius from player
+	float		smoothFollow_distanceTarget;    // target radius (smoothly lerped to)
+	float		smoothFollow_yaw;               // horizontal angle around player
+	float		smoothFollow_pitch;             // vertical angle (elevation)
+	float		smoothFollow_hmdYawOffset;      // HMD yaw captured at recenter
+	qboolean	smoothFollow_initialized;       // set once camera state has been seeded
 
 	// zoom key
 	qboolean	zoomed;
