@@ -559,6 +559,11 @@ typedef struct {
 	float		smoothFollow_hmdYawOffset;      // HMD yaw captured at recenter
 	qboolean	smoothFollow_initialized;       // set once camera state has been seeded
 
+	// VR first-person head view smoothing
+	float		vrViewPitch;
+	float		vrViewYaw;
+	qboolean	vrViewInitialized;
+
 	// zoom key
 	qboolean	zoomed;
 	int			zoomTime;
@@ -1338,6 +1343,7 @@ void CG_ZoomUp_f( void );
 void CG_AddBufferedSound( sfxHandle_t sfx);
 qboolean CG_IsThirdPersonFollowMode( VR_FollowMode followMode );
 qboolean CG_IsDeathCam( void );
+qboolean CG_IsVRFollow( void );
 
 void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback );
 void CG_TrackClientTeamChange( void );

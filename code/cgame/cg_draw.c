@@ -1085,6 +1085,21 @@ static float CG_DrawTeamOverlay( float y, qboolean right, qboolean upper ) {
 
 
 /*
+=================
+CG_DrawVRFollowIcon
+
+Shows VR icon in upper-right when following a VR player.
+=================
+*/
+static float CG_DrawVRFollowIcon( float y ) {
+	float	size = (BIGCHAR_HEIGHT + 4) * 2;
+
+	CG_DrawPic( SCREEN_WIDTH - size - 2, y, size, size, cgs.media.vrPlayerShader );
+
+	return y + size;
+}
+
+/*
 =====================
 CG_DrawUpperRight
 
@@ -1112,7 +1127,10 @@ static void CG_DrawUpperRight( void )
 		y = CG_DrawTimer( y );
 	}
 	if ( cg_drawAttacker.integer ) {
-		CG_DrawAttacker( y );
+		y = CG_DrawAttacker( y );
+	}
+	if ( CG_IsVRFollow() ) {
+		y = CG_DrawVRFollowIcon( y );
 	}
 
 }

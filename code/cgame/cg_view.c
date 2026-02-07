@@ -1078,6 +1078,23 @@ static void CG_CalculateSPIntermissionHUD( void )
 
 /*
 ===============
+CG_IsVRFollow
+
+Returns qtrue when following a VR player (first or third person).
+===============
+*/
+qboolean CG_IsVRFollow( void ) {
+	if ( !cg.demoPlayback && !(cg.snap->ps.pm_flags & PMF_FOLLOW) ) {
+		return qfalse;
+	}
+	if ( !(cg.predictedPlayerState.eFlags & EF_VR_PLAYER) ) {
+		return qfalse;
+	}
+	return qtrue;
+}
+
+/*
+===============
 CG_CalcViewValues
 
 Sets cg.refdef view values
@@ -1165,6 +1182,34 @@ static int CG_CalcViewValues( void ) {
 
 	VectorCopy( ps->origin, cg.refdef.vieworg );
 	VectorCopy( ps->viewangles, cg.refdefViewAngles );
+
+	// VR first-person follow: look through the player's head, not weapon.
+	// EMA smooths the ~1.4 degree steps from 7-bit usercmd packing.
+	if ( !cg.renderingThirdPerson
+			&& (cg.demoPlayback || (cg.snap->ps.pm_flags & PMF_FOLLOW))
+			&& (ps->eFlags & EF_VR_PLAYER) ) {
+		float	targetPitch, targetYaw, alpha;
+
+		targetPitch = (float)ps->stats[STAT_VR_HEAD_PITCH] / 182.04f;
+		targetYaw   = ps->viewangles[YAW]
+			+ (float)ps->stats[STAT_VR_HEAD_YAW_OFFSET] / 182.04f;
+
+		if ( !cg.vrViewInitialized || cg.nextFrameTeleport ) {
+			cg.vrViewPitch = targetPitch;
+			cg.vrViewYaw   = targetYaw;
+			cg.vrViewInitialized = qtrue;
+		} else {
+			// tau ~30ms: smooths quantization steps without perceptible lag
+			alpha = (float)cg.frametime / ( (float)cg.frametime + 30.0f );
+			cg.vrViewPitch += alpha * AngleSubtract( targetPitch, cg.vrViewPitch );
+			cg.vrViewYaw   += alpha * AngleSubtract( targetYaw,   cg.vrViewYaw );
+		}
+
+		cg.refdefViewAngles[PITCH] = cg.vrViewPitch;
+		cg.refdefViewAngles[YAW]   = cg.vrViewYaw;
+	} else {
+		cg.vrViewInitialized = qfalse;
+	}
 
 	if (cg_cameraOrbit.integer) {
 		if (cg.time > cg.nextOrbitTime) {
