@@ -205,10 +205,10 @@ install(FILES "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3" DESTINATION
     COMPONENT game_engine)
 install(FILES "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak8t.pk3" DESTINATION
     $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-    COMPONENT trinity_mod)
+    COMPONENT game_engine)
 install(FILES "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak3t.pk3" DESTINATION
     $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/missionpack/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-    COMPONENT trinity_mod)
+    COMPONENT game_engine)
 install(
     DIRECTORY "${CMAKE_SOURCE_DIR}/assets/third_party/point_release_v1.32/" DESTINATION
     $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
