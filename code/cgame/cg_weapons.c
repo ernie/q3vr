@@ -1741,7 +1741,7 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 	}
 #endif
 
-	if (vr->weapon_select)
+	if (vr->weapon_select && !vr->weapon_adjust)
 	{
 		CG_DrawWeaponSelector();
 		return;
@@ -1870,6 +1870,301 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 
 	// add everything onto the hand
 	CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity, ps->persistant[PERS_TEAM] );
+}
+
+/*
+==============================================================================
+
+WEAPON ADJUSTMENT MODE
+
+==============================================================================
+*/
+
+#define WEAPADJUST_NUM_PARAMS 7
+
+static const char *weaponAdjustParamNames[WEAPADJUST_NUM_PARAMS] = {
+	"scale", "right", "up", "fwd", "pitch", "yaw", "roll"
+};
+
+// Defaults matching vr_cvars.c registration
+static const char *weaponAdjustDefaultStrings[] = {
+	"",                                     // 0: WP_NONE
+	"1,-4.0,7,-10,-20,-15,0",              // 1: Gauntlet
+	"0.8,-3.0,5.5,0,0,0,0",               // 2: Machinegun
+	"0.8,-3.3,8,3.7,0,0,0",               // 3: Shotgun
+	"0.75,-5.4,6.5,-4,0,0,0",             // 4: Grenade Launcher
+	"0.8,-5.2,6,7.5,0,0,0",               // 5: Rocket Launcher
+	"0.8,-3.3,6,7,0,0,0",                 // 6: Lightning Gun
+	"0.8,-5.5,6,0,0,0,0",                 // 7: Railgun
+	"0.8,-4.5,6,1.5,0,0,0",               // 8: Plasma Gun
+	"0.8,-5.5,6,0,0,0,0",                 // 9: BFG
+	"",                                     // 10: Grappling Hook
+	"0.8,-5.5,6,0,0,0,0",                 // 11: Nailgun (TA)
+	"0.8,-5.5,6,0,0,0,0",                 // 12: Prox Launcher (TA)
+	"0.8,-5.5,6,0,0,0,0",                 // 13: Chaingun (TA)
+};
+#define WEAPADJUST_NUM_DEFAULTS (sizeof(weaponAdjustDefaultStrings) / sizeof(weaponAdjustDefaultStrings[0]))
+
+// Adjustment state (file-scoped statics — reset on level load since cgame reloads)
+static int weaponAdjustParam = 0;         // 0-6: which parameter is selected
+static float weaponAdjustValues[WEAPADJUST_NUM_PARAMS];
+static float weaponAdjustDefaults[WEAPADJUST_NUM_PARAMS];
+static int weaponAdjustWeaponId = 0;      // weapon we're currently adjusting
+static qboolean weaponAdjustParamCycled = qfalse; // debounce for thumbstick param cycling
+static int weaponAdjustResetHoldStart = 0; // time A button was first pressed (for hold-to-reset-all)
+
+static void CG_WeaponAdjust_ParseValues( const char *str, float *out ) {
+	out[0] = out[1] = out[2] = out[3] = out[4] = out[5] = out[6] = 0.0f;
+	if ( str && strlen(str) > 0 ) {
+		sscanf( str, "%f,%f,%f,%f,%f,%f,%f",
+			&out[0], &out[1], &out[2], &out[3],
+			&out[4], &out[5], &out[6] );
+	}
+}
+
+static void CG_WeaponAdjust_WriteCvar( int weaponId, float *vals ) {
+	char cvar_name[64];
+	char value[256];
+	Com_sprintf( cvar_name, sizeof(cvar_name), "vr_weapon_adjustment_%i", weaponId );
+	Com_sprintf( value, sizeof(value), "%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f",
+		vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6] );
+	trap_Cvar_Set( cvar_name, value );
+}
+
+static void CG_WeaponAdjust_LoadWeapon( int weaponId ) {
+	char cvar_name[64];
+	char weapon_adjustment[256];
+
+	weaponAdjustWeaponId = weaponId;
+
+	// Load current values from cvar
+	Com_sprintf( cvar_name, sizeof(cvar_name), "vr_weapon_adjustment_%i", weaponId );
+	trap_Cvar_VariableStringBuffer( cvar_name, weapon_adjustment, sizeof(weapon_adjustment) );
+	CG_WeaponAdjust_ParseValues( weapon_adjustment, weaponAdjustValues );
+
+	// Load defaults
+	if ( weaponId >= 0 && weaponId < (int)WEAPADJUST_NUM_DEFAULTS ) {
+		CG_WeaponAdjust_ParseValues( weaponAdjustDefaultStrings[weaponId], weaponAdjustDefaults );
+	} else {
+		memset( weaponAdjustDefaults, 0, sizeof(weaponAdjustDefaults) );
+	}
+}
+
+void CG_WeaponAdjust_Enter( void ) {
+	playerState_t *ps = &cg.snap->ps;
+
+	// Dismiss weapon wheel and weapon stabilisation from the grip hold that got us here
+	vr->weapon_select = qfalse;
+	vr->weapon_stabilised = qfalse;
+	cg.weaponSelectorTime = 0;
+
+	vr->weapon_adjust = qtrue;
+	weaponAdjustParam = 0;
+	weaponAdjustParamCycled = qfalse;
+	weaponAdjustResetHoldStart = 0;
+
+	CG_WeaponAdjust_LoadWeapon( ps->weapon );
+	CG_Printf( "Weapon adjustment mode: ON\n" );
+}
+
+void CG_WeaponAdjust_Exit( void ) {
+	vr->weapon_adjust = qfalse;
+	weaponAdjustResetHoldStart = 0;
+	CG_Printf( "Weapon adjustment mode: OFF\n" );
+}
+
+void CG_WeaponAdjust_f( void ) {
+	if ( vr->weapon_adjust ) {
+		CG_WeaponAdjust_Exit();
+	} else {
+		if ( !cg.snap ) return;
+		// Don't enter if in virtual screen, zoomed, spectator, or dead
+		if ( vr->virtual_screen || vr->weapon_zoomed ||
+			 cg.snap->ps.stats[STAT_HEALTH] <= 0 ||
+			 cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR ) {
+			CG_Printf( "Cannot enter weapon adjustment mode right now.\n" );
+			return;
+		}
+		CG_WeaponAdjust_Enter();
+	}
+}
+
+void CG_WeaponAdjustReset_f( void ) {
+	if ( !vr->weapon_adjust ) return;
+	weaponAdjustValues[weaponAdjustParam] = weaponAdjustDefaults[weaponAdjustParam];
+	CG_WeaponAdjust_WriteCvar( weaponAdjustWeaponId, weaponAdjustValues );
+}
+
+void CG_WeaponAdjustResetAll_f( void ) {
+	if ( !vr->weapon_adjust ) return;
+	for ( int i = 0; i < WEAPADJUST_NUM_PARAMS; i++ ) {
+		weaponAdjustValues[i] = weaponAdjustDefaults[i];
+	}
+	CG_WeaponAdjust_WriteCvar( weaponAdjustWeaponId, weaponAdjustValues );
+	const char *weaponName = "Unknown";
+	if ( cg_weapons[weaponAdjustWeaponId].item ) {
+		weaponName = cg_weapons[weaponAdjustWeaponId].item->pickup_name;
+	}
+	CG_Printf( "Reset %s adjustments to defaults.\n", weaponName );
+}
+
+void CG_WeaponAdjustFrame( void ) {
+	if ( !vr->weapon_adjust || !cg.snap ) return;
+
+	playerState_t *ps = &cg.snap->ps;
+
+	// Auto-exit conditions
+	if ( vr->virtual_screen || vr->weapon_zoomed ||
+		 ps->stats[STAT_HEALTH] <= 0 ||
+		 ps->persistant[PERS_TEAM] == TEAM_SPECTATOR ||
+		 (ps->pm_flags & PMF_FOLLOW) ) {
+		CG_WeaponAdjust_Exit();
+		return;
+	}
+
+	// If weapon changed, reload values for new weapon
+	if ( ps->weapon != weaponAdjustWeaponId ) {
+		CG_WeaponAdjust_LoadWeapon( ps->weapon );
+	}
+
+	// Off-hand thumbstick left/right cycles params, weapon-hand thumbstick up/down adjusts value
+	int primaryThumb = vr->right_handed ? THUMB_RIGHT : THUMB_LEFT;
+	int offhandThumb = vr->right_handed ? THUMB_LEFT : THUMB_RIGHT;
+
+	// --- Parameter cycling (off-hand thumbstick left/right) ---
+	float offhandX = vr->thumbstick_location[offhandThumb][0];
+	if ( offhandX > 0.5f && !weaponAdjustParamCycled ) {
+		weaponAdjustParam = ( weaponAdjustParam + 1 ) % WEAPADJUST_NUM_PARAMS;
+		weaponAdjustParamCycled = qtrue;
+	} else if ( offhandX < -0.5f && !weaponAdjustParamCycled ) {
+		weaponAdjustParam = ( weaponAdjustParam + WEAPADJUST_NUM_PARAMS - 1 ) % WEAPADJUST_NUM_PARAMS;
+		weaponAdjustParamCycled = qtrue;
+	} else if ( offhandX > -0.3f && offhandX < 0.3f ) {
+		weaponAdjustParamCycled = qfalse;
+	}
+
+	// --- Value adjustment (weapon-hand thumbstick up/down) ---
+	float primaryY = vr->thumbstick_location[primaryThumb][1];
+	float deadzone = 0.15f;
+	float absY = fabs( primaryY );
+
+	if ( absY > deadzone ) {
+		float normalized = ( absY - deadzone ) / ( 1.0f - deadzone );
+		// Cubic curve for fine control at small deflections
+		float curved = normalized * normalized * normalized;
+		float direction = primaryY > 0 ? 1.0f : -1.0f;
+
+		// Per-parameter scale factors (per second, at full deflection)
+		float paramScale;
+		switch ( weaponAdjustParam ) {
+			case 0: paramScale = 0.25f; break;  // scale
+			case 1: paramScale = 5.0f; break;   // right
+			case 2: paramScale = 5.0f; break;   // up
+			case 3: paramScale = 5.0f; break;   // forward
+			case 4: paramScale = 22.0f; break;  // pitch (degrees)
+			case 5: paramScale = 22.0f; break;  // yaw (degrees)
+			case 6: paramScale = 22.0f; break;  // roll (degrees)
+			default: paramScale = 1.0f; break;
+		}
+
+		float deltaTime = cg.frametime / 1000.0f;
+		if ( deltaTime > 0.1f ) deltaTime = 0.1f; // clamp to prevent huge jumps
+
+		float delta = direction * curved * paramScale * deltaTime;
+		weaponAdjustValues[weaponAdjustParam] += delta;
+
+		// Write updated values to cvar immediately
+		CG_WeaponAdjust_WriteCvar( weaponAdjustWeaponId, weaponAdjustValues );
+	}
+}
+
+void CG_WeaponAdjustDraw( void ) {
+	if ( !vr->weapon_adjust ) return;
+
+	// Colors
+	vec4_t bgColor        = { 0.0f, 0.0f, 0.0f, 0.65f };
+	vec4_t titleColor     = { 1.0f, 1.0f, 1.0f, 1.0f };
+	vec4_t activeColor    = { 1.0f, 1.0f, 0.0f, 1.0f };
+	vec4_t normalColor    = { 0.7f, 0.7f, 0.7f, 1.0f };
+	vec4_t changedColor   = { 0.0f, 1.0f, 1.0f, 1.0f };
+	vec4_t helpColor      = { 0.5f, 0.5f, 0.5f, 1.0f };
+	vec4_t activeBgColor  = { 1.0f, 1.0f, 0.0f, 0.15f };
+
+	int charW = TINYCHAR_WIDTH;
+	int charH = TINYCHAR_HEIGHT;
+	int lineH = charH + 1;
+
+	// Horizontal layout across the top — keeps the bottom clear for weapon view
+	// Rows: title | arrow-up | name | value | arrow-down
+	int colChars = 6;                          // each column is 6 characters wide
+	int colW = colChars * charW;               // pixel width per column
+	int colPad = 2;                            // pixels between columns
+	float boxW = (float)(colW * WEAPADJUST_NUM_PARAMS + colPad * (WEAPADJUST_NUM_PARAMS - 1) + 8);
+	float boxX = (640 - boxW) / 2;            // center horizontally
+	float boxY = 110;
+	float boxH = (float)(lineH * 4 + 14);     // title + arrow + name + value + arrow
+	int textY = (int)boxY + 4;
+
+	// Background
+	CG_FillRect( boxX, boxY, boxW, boxH, bgColor );
+
+	// Title: weapon name
+	const char *weaponName = "Unknown";
+	if ( weaponAdjustWeaponId > 0 && weaponAdjustWeaponId < WP_NUM_WEAPONS ) {
+		CG_RegisterWeapon( weaponAdjustWeaponId );
+		if ( cg_weapons[weaponAdjustWeaponId].item ) {
+			weaponName = cg_weapons[weaponAdjustWeaponId].item->pickup_name;
+		}
+	}
+	CG_DrawStringExt( (int)boxX + 4, textY, va("ADJUST: %s", weaponName), titleColor,
+		qtrue, qfalse, charW, charH, 0 );
+
+	// Help text on the right side of the title row
+	CG_DrawStringExt( (int)(boxX + boxW) - 18 * charW, textY, "A:Accept B:Default",
+		helpColor, qtrue, qfalse, charW, charH, 0 );
+	textY += lineH + 2;
+
+	// Parameter rows: up-arrow | name | value | down-arrow
+	int paramStartY = textY;
+	int nameY = paramStartY + lineH;           // name row below up-arrow
+	int valY = nameY + lineH;                  // value row below name
+
+	for ( int i = 0; i < WEAPADJUST_NUM_PARAMS; i++ ) {
+		qboolean isActive = ( weaponAdjustParam == i );
+		qboolean isChanged = ( weaponAdjustValues[i] != weaponAdjustDefaults[i] );
+		vec4_t *color = isActive ? &activeColor : ( isChanged ? &changedColor : &normalColor );
+		int colX = (int)boxX + 4 + i * ( colW + colPad );
+
+		// Highlight background for active parameter — spans from arrow row to bottom of box
+		if ( isActive ) {
+			float highlightTop = (float)paramStartY - 1;
+			float highlightBot = boxY + boxH;
+			CG_FillRect( (float)colX - 1, highlightTop,
+				(float)colW + 2, highlightBot - highlightTop, activeBgColor );
+		}
+
+		// Up/down triangle arrows on active column (charset row 8: col 7=▲, col 6=▼)
+		if ( isActive ) {
+			int arrowX = colX + ( colW - charW ) / 2;
+			trap_R_SetColor( activeColor );
+			CG_DrawChar( arrowX, paramStartY, charW, charH, 135 );
+			CG_DrawChar( arrowX, valY + lineH, charW, charH, 134 );
+			trap_R_SetColor( NULL );
+		}
+
+		// Parameter name — right-align within column
+		int nameLen = (int)strlen( weaponAdjustParamNames[i] );
+		int nameX = colX + colW - nameLen * charW;
+		CG_DrawStringExt( nameX, nameY, weaponAdjustParamNames[i],
+			*color, qtrue, qfalse, charW, charH, 0 );
+
+		// Parameter value — right-align within column
+		const char *valStr = va( "%.2f", weaponAdjustValues[i] );
+		int valLen = (int)strlen( valStr );
+		int valX = colX + colW - valLen * charW;
+		CG_DrawStringExt( valX, valY, valStr,
+			*color, qtrue, qfalse, charW, charH, 0 );
+	}
 }
 
 /*

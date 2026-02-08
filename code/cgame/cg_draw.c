@@ -3249,6 +3249,9 @@ static void CG_DrawScreen2D(void)
             CG_DrawWeapReticle();
         }
     }
+
+	// Weapon adjustment overlay (drawn regardless of team/health since we auto-exit on those)
+	CG_WeaponAdjustDraw();
 }
 
 // OpenGL workaround: Render an empty scene to fix out-of-body issue when HUD isn't drawn

@@ -1359,6 +1359,7 @@ void CG_RemoveHUDFlags(int flags);
 void CG_AdjustFrom640( float *x, float *y, float *w, float *h );
 void CG_FillRect( float x, float y, float width, float height, const float *color );
 void CG_DrawPic( float x, float y, float width, float height, qhandle_t hShader );
+void CG_DrawChar( int x, int y, int width, int height, int ch );
 
 #define USE_NEW_FONT_RENDERER
 
@@ -1522,6 +1523,15 @@ void CG_DrawWeaponSelect( void );
 void CG_LaserSight( vec3_t start, vec3_t end, byte colour[4], float width );
 
 void CG_OutOfAmmoChange( void );	// should this be in pmove?
+
+// weapon adjustment mode
+void CG_WeaponAdjust_f( void );
+void CG_WeaponAdjust_Enter( void );
+void CG_WeaponAdjust_Exit( void );
+void CG_WeaponAdjustReset_f( void );
+void CG_WeaponAdjustResetAll_f( void );
+void CG_WeaponAdjustFrame( void );
+void CG_WeaponAdjustDraw( void );
 
 //
 // cg_marks.c

@@ -56,6 +56,7 @@ typedef struct {
 	qboolean weapon_select;
 	qboolean weapon_select_autoclose;
 	qboolean weapon_select_using_thumbstick;
+	qboolean weapon_adjust;
 	qboolean no_crosshair;
 
 	int realign; // used to realign the fake 6DoF playspace in a multiplayer game

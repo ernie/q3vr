@@ -81,6 +81,11 @@ static qboolean wasInMenuMode = qfalse;
 static float triggerPressedThreshold = 0.75f;
 static float triggerReleasedThreshold = 0.5f;
 
+// Weapon adjustment mode: dual-grip hold detection
+static int dualGripHoldStartTime = 0;
+static qboolean dualGripWasActive = qfalse;
+static int weaponAdjustBHoldStart = 0; // B button hold tracking for reset-all
+
 // Apply analog curve to thumbstick input
 // Smoothly ramps from dead zone to maximum value (same approach as SDL gamepad)
 static float IN_ApplyThumbstickCurve(float value, float threshold)
@@ -1184,6 +1189,13 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
 	vr.thumbstick_location[isRightController][0] = joystickX;
 	vr.thumbstick_location[isRightController][1] = joystickY;
 
+	// Weapon adjustment mode: suppress normal joystick processing.
+	// Thumbstick values are already stored above for cgame to read.
+	if (vr.weapon_adjust)
+	{
+		return;
+	}
+
 	// Apply analog curve to joystick input for smoother control
 	float curvedX = IN_ApplyThumbstickCurve(joystickX, vr_thumbstickDeadzone->value);
 	float curvedY = IN_ApplyThumbstickCurve(joystickY, vr_thumbstickDeadzone->value);
@@ -1343,6 +1355,12 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 {
 	vrController_t* controller = isRightController == qtrue ? &rightController : &leftController;
 
+	// Weapon adjustment mode: suppress all trigger actions
+	if (vr.weapon_adjust)
+	{
+		return;
+	}
+
 	// Detect if we're in menu mode (virtual screen, intermission, or scoreboard)
 	qboolean inMenuMode = (vr.virtual_screen && (!vr.first_person_following || vr.in_menu)) ||
 	                      cl.snap.ps.pm_type == PM_INTERMISSION ||
@@ -1420,6 +1438,72 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 {
 	vrController_t* controller = isRightController == qtrue ? &rightController : &leftController;
+
+	// Weapon adjustment mode: suppress most buttons, handle A (reset) and B (exit)
+	if (vr.weapon_adjust)
+	{
+		// Still allow menu button
+		if ((buttons & VR_Button_Enter) && !IN_InputActivated(&controller->buttons, VR_Button_Enter))
+		{
+			IN_ActivateInput(&controller->buttons, VR_Button_Enter);
+			Com_QueueEvent(in_vrEventTime, SE_KEY, K_ESCAPE, qtrue, 0, NULL);
+		}
+		else if (!(buttons & VR_Button_Enter) && IN_InputActivated(&controller->buttons, VR_Button_Enter))
+		{
+			IN_DeactivateInput(&controller->buttons, VR_Button_Enter);
+			Com_QueueEvent(in_vrEventTime, SE_KEY, K_ESCAPE, qfalse, 0, NULL);
+		}
+
+		// A button: accept and exit adjustment mode
+		if ((buttons & VR_Button_A) && !IN_InputActivated(&controller->buttons, VR_Button_A))
+		{
+			IN_ActivateInput(&controller->buttons, VR_Button_A);
+			Cbuf_AddText("weapon_adjust\n");
+		}
+		else if (!(buttons & VR_Button_A))
+		{
+			IN_DeactivateInput(&controller->buttons, VR_Button_A);
+		}
+
+		// B button: reset to default (tap = single param, hold 2s = all params)
+		if (buttons & VR_Button_B)
+		{
+			if (!IN_InputActivated(&controller->buttons, VR_Button_B))
+			{
+				IN_ActivateInput(&controller->buttons, VR_Button_B);
+				weaponAdjustBHoldStart = in_vrEventTime;
+			}
+			else if (weaponAdjustBHoldStart > 0 &&
+				(in_vrEventTime - weaponAdjustBHoldStart) > 2000)
+			{
+				Cbuf_AddText("weapon_adjust_reset_all\n");
+				VR_Vibrate(200, 3, 0.8f);
+				weaponAdjustBHoldStart = 0; // prevent repeated triggers
+			}
+		}
+		else
+		{
+			if (IN_InputActivated(&controller->buttons, VR_Button_B))
+			{
+				IN_DeactivateInput(&controller->buttons, VR_Button_B);
+				// If released before 2s, treat as single-param default reset
+				if (weaponAdjustBHoldStart > 0)
+				{
+					Cbuf_AddText("weapon_adjust_reset\n");
+					VR_Vibrate(50, 3, 0.4f);
+				}
+				weaponAdjustBHoldStart = 0;
+			}
+		}
+
+		// Release any held grip/other button states to prevent stuck actions
+		if (!(buttons & VR_Button_GripTrigger))
+		{
+			IN_DeactivateInput(&controller->buttons, VR_Button_GripTrigger);
+		}
+
+		return;
+	}
 
 	// Menu button
 	if ((buttons & VR_Button_Enter) && !IN_InputActivated(&controller->buttons, VR_Button_Enter))
@@ -1665,6 +1749,32 @@ void VR_ProcessInputActions( void )
 	if (GetActionStateBoolean(thumbstickRightClickAction).currentState) rButtons |= VR_Button_RThumb;
 	if (GetActionStateBoolean(thumbrestRightTouchAction).currentState) rButtons |= VR_Button_Thumbrest;
 	IN_VRButtons(qtrue, rButtons);
+
+	// Dual-grip hold detection for weapon adjustment mode activation
+	{
+		qboolean bothGripsHeld = (lButtons & VR_Button_GripTrigger) && (rButtons & VR_Button_GripTrigger);
+		if (bothGripsHeld)
+		{
+			if (!dualGripWasActive)
+			{
+				dualGripHoldStartTime = in_vrEventTime;
+				dualGripWasActive = qtrue;
+			}
+			else if (dualGripHoldStartTime > 0 &&
+				(in_vrEventTime - dualGripHoldStartTime) > 1000)
+			{
+				// Toggle weapon adjustment mode
+				Cbuf_AddText("weapon_adjust\n");
+				VR_Vibrate(150, 3, 0.5f);
+				dualGripHoldStartTime = 0; // prevent repeated triggers while still held
+			}
+		}
+		else
+		{
+			dualGripWasActive = qfalse;
+			dualGripHoldStartTime = 0;
+		}
+	}
 
 	//index finger click
 	XrActionStateBoolean indexState;
