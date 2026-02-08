@@ -187,7 +187,7 @@ static void Comfort_MenuInit( void ) {
 	s_comfort.framer.width  	   = 256;
 	s_comfort.framer.height  	   = 334;
 
-	y = 198;
+	y = 150;
 	s_comfort.comfortvignette.generic.type	     = MTYPE_SLIDER;
 	s_comfort.comfortvignette.generic.x			 = VR_X_POS;
 	s_comfort.comfortvignette.generic.y			 = y;
