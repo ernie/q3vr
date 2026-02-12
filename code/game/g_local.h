@@ -460,6 +460,9 @@ typedef struct {
 	int			numSpawnSpots;
 	int			numSpawnSpotsTeam;
 	int			numSpawnSpotsFFA;
+
+	// overtime
+	qboolean	inOvertime;				// qtrue once overtime has been announced
 } level_locals_t;
 
 
@@ -782,6 +785,7 @@ extern	vmCvar_t	g_unlagged;
 extern	vmCvar_t	g_dmflags;
 extern	vmCvar_t	g_fraglimit;
 extern	vmCvar_t	g_timelimit;
+extern	vmCvar_t	g_overtimelimit;
 extern	vmCvar_t	g_capturelimit;
 extern	vmCvar_t	g_friendlyFire;
 extern	vmCvar_t	g_password;

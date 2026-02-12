@@ -192,7 +192,7 @@ void QDECL SV_SendServerCommand(client_t *cl, const char *fmt, ...) {
 	byte		message[MAX_MSGLEN];
 	client_t	*client;
 	int			j;
-	
+
 	va_start (argptr,fmt);
 	Q_vsnprintf ((char *)message, sizeof(message), fmt,argptr);
 	va_end (argptr);
@@ -203,6 +203,13 @@ void QDECL SV_SendServerCommand(client_t *cl, const char *fmt, ...) {
 	// fixes the problem for now
 	if ( strlen ((char *)message) > 1022 ) {
 		return;
+	}
+
+	// capture for TV recording
+	if ( cl != NULL ) {
+		SV_TV_CaptureServerCommand( cl - svs.clients, (char *)message );
+	} else {
+		SV_TV_CaptureServerCommand( -1, (char *)message );
 	}
 
 	if ( cl != NULL ) {
@@ -576,8 +583,8 @@ static void SVC_Status( netadr_t from ) {
 		cl = &svs.clients[i];
 		if ( cl->state >= CS_CONNECTED ) {
 			ps = SV_GameClientNum( i );
-			Com_sprintf (player, sizeof(player), "%i %i \"%s\"\n", 
-				ps->persistant[PERS_SCORE], cl->ping, cl->name);
+			Com_sprintf (player, sizeof(player), "%i %i %i \"%s\" %i\n",
+				ps->persistant[PERS_SCORE], cl->ping, ps->persistant[PERS_TEAM], cl->name, i);
 			playerLength = strlen(player);
 			if (statusLength + playerLength >= sizeof(status) ) {
 				break;		// can't hold any more
@@ -1147,6 +1154,9 @@ void SV_Frame( int msec ) {
 
 		// let everything in the world think and move
 		VM_Call (gvm, GAME_RUN_FRAME, sv.time);
+
+		// write TV demo frame after game has run
+		SV_TV_WriteFrame();
 	}
 
 	if ( com_speeds->integer ) {

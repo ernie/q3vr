@@ -328,12 +328,16 @@ void VR_Renderer_EndFrame(VR_Engine* engine)
 	const int use_virtual_screen = VR_Gameplay_ShouldRenderInVirtualScreen();
 	if (use_virtual_screen)
 	{
-		vr.menuYaw = VR_VirtualScreen_GetCurrentYaw();
+		if ( !vr.menuYawLocked ) {
+			vr.menuYaw = VR_VirtualScreen_GetCurrentYaw();
+		}
 	}
 	else
 	{
 		VR_VirtualScreen_ResetPosition();
-		vr.menuYaw = vr.hmdorientation[YAW];
+		if ( !vr.menuYawLocked ) {
+			vr.menuYaw = vr.hmdorientation[YAW];
+		}
 	}
 
 	// Blit XR content to desktop window BEFORE releasing swapchains

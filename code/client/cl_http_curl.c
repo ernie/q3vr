@@ -30,6 +30,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
   #include <curl/curl.h>
 #endif
 
+#ifdef USE_CURL_DLOPEN
+
 #ifdef __APPLE__
   #define DEFAULT_CURL_LIB "libcurl.dylib"
 #else
@@ -72,6 +74,28 @@ const char *(*qcurl_multi_strerror)(CURLMcode);
 static void *cURLLib = NULL;
 static qboolean cURLSymbolLoadFailed = qfalse;
 
+#else /* linked at build time */
+
+#define qcurl_version curl_version
+#define qcurl_easy_init curl_easy_init
+#define qcurl_easy_setopt curl_easy_setopt
+#define qcurl_easy_perform curl_easy_perform
+#define qcurl_easy_cleanup curl_easy_cleanup
+#define qcurl_easy_getinfo curl_easy_getinfo
+#define qcurl_easy_duphandle curl_easy_duphandle
+#define qcurl_easy_reset curl_easy_reset
+#define qcurl_easy_strerror curl_easy_strerror
+#define qcurl_multi_init curl_multi_init
+#define qcurl_multi_add_handle curl_multi_add_handle
+#define qcurl_multi_remove_handle curl_multi_remove_handle
+#define qcurl_multi_fdset curl_multi_fdset
+#define qcurl_multi_perform curl_multi_perform
+#define qcurl_multi_cleanup curl_multi_cleanup
+#define qcurl_multi_info_read curl_multi_info_read
+#define qcurl_multi_strerror curl_multi_strerror
+
+#endif /* USE_CURL_DLOPEN */
+
 static CURL *downloadCURL = NULL;
 static CURLM *downloadCURLM = NULL;
 
@@ -81,6 +105,8 @@ static unsigned char* hInMemoryBuffer = NULL;
 static size_t hInMemoryBufferSize = 0;
 static size_t hInMemoryBufferCursor = 0;
 static CL_HTTP_InMemoryDownloadCallback hInMemoryCallback = NULL;
+
+#ifdef USE_CURL_DLOPEN
 
 /*
 =================
@@ -139,7 +165,7 @@ qboolean CL_HTTP_Init(void)
 	qcurl_easy_duphandle = GPA("curl_easy_duphandle");
 	qcurl_easy_reset = GPA("curl_easy_reset");
 	qcurl_easy_strerror = GPA("curl_easy_strerror");
-	
+
 	qcurl_multi_init = GPA("curl_multi_init");
 	qcurl_multi_add_handle = GPA("curl_multi_add_handle");
 	qcurl_multi_remove_handle = GPA("curl_multi_remove_handle");
@@ -169,6 +195,31 @@ qboolean CL_HTTP_Available(void)
 {
 	return cURLLib != NULL;
 }
+
+#else /* linked at build time */
+
+/*
+=================
+CL_HTTP_Init
+=================
+*/
+qboolean CL_HTTP_Init(void)
+{
+	Com_Printf("cURL %s\n", qcurl_version());
+	return qtrue;
+}
+
+/*
+=================
+CL_HTTP_Available
+=================
+*/
+qboolean CL_HTTP_Available(void)
+{
+	return qtrue;
+}
+
+#endif /* USE_CURL_DLOPEN */
 
 static void CL_cURL_Cleanup(void)
 {
@@ -230,6 +281,7 @@ void CL_HTTP_Shutdown( void )
 {
 	CL_cURL_Cleanup();
 
+#ifdef USE_CURL_DLOPEN
 	if(cURLLib)
 	{
 		Sys_UnloadLibrary(cURLLib);
@@ -251,6 +303,7 @@ void CL_HTTP_Shutdown( void )
 	qcurl_multi_cleanup = NULL;
 	qcurl_multi_info_read = NULL;
 	qcurl_multi_strerror = NULL;
+#endif
 }
 
 static int CL_cURL_CallbackProgress(void *clientp, curl_off_t dltotal, curl_off_t dlnow,
@@ -415,8 +468,7 @@ void CL_HTTP_BeginInMemoryDownload( const char *remoteURL, CL_HTTP_InMemoryDownl
 	qcurl_easy_setopt_warn(inMemoryDownloadCURL, CURLOPT_USERAGENT, va("%s %s",
 		Q3_VERSION, qcurl_version()));
 	qcurl_easy_setopt_warn(inMemoryDownloadCURL, CURLOPT_WRITEFUNCTION,
-		CL_cURL_CallbackWrite);
-	qcurl_easy_setopt_warn(inMemoryDownloadCURL, CURLOPT_WRITEDATA, &clc.download);
+		CL_cURL_InMemoryCallbackWrite);
 	qcurl_easy_setopt_warn(inMemoryDownloadCURL, CURLOPT_NOPROGRESS, 1);
 	qcurl_easy_setopt_warn(inMemoryDownloadCURL, CURLOPT_FAILONERROR, 1);
 	qcurl_easy_setopt_warn(inMemoryDownloadCURL, CURLOPT_FOLLOWLOCATION, 1);
@@ -468,15 +520,21 @@ qboolean CL_HTTP_PerformInMemoryDownload(void)
 	if(msg == NULL) {
 		return qfalse;
 	}
-	if(msg->msg != CURLMSG_DONE || msg->data.result != CURLE_OK) {
+	if(msg->msg == CURLMSG_DONE && msg->data.result == CURLE_OK) {
+		if(hInMemoryCallback)
+			hInMemoryCallback(hInMemoryBufferCursor);
+	} else {
 		long code;
 
 		qcurl_easy_getinfo(msg->easy_handle, CURLINFO_RESPONSE_CODE,
-			&code);	
-		fprintf(stderr, "Download Error: %s Code: %ld URL: %s",
-			qcurl_easy_strerror(msg->data.result),
-			code, clc.downloadURL);
+			&code);
+		Com_Printf(S_COLOR_RED "In-memory download error: %s Code: %ld\n",
+			qcurl_easy_strerror(msg->data.result), code);
+		if(hInMemoryCallback)
+			hInMemoryCallback(-1);
 	}
+
+	CL_cURL_InMemoryCleanup();
 
 	hInMemoryCallback = NULL;
 	hInMemoryBuffer = NULL;
@@ -484,6 +542,206 @@ qboolean CL_HTTP_PerformInMemoryDownload(void)
 	hInMemoryBufferCursor = 0;
 
 	return qtrue;
+}
+
+/*
+=================
+TV Demo Download
+
+Standalone HTTP download for TV demo files.
+Uses dedicated cURL handles so it doesn't interfere
+with pk3 downloads.
+=================
+*/
+
+static CURL *tvDownloadCURL = NULL;
+static CURLM *tvDownloadCURLM = NULL;
+static fileHandle_t tvFile = 0;
+static char tvLocalName[MAX_QPATH];
+static char tvTempName[MAX_QPATH];
+
+static size_t CL_cURL_TV_CallbackWrite( void *buffer, size_t size, size_t nmemb, void *stream )
+{
+	FS_Write( buffer, size * nmemb, *(fileHandle_t *)stream );
+	return size * nmemb;
+}
+
+static int CL_cURL_TV_CallbackProgress( void *clientp, curl_off_t dltotal, curl_off_t dlnow,
+	curl_off_t ultotal, curl_off_t ulnow )
+{
+	Cvar_SetIntegerValue( "cl_downloadSize", (int)dltotal );
+	Cvar_SetIntegerValue( "cl_downloadCount", (int)dlnow );
+	return 0;
+}
+
+static void CL_cURL_TV_Cleanup( void )
+{
+	if ( tvDownloadCURLM ) {
+		CURLMcode result;
+
+		if ( tvDownloadCURL ) {
+			result = qcurl_multi_remove_handle( tvDownloadCURLM, tvDownloadCURL );
+			if ( result != CURLM_OK ) {
+				Com_DPrintf( "TV: qcurl_multi_remove_handle failed: %s\n", qcurl_multi_strerror( result ) );
+			}
+			qcurl_easy_cleanup( tvDownloadCURL );
+		}
+		result = qcurl_multi_cleanup( tvDownloadCURLM );
+		if ( result != CURLM_OK ) {
+			Com_DPrintf( "TV: qcurl_multi_cleanup failed: %s\n", qcurl_multi_strerror( result ) );
+		}
+		tvDownloadCURLM = NULL;
+		tvDownloadCURL = NULL;
+	} else if ( tvDownloadCURL ) {
+		qcurl_easy_cleanup( tvDownloadCURL );
+		tvDownloadCURL = NULL;
+	}
+}
+
+qboolean CL_HTTP_TV_BeginDownload( const char *localName, const char *remoteURL )
+{
+	CURLMcode result;
+
+	if ( !CL_HTTP_Available() ) {
+		Com_Printf( S_COLOR_YELLOW "TV: cURL not available\n" );
+		return qfalse;
+	}
+
+	CL_HTTP_TV_CleanupDownload();
+
+	Q_strncpyz( tvLocalName, localName, sizeof( tvLocalName ) );
+	Com_sprintf( tvTempName, sizeof( tvTempName ), "%s.tmp", localName );
+
+	tvFile = FS_FOpenFileWrite( tvTempName );
+	if ( !tvFile ) {
+		Com_Printf( S_COLOR_RED "TV: could not open %s for writing\n", tvTempName );
+		return qfalse;
+	}
+
+	tvDownloadCURL = qcurl_easy_init();
+	if ( !tvDownloadCURL ) {
+		Com_Printf( S_COLOR_RED "TV: qcurl_easy_init() failed\n" );
+		FS_FCloseFile( tvFile );
+		tvFile = 0;
+		FS_HomeRemove( tvTempName );
+		return qfalse;
+	}
+
+	Cvar_Set( "cl_downloadName", tvLocalName );
+	Cvar_Set( "cl_downloadSize", "0" );
+	Cvar_Set( "cl_downloadCount", "0" );
+	Cvar_SetIntegerValue( "cl_downloadTime", cls.realtime );
+
+	if ( com_developer->integer )
+		qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_VERBOSE, 1 );
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_URL, remoteURL );
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_TRANSFERTEXT, 0 );
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_USERAGENT, va( "%s %s", Q3_VERSION, qcurl_version() ) );
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_WRITEFUNCTION, CL_cURL_TV_CallbackWrite );
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_WRITEDATA, &tvFile );
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_NOPROGRESS, 0 );
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_XFERINFOFUNCTION, CL_cURL_TV_CallbackProgress );
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_XFERINFODATA, NULL );
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_FAILONERROR, 1 );
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_FOLLOWLOCATION, 1 );
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_MAXREDIRS, 5 );
+#if CURL_AT_LEAST_VERSION(7,85,0)
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_PROTOCOLS_STR, "http,https" );
+#else
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS );
+#endif
+	qcurl_easy_setopt_warn( tvDownloadCURL, CURLOPT_BUFFERSIZE, CURL_MAX_READ_SIZE );
+
+	tvDownloadCURLM = qcurl_multi_init();
+	if ( !tvDownloadCURLM ) {
+		CL_cURL_TV_Cleanup();
+		FS_FCloseFile( tvFile );
+		tvFile = 0;
+		FS_HomeRemove( tvTempName );
+		Com_Printf( S_COLOR_RED "TV: qcurl_multi_init() failed\n" );
+		return qfalse;
+	}
+
+	result = qcurl_multi_add_handle( tvDownloadCURLM, tvDownloadCURL );
+	if ( result != CURLM_OK ) {
+		CL_cURL_TV_Cleanup();
+		FS_FCloseFile( tvFile );
+		tvFile = 0;
+		FS_HomeRemove( tvTempName );
+		Com_Printf( S_COLOR_RED "TV: qcurl_multi_add_handle() failed: %s\n", qcurl_multi_strerror( result ) );
+		return qfalse;
+	}
+
+	return qtrue;
+}
+
+qboolean CL_HTTP_TV_PerformDownload( void )
+{
+	CURLMcode res;
+	CURLMsg *msg;
+	int c;
+	int i = 0;
+
+	if ( !tvDownloadCURLM ) {
+		return qtrue;
+	}
+
+	res = qcurl_multi_perform( tvDownloadCURLM, &c );
+	while ( res == CURLM_CALL_MULTI_PERFORM && i < 100 ) {
+		res = qcurl_multi_perform( tvDownloadCURLM, &c );
+		i++;
+	}
+	if ( res == CURLM_CALL_MULTI_PERFORM ) {
+		return qfalse;
+	}
+
+	msg = qcurl_multi_info_read( tvDownloadCURLM, &c );
+	if ( msg == NULL ) {
+		return qfalse;
+	}
+
+	FS_FCloseFile( tvFile );
+	tvFile = 0;
+
+	if ( msg->msg == CURLMSG_DONE && msg->data.result == CURLE_OK ) {
+		FS_Rename( tvTempName, tvLocalName );
+		Com_Printf( S_COLOR_GREEN "Downloaded TVD: %s\n", tvLocalName );
+	} else {
+		long code;
+
+		qcurl_easy_getinfo( msg->easy_handle, CURLINFO_RESPONSE_CODE, &code );
+		Com_Printf( S_COLOR_RED "TVD download error: %s Code: %ld\n",
+			qcurl_easy_strerror( msg->data.result ), code );
+		FS_HomeRemove( tvTempName );
+	}
+
+	Cvar_Set( "cl_downloadName", "" );
+	Cvar_Set( "cl_downloadSize", "0" );
+	Cvar_Set( "cl_downloadCount", "0" );
+	Cvar_Set( "cl_downloadTime", "0" );
+
+	CL_cURL_TV_Cleanup();
+	tvLocalName[0] = '\0';
+	tvTempName[0] = '\0';
+
+	return qtrue;
+}
+
+void CL_HTTP_TV_CleanupDownload( void )
+{
+	CL_cURL_TV_Cleanup();
+
+	if ( tvFile ) {
+		FS_FCloseFile( tvFile );
+		tvFile = 0;
+	}
+
+	if ( tvTempName[0] ) {
+		FS_HomeRemove( tvTempName );
+		tvTempName[0] = '\0';
+	}
+
+	tvLocalName[0] = '\0';
 }
 
 #endif /* USE_HTTP */

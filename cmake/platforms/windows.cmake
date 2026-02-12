@@ -11,8 +11,7 @@ list(APPEND SYSTEM_PLATFORM_SOURCES
 )
 
 if(USE_HTTP)
-    list(APPEND CLIENT_PLATFORM_SOURCES ${SOURCE_DIR}/client/cl_http_windows.c)
-    list(APPEND CLIENT_LIBRARIES wininet)
+    list(APPEND CLIENT_PLATFORM_SOURCES ${SOURCE_DIR}/client/cl_http_curl.c)
 endif()
 
 list(APPEND COMMON_LIBRARIES

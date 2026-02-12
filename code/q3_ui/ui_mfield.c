@@ -413,6 +413,11 @@ sfxHandle_t MenuField_Key( menufield_s* m, int* key )
 
 	keycode = *key;
 
+	if ( m->field.skipKey ) {
+		m->field.skipKey = qfalse;
+		return (0);
+	}
+
 	switch ( keycode )
 	{
 		case K_MOUSE1:

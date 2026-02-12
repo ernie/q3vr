@@ -1557,6 +1557,9 @@ void SV_AddOperatorCommands( void ) {
 		Cmd_SetCommandCompletionFunc( "sayto", SV_CompletePlayerName );
 	}
 	
+	Cmd_AddCommand("tvrecord", SV_TV_StartRecord_f);
+	Cmd_AddCommand("tvstop", SV_TV_StopRecord_f);
+
 	Cmd_AddCommand("rehashbans", SV_RehashBans_f);
 	Cmd_AddCommand("listbans", SV_ListBans_f);
 	Cmd_AddCommand("banaddr", SV_BanAddr_f);

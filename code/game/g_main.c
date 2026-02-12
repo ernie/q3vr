@@ -45,6 +45,7 @@ vmCvar_t	g_gametype;
 vmCvar_t	g_dmflags;
 vmCvar_t	g_fraglimit;
 vmCvar_t	g_timelimit;
+vmCvar_t	g_overtimelimit;
 vmCvar_t	g_capturelimit;
 vmCvar_t	g_friendlyFire;
 vmCvar_t	g_password;
@@ -123,6 +124,7 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_dmflags, "dmflags", "0", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_fraglimit, "fraglimit", "20", CVAR_SERVERINFO | CVAR_ARCHIVE | CVAR_NORESTART, 0, qtrue },
 	{ &g_timelimit, "timelimit", "0", CVAR_SERVERINFO | CVAR_ARCHIVE | CVAR_NORESTART, 0, qtrue },
+	{ &g_overtimelimit, "g_overtimelimit", "0", CVAR_SERVERINFO | CVAR_ARCHIVE | CVAR_NORESTART, 0, qtrue },
 	{ &g_capturelimit, "capturelimit", "8", CVAR_SERVERINFO | CVAR_ARCHIVE | CVAR_NORESTART, 0, qtrue },
 
 	{ &g_synchronousClients, "g_synchronousClients", "0", CVAR_SYSTEMINFO, 0, qfalse  },
@@ -1480,12 +1482,6 @@ void CheckExitRules( void ) {
 		return;
 	}
 
-	// check for sudden death
-	if ( ScoreIsTied() ) {
-		// always wait for sudden death
-		return;
-	}
-
 	if ( g_timelimit.integer < 0 || g_timelimit.integer > INT_MAX / 60000 ) {
 		G_Printf( "timelimit %i is out of range, defaulting to 0\n", g_timelimit.integer );
 		trap_Cvar_Set( "timelimit", "0" );
@@ -1494,10 +1490,34 @@ void CheckExitRules( void ) {
 
 	if ( g_timelimit.integer && !level.warmupTime ) {
 		if ( level.time - level.startTime >= g_timelimit.integer*60000 ) {
-			trap_SendServerCommand( -1, "print \"Timelimit hit.\n\"");
+			if ( ScoreIsTied() ) {
+				// announce overtime once
+				if ( !level.inOvertime ) {
+					level.inOvertime = qtrue;
+					trap_SendServerCommand( -1, "print \"Overtime!\n\"" );
+					G_LogPrintf( "Overtime:\n" );
+				}
+				// check overtime limit
+				if ( g_overtimelimit.integer > 0 ) {
+					int overtimeElapsed = level.time - level.startTime
+										- g_timelimit.integer * 60000;
+					if ( overtimeElapsed >= g_overtimelimit.integer * 60000 ) {
+						trap_SendServerCommand( -1, "print \"Overtime limit reached.\n\"" );
+						LogExit( "Overtime timelimit hit." );
+						return;
+					}
+				}
+				return;
+			}
+			trap_SendServerCommand( -1, "print \"Timelimit hit.\n\"" );
 			LogExit( "Timelimit hit." );
 			return;
 		}
+	}
+
+	// don't end on fraglimit/capturelimit while tied
+	if ( ScoreIsTied() ) {
+		return;
 	}
 
 	if ( g_fraglimit.integer < 0 ) {

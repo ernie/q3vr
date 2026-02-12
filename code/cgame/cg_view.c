@@ -1457,9 +1457,33 @@ static void CG_PlayBufferedSounds( void ) {
 
 //=========================================================================
 
+/*
+===============
+CG_ResetViewOffsets
+
+Clear all time-dependent first-person view offsets.
+Called on TV backward seek to prevent stale timestamps
+from the old timeline producing huge view displacements.
+===============
+*/
+void CG_ResetViewOffsets( void ) {
+	cg.stepChange = 0;
+	cg.stepTime = 0;
+	cg.duckChange = 0;
+	cg.duckTime = 0;
+	cg.landChange = 0;
+	cg.landTime = 0;
+	cg.damageTime = 0;
+	cg.v_dmg_time = 0;
+	cg.v_dmg_pitch = 0;
+	cg.v_dmg_roll = 0;
+	VectorClear( cg.kick_angles );
+	VectorClear( cg.kick_origin );
+}
+
 qboolean CG_IsThirdPersonFollowMode( VR_FollowMode followMode )
 {
-	qboolean isFollowing = (cg.snap->ps.pm_flags & PMF_FOLLOW) || cg.demoPlayback;
+	qboolean isFollowing = (cg.snap->ps.pm_flags & PMF_FOLLOW) || cg.demoPlayback || cgs.tvPlayback;
 
 	if (followMode == VRFM_QUERY)
 	{
@@ -1562,6 +1586,21 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 		cg.followTime = 0;
 		if ( !cg.demoPlayback ) {
 			trap_SendConsoleCommand( va( "follow %i\n", cg.followClient ) );
+		}
+	}
+
+	// TV: +attack cycles to next viewpoint (mirrors SpectatorThink in g_active.c)
+	if ( cgs.tvPlayback && !cg.showScores ) {
+		usercmd_t	cmd;
+		static int	tvLastButtons;
+		int			cmdNum;
+
+		cmdNum = trap_GetCurrentCmdNumber();
+		if ( trap_GetUserCmd( cmdNum, &cmd ) ) {
+			if ( ( cmd.buttons & BUTTON_ATTACK ) && !( tvLastButtons & BUTTON_ATTACK ) ) {
+				trap_SendConsoleCommand( "tv_view_next\n" );
+			}
+			tvLastButtons = cmd.buttons;
 		}
 	}
 

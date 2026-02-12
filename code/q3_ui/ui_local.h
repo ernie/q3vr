@@ -181,6 +181,7 @@ typedef struct
 	void (*callback)( void *self, int event );
 	void (*statusbar)( void *self );
 	void (*ownerdraw)( void *self );
+	void (*dblclick)( void *self );
 } menucommon_s;
 
 typedef struct {
@@ -189,6 +190,7 @@ typedef struct {
 	int		widthInChars;
 	char	buffer[MAX_EDIT_LINE];
 	int		maxchars;
+	qboolean skipKey;
 } mfield_t;
 
 typedef struct
@@ -216,7 +218,9 @@ typedef struct
 	int curvalue;
 	int	numitems;
 	int	top;
-		
+	int	scroll;
+	int	mouse1time;
+
 	const char **itemnames;
 
 	int width;

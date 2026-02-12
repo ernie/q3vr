@@ -115,6 +115,10 @@ CL_GetCurrentSnapshotNumber
 ====================
 */
 void	CL_GetCurrentSnapshotNumber( int *snapshotNumber, int *serverTime ) {
+	if ( tvPlay.active ) {
+		CL_TV_GetCurrentSnapshotNumber( snapshotNumber, serverTime );
+		return;
+	}
 	*snapshotNumber = cl.snap.messageNum;
 	*serverTime = cl.snap.serverTime;
 }
@@ -127,6 +131,10 @@ CL_GetSnapshot
 qboolean	CL_GetSnapshot( int snapshotNumber, snapshot_t *snapshot ) {
 	clSnapshot_t	*clSnap;
 	int				i, count;
+
+	if ( tvPlay.active ) {
+		return CL_TV_GetSnapshot( snapshotNumber, snapshot );
+	}
 
 	if ( snapshotNumber > cl.snap.messageNum ) {
 		Com_Error( ERR_DROP, "CL_GetSnapshot: snapshotNumber > cl.snapshot.messageNum" );
@@ -267,6 +275,10 @@ qboolean CL_GetServerCommand( int serverCommandNumber ) {
 	static char bigConfigString[BIG_INFO_STRING];
 	int argc;
 
+	if ( tvPlay.active ) {
+		return CL_TV_GetServerCommand( serverCommandNumber );
+	}
+
 	// if we have irretrievably lost a reliable command, drop the connection
 	if ( serverCommandNumber <= clc.serverCommandSequence - MAX_RELIABLE_COMMANDS ) {
 		// when a demo record was started after the client got a whole bunch of
@@ -360,6 +372,20 @@ rescan:
 		// take a special screenshot next frame
 		Cbuf_AddText( "wait ; wait ; wait ; wait ; screenshot levelshot\n" );
 		return qtrue;
+	}
+
+	// TV demo download notification from server
+	if ( !strcmp( cmd, "tvdemo" ) ) {
+		if ( argc >= 2 ) {
+			Q_strncpyz( clc.tvDemoFile, Cmd_Argv(1), sizeof( clc.tvDemoFile ) );
+			if ( argc >= 3 ) {
+				Q_strncpyz( clc.tvDemoMap, Cmd_Argv(2), sizeof( clc.tvDemoMap ) );
+			} else {
+				clc.tvDemoMap[0] = '\0';
+			}
+			Com_DPrintf( "TV: demo available for download: %s (map: %s)\n", clc.tvDemoFile, clc.tvDemoMap );
+		}
+		return qfalse;
 	}
 
 	// we may want to put a "connect to other server" command here
@@ -529,6 +555,9 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		return 0;
 	case CG_S_RESPATIALIZE:
 		S_Respatialize( args[1], VMA(2), VMA(3), args[4] );
+		if ( tvPlay.active ) {
+			VectorCopy( ((float*)VMA(2)), tvPlay.viewOrigin );
+		}
 		return 0;
 	case CG_S_REGISTERSOUND:
 		return S_RegisterSound( VMA(1), args[2] );
@@ -817,6 +846,9 @@ CL_CGameRendering
 =====================
 */
 void CL_CGameRendering( stereoFrame_t stereo ) {
+	if ( !cgvm ) {
+		return;
+	}
 	VM_Call( cgvm, CG_DRAW_ACTIVE_FRAME, cl.serverTime, stereo, clc.demoplaying );
 	VM_Debug( 0 );
 }
@@ -976,7 +1008,9 @@ void CL_SetCGameTime( void ) {
 				clc.firstDemoFrameSkipped = qtrue;
 				return;
 			}
-			CL_ReadDemoMessage();
+			if ( !tvPlay.active ) {
+				CL_ReadDemoMessage();
+			}
 		}
 		if ( cl.newSnapshots ) {
 			cl.newSnapshots = qfalse;
@@ -999,7 +1033,9 @@ void CL_SetCGameTime( void ) {
 	}
 
 	if ( cl.snap.serverTime < cl.oldFrameServerTime ) {
-		Com_Error( ERR_DROP, "cl.snap.serverTime < cl.oldFrameServerTime" );
+		if ( !tvPlay.active ) {
+			Com_Error( ERR_DROP, "cl.snap.serverTime < cl.oldFrameServerTime" );
+		}
 	}
 	cl.oldFrameServerTime = cl.snap.serverTime;
 
@@ -1089,6 +1125,28 @@ void CL_SetCGameTime( void ) {
 
 		clc.timeDemoFrames++;
 		cl.serverTime = clc.timeDemoBaseTime + clc.timeDemoFrames * 50;
+	}
+
+	if ( tvPlay.active ) {
+		// advance TV frames while cl.serverTime is ahead of latest snapshot
+		while ( cl.serverTime - tvPlay.snapshots[1].serverTime >= 0 ) {
+			if ( tvPlay.atEnd ) {
+				CL_Disconnect( qtrue );
+				return;
+			}
+			// shift: snap[0] = snap[1]
+			tvPlay.snapshots[0] = tvPlay.snapshots[1];
+			Com_Memcpy( tvPlay.snapEntities[0], tvPlay.snapEntities[1],
+				sizeof( tvPlay.snapEntities[0] ) );
+			// read next frame and build new snap[1]
+			CL_TV_ReadFrame();
+			CL_TV_BuildSnapshot( 1 );
+		}
+		cl.snap = tvPlay.snapshots[1];
+		cl.newSnapshots = qtrue;
+		Cvar_SetIntegerValue( "cl_tvTime",
+			tvPlay.serverTime - tvPlay.firstServerTime );
+		return;
 	}
 
 	while ( cl.serverTime >= cl.snap.serverTime ) {

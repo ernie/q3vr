@@ -202,6 +202,9 @@ typedef struct client_s {
 
 	// VR support
 	qboolean		isVR;				// Client is VR (from userinfo)
+
+	// TV demo download notification pending for this client
+	qboolean		tvDemoPending;
 } client_t;
 
 //=============================================================================
@@ -260,6 +263,70 @@ typedef struct
 	
 	qboolean isexception;
 } serverBan_t;
+
+//=============================================================================
+
+// TV demo recording constants
+#define MAX_TV_MSGLEN      (256*1024)
+#define MAX_TV_CMDS        256
+#define MAX_TV_CMDBUF      (64*1024)
+#define ZSTD_OUT_BUF_SIZE  (128*1024)
+
+#include "zstd.h"
+
+typedef struct {
+    int         target;     // client index or -1 for broadcast
+    int         offset;     // offset into cmdBuf
+    int         len;
+} tvCmd_t;
+
+typedef struct {
+    qboolean    recording;
+    qboolean    autoPending;    // waiting for first human client before auto-start
+    fileHandle_t file;
+    unsigned int fileOffset;
+    unsigned int fileOffsetHi; // for >4GB (unlikely)
+
+    int         frameCount;
+    int         firstServerTime;
+    int         lastServerTime;
+
+    // Previous-frame baselines for delta encoding
+    entityState_t   prevEntities[MAX_GENTITIES];
+    byte            prevEntityBitmask[MAX_GENTITIES/8]; // 128 bytes
+    playerState_t   prevPlayers[MAX_CLIENTS];
+    byte            prevPlayerBitmask[MAX_CLIENTS/8];   // 8 bytes
+
+    // Per-frame server command capture
+    tvCmd_t     cmds[MAX_TV_CMDS];
+    int         cmdCount;
+    char        cmdBuf[MAX_TV_CMDBUF];
+    int         cmdBufUsed;
+
+    // Per-frame configstring change tracking
+    qboolean    csChanged[MAX_CONFIGSTRINGS];
+
+    // Write buffer
+    byte        msgBuf[MAX_TV_MSGLEN];
+
+    qboolean    autoRecording;      // started by auto-record (not manual tvrecord)
+    qboolean    keepRecording;      // threshold met, do not auto-delete
+    int         thresholdMetTime;   // sv.time when threshold was first continuously met (0 = not met)
+    char        recordingPath[MAX_QPATH]; // path for potential deletion
+    char        lastRecordedFile[MAX_QPATH]; // finalized demo path for download notification
+    char        lastRecordedMap[MAX_QPATH];  // map name at time of recording
+
+    // Zstd streaming compression
+    ZSTD_CStream    *cstream;
+    byte            zstdOutBuf[ZSTD_OUT_BUF_SIZE];
+} tvState_t;
+
+extern tvState_t tv;
+extern cvar_t *sv_tvAuto;
+extern cvar_t *sv_tvAutoMinPlayers;
+extern cvar_t *sv_tvAutoMinPlayersSecs;
+extern cvar_t *sv_tvpath;
+extern cvar_t *sv_tvDownload;
 
 //=============================================================================
 
@@ -488,6 +555,18 @@ void SV_Trace( trace_t *results, const vec3_t start, vec3_t mins, vec3_t maxs, c
 
 void SV_ClipToEntity( trace_t *trace, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int entityNum, int contentmask, int capsule );
 // clip to a specific entity
+
+//
+// sv_tv.c
+//
+void SV_TV_Init( void );
+void SV_TV_StartRecord_f( void );
+void SV_TV_StopRecord_f( void );
+void SV_TV_WriteFrame( void );
+void SV_TV_StopRecord( qboolean discard );
+void SV_TV_ConfigstringChanged( int index );
+void SV_TV_CaptureServerCommand( int target, const char *cmd );
+void SV_TV_AutoStart( void );
 
 //
 // sv_net_chan.c

@@ -911,12 +911,13 @@ sfxHandle_t ScrollList_Key( menulist_s *l, int key )
 	int	y;
 	int	w;
 	int	i;
-	int	j;	
+	int	j;
 	int	c;
 	int	cursorx;
 	int	cursory;
 	int	column;
 	int	index;
+	int	time;
 
 	switch (key)
 	{
@@ -941,6 +942,21 @@ sfxHandle_t ScrollList_Key( menulist_s *l, int key )
 						l->oldvalue = l->curvalue;
 						l->curvalue = l->top + index;
 
+						// doubleclick
+						if ( l->generic.dblclick ) {
+							if ( l->oldvalue == l->curvalue ) {
+								if ( l->mouse1time ) {
+									time = trap_Milliseconds();
+									if ( time - l->mouse1time < 250 ) {
+										l->generic.dblclick( l );
+										l->mouse1time = 0;
+										return (menu_in_sound);
+									}
+								}
+							}
+							l->mouse1time = trap_Milliseconds();
+						}
+
 						if (l->oldvalue != l->curvalue && l->generic.callback)
 						{
 							l->generic.callback( l, QM_GOTFOCUS );
@@ -948,7 +964,7 @@ sfxHandle_t ScrollList_Key( menulist_s *l, int key )
 						}
 					}
 				}
-			
+
 				// absorbed, silent sound effect
 				return (menu_null_sound);
 			}
@@ -1035,46 +1051,56 @@ sfxHandle_t ScrollList_Key( menulist_s *l, int key )
 			return (menu_buzz_sound);
 
 		case K_MWHEELUP:
-			if( l->columns > 1 ) {
-				return menu_null_sound;
-			}
+			if ( !l->scroll )
+				return (menu_null_sound);
 
-			if (l->top > 0)
+			if (l->curvalue > 0)
 			{
-				// if scrolling 3 lines would replace over half of the
-				// displayed items, only scroll 1 item at a time.
-				int scroll = l->height < 6 ? 1 : 3;
-				l->top -= scroll;
+				l->oldvalue = l->curvalue;
+				l->curvalue -= l->scroll;
+				if (l->curvalue < 0) {
+					l->curvalue = 0;
+					l->top = 0;
+				}
+				if ( l->curvalue < l->top )
+					l->top -= l->height;
+
 				if (l->top < 0)
 					l->top = 0;
 
 				if (l->generic.callback)
 					l->generic.callback( l, QM_GOTFOCUS );
 
-				// make scrolling silent
-				return (menu_null_sound);
+				return (menu_move_sound);
 			}
 			return (menu_buzz_sound);
 
 		case K_MWHEELDOWN:
-			if( l->columns > 1 ) {
-				return menu_null_sound;
-			}
+			if ( !l->scroll )
+				return (menu_null_sound);
 
-			if (l->top < l->numitems-l->height)
+			if (l->curvalue < l->numitems-1)
 			{
-				// if scrolling 3 items would replace over half of the
-				// displayed items, only scroll 1 item at a time.
-				int scroll = l->height < 6 ? 1 : 3;
-				l->top += scroll;
-				if (l->top > l->numitems-l->height)
-					l->top = l->numitems-l->height;
+				l->oldvalue = l->curvalue;
+				l->curvalue += l->scroll;
+
+				if (l->curvalue > l->numitems-1)
+					l->curvalue = l->numitems-1;
+
+				if ( l->curvalue - l->top > l->height - 1 ) {
+					l->top = l->top + l->height;
+					if ( l->numitems - l->top < l->height * l->columns ) {
+						l->top = l->numitems - l->height * l->columns;
+					}
+				}
+
+				if (l->top < 0)
+					l->top = 0;
 
 				if (l->generic.callback)
 					l->generic.callback( l, QM_GOTFOCUS );
 
-				// make scrolling silent
-				return (menu_null_sound);
+				return (menu_move_sound);
 			}
 			return (menu_buzz_sound);
 

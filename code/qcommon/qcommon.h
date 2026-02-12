@@ -507,6 +507,7 @@ void	Cvar_Update( vmCvar_t *vmCvar );
 // updates an interpreted modules' version of a cvar
 
 void 	Cvar_Set( const char *var_name, const char *value );
+void	Cvar_SetIntegerValue( const char *var_name, int value );
 // will create the variable with no flags if it doesn't exist
 
 cvar_t	*Cvar_Set2(const char *var_name, const char *value, qboolean force);
@@ -645,6 +646,7 @@ fileHandle_t	FS_FCreateOpenPipeFile( const char *filename );
 fileHandle_t FS_BaseDir_FOpenFileWrite( const char *filename );
 long		FS_BaseDir_FOpenFileRead( const char *filename, fileHandle_t *fp );
 void	FS_BaseDir_Rename( const char *from, const char *to, qboolean safe );
+void	FS_Rename( const char *from, const char *to );
 long		FS_FOpenFileRead( const char *qpath, fileHandle_t *file, qboolean uniqueFILE );
 // if uniqueFILE is true, then a new FILE will be fopened even if the file
 // is found in an already open pak file.  If uniqueFILE is false, you must call

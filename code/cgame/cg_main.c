@@ -238,6 +238,14 @@ vmCvar_t	cg_obeliskRespawnDelay;
 #endif
 
 vmCvar_t cg_vr_showOffhand;
+vmCvar_t cg_tvTimeline;
+vmCvar_t cg_tvTime;
+vmCvar_t cg_tvDuration;
+vmCvar_t cg_tvSkip;
+vmCvar_t cg_downloadName;
+vmCvar_t cg_downloadSize;
+vmCvar_t cg_downloadCount;
+vmCvar_t cg_downloadTime;
 
 typedef struct {
 	vmCvar_t	*vmCvar;
@@ -383,7 +391,15 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_oldRail, "cg_oldRail", "1", CVAR_ARCHIVE},
 	{ &cg_oldRocket, "cg_oldRocket", "0", CVAR_ARCHIVE},
 	{ &cg_oldPlasma, "cg_oldPlasma", "1", CVAR_ARCHIVE},
-	{ &cg_trueLightning, "cg_trueLightning", "0.2", CVAR_ARCHIVE}
+	{ &cg_trueLightning, "cg_trueLightning", "0.2", CVAR_ARCHIVE},
+	{ &cg_tvTimeline, "cg_tvTimeline", "1", CVAR_ARCHIVE },
+	{ &cg_tvTime, "cl_tvTime", "0", CVAR_ROM },
+	{ &cg_tvDuration, "cl_tvDuration", "0", CVAR_ROM },
+	{ &cg_tvSkip, "cg_tvSkip", "10", CVAR_ARCHIVE },
+	{ &cg_downloadName, "cl_downloadName", "", CVAR_ROM },
+	{ &cg_downloadSize, "cl_downloadSize", "0", CVAR_ROM },
+	{ &cg_downloadCount, "cl_downloadCount", "0", CVAR_ROM },
+	{ &cg_downloadTime, "cl_downloadTime", "0", CVAR_ROM }
 //	{ &cg_pmove_fixed, "cg_pmove_fixed", "0", CVAR_USERINFO | CVAR_ARCHIVE }
 };
 
@@ -1822,15 +1838,20 @@ static void CG_FeederSelection(float feederID, int index) {
 		clientNum = cg.scores[scoreIndex].client;
 	}
 
-	// Send follow command if spectating and a valid player was selected
+	// Send follow/view command if spectating and a valid player was selected
 	// Skip if we're already following this player
-	if ( clientNum >= 0 && cg.snap && !cg.demoPlayback ) {
+	if ( clientNum >= 0 && cg.snap ) {
 		qboolean spectator = cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR ||
-		                     ( cg.snap->ps.pm_flags & PMF_FOLLOW );
+		                     ( cg.snap->ps.pm_flags & PMF_FOLLOW ) ||
+		                     cg.demoPlayback || cgs.tvPlayback;
 		qboolean alreadyFollowing = (cg.snap->ps.pm_flags & PMF_FOLLOW) &&
 		                            (cg.snap->ps.clientNum == clientNum);
 		if ( spectator && !alreadyFollowing && cg.scores[cg.selectedScore].team != TEAM_SPECTATOR ) {
-			trap_SendClientCommand( va( "follow %i", clientNum ) );
+			if ( cgs.tvPlayback ) {
+				trap_SendConsoleCommand( va( "tv_view %i\n", clientNum ) );
+			} else if ( !cg.demoPlayback ) {
+				trap_SendClientCommand( va( "follow %i", clientNum ) );
+			}
 		}
 	}
 }
@@ -2162,6 +2183,11 @@ void CG_EventHandling(int type) {
 
 
 void CG_KeyEvent(int key, qboolean down) {
+	// consume all keys while timeline scrubbing is active
+	if ( cgs.tvScrubActive ) {
+		return;
+	}
+
 	// process scoreboard clicks
 	if ( cgs.score_catched && down )
 	{

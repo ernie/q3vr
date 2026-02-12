@@ -23,6 +23,7 @@ set(CLIENT_SOURCES
     ${SOURCE_DIR}/client/cl_scrn.c
     ${SOURCE_DIR}/client/cl_ui.c
     ${SOURCE_DIR}/client/cl_avi.c
+    ${SOURCE_DIR}/client/cl_tv.c
     ${SOURCE_DIR}/client/libmumblelink.c
     ${SOURCE_DIR}/client/snd_altivec.c
     ${SOURCE_DIR}/client/snd_adpcm.c
@@ -85,10 +86,13 @@ if(USE_DEBUG_STACKTRACE)
     list(APPEND CLIENT_DEFINITIONS USE_DEBUG_STACKTRACE)
 endif()
 
+list(APPEND CLIENT_INCLUDE_DIRS ${SOURCE_DIR}/libzstd)
+
 set(CLIENT_BINARY_SOURCES_COMMON
     ${SERVER_SOURCES}
     ${CLIENT_SOURCES}
     ${COMMON_SOURCES}
+    ${ZSTD_SOURCES}
     ${BOTLIB_SOURCES}
     ${SYSTEM_SOURCES}
     ${ASM_SOURCES}

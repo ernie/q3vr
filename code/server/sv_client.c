@@ -726,6 +726,13 @@ static void SV_SendClientGameState( client_t *client ) {
  	Com_DPrintf ("SV_SendClientGameState() for %s\n", client->name);
 	Com_DPrintf( "Going from CS_CONNECTED to CS_PRIMED for %s\n", client->name );
 	client->state = CS_PRIMED;
+
+	// send TV demo download notification if this client was in the previous match
+	if ( client->tvDemoPending && tv.lastRecordedFile[0] ) {
+		SV_AddServerCommand( client, va( "tvdemo \"%s/%s\" \"%s\"", FS_GetCurrentGameDir(), tv.lastRecordedFile, tv.lastRecordedMap ) );
+		client->tvDemoPending = qfalse;
+	}
+
 	client->pureAuthentic = 0;
 	client->gotCP = qfalse;
 

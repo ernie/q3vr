@@ -124,6 +124,9 @@ void SV_SetConfigstring (int index, const char *val) {
 	Z_Free( sv.configstrings[index] );
 	sv.configstrings[index] = CopyString( val );
 
+	// notify TV recording of configstring change
+	SV_TV_ConfigstringChanged( index );
+
 	// send it to all the clients if we aren't
 	// spawning a new server
 	if ( sv.state == SS_GAME || sv.restarting ) {
@@ -405,6 +408,15 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 	char		systemInfo[16384];
 	const char	*p;
 
+	// stop any active TV recording before map change
+	if ( tv.recording && tv.autoRecording && !tv.keepRecording
+		 && sv_tvAutoMinPlayers->integer > 0 ) {
+		Com_Printf( "TV: Auto-recording did not meet player threshold, discarding.\n" );
+		SV_TV_StopRecord( qtrue );
+	} else {
+		SV_TV_StopRecord( qfalse );
+	}
+
 	// shut down the existing game if it is running
 	SV_ShutdownGameProgs();
 
@@ -536,6 +548,8 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 					// when we get the next packet from a connected client,
 					// the new gamestate will be sent
 					svs.clients[i].state = CS_CONNECTED;
+					// mark for TV demo download notification if available
+					svs.clients[i].tvDemoPending = ( sv_tvDownload->integer && tv.lastRecordedFile[0] ) ? qtrue : qfalse;
 				}
 				else {
 					client_t		*client;
@@ -616,6 +630,9 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 	}
 #endif
 
+	// start TV auto-recording if enabled
+	SV_TV_AutoStart();
+
 	Com_Printf ("-----------------------------------\n");
 }
 
@@ -692,6 +709,9 @@ void SV_Init (void)
 #endif
 	sv_banFile = Cvar_Get("sv_banFile", "serverbans.dat", CVAR_ARCHIVE);
 
+	// initialize TV demo recording system
+	SV_TV_Init();
+
 	// initialize bot cvars so they are listed and can be set before loading the botlib
 	SV_BotInitCvars();
 
@@ -749,6 +769,15 @@ void SV_Shutdown( char *finalmsg ) {
 	}
 
 	Com_Printf( "----- Server Shutdown (%s) -----\n", finalmsg );
+
+	// stop any active TV recording
+	if ( tv.recording && tv.autoRecording && !tv.keepRecording
+		 && sv_tvAutoMinPlayers->integer > 0 ) {
+		Com_Printf( "TV: Auto-recording did not meet player threshold, discarding.\n" );
+		SV_TV_StopRecord( qtrue );
+	} else {
+		SV_TV_StopRecord( qfalse );
+	}
 
 	NET_LeaveMulticast6();
 

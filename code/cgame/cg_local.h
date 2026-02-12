@@ -508,6 +508,7 @@ typedef struct {
 
 	int			timelimitWarnings;	// 5 min, 1 min, overtime
 	int			fraglimitWarnings;
+	int			overtimeWarnings;	// 5 min, 1 min warnings during overtime
 
 	qboolean	mapRestart;			// set on a map restart to set back the weapon
 
@@ -708,6 +709,11 @@ typedef struct {
 	int				followClient;
 
 	qboolean		skipDFshaders;
+
+	qboolean		downloadActive;
+	int				downloadFinishTime;
+	char			downloadFinishName[MAX_QPATH];
+	qboolean		downloadFinishError;
 } cg_t;
 
 
@@ -1097,6 +1103,7 @@ typedef struct {
 	int				fraglimit;
 	int				capturelimit;
 	int				timelimit;
+	int				overtimelimit;
 	int				maxclients;
 	char			mapname[MAX_QPATH];
 	char			redTeam[MAX_QPATH];
@@ -1165,6 +1172,11 @@ typedef struct {
 	// media
 	cgMedia_t		media;
 
+	qboolean		tvPlayback;		// playing back a TV demo (\tv\1 in serverinfo)
+	qboolean		tvScrubActive;		// currently scrubbing the timeline
+	int				tvScrubKey;			// keycode that activated scrub (for phantom key-up filtering)
+	qboolean		tvScrubFilterKeyUp;	// filter phantom -tv_scrub from catcher change
+	float			tvScrubSavedMenuYaw;	// menuYaw to restore when scrub ends
 } cgs_t;
 
 //==============================================================================
@@ -1300,6 +1312,14 @@ extern  vmCvar_t		cg_recordSPDemo;
 extern  vmCvar_t		cg_recordSPDemoName;
 extern	vmCvar_t		cg_obeliskRespawnDelay;
 #endif
+extern	vmCvar_t		cg_tvTimeline;
+extern	vmCvar_t		cg_tvTime;
+extern	vmCvar_t		cg_tvDuration;
+extern	vmCvar_t		cg_tvSkip;
+extern	vmCvar_t		cg_downloadName;
+extern	vmCvar_t		cg_downloadSize;
+extern	vmCvar_t		cg_downloadCount;
+extern	vmCvar_t		cg_downloadTime;
 
 void CG_TrailItem( centity_t *cent, qhandle_t hModel, vec3_t offset, float scale );
 
@@ -1345,6 +1365,7 @@ qboolean CG_IsThirdPersonFollowMode( VR_FollowMode followMode );
 qboolean CG_IsDeathCam( void );
 qboolean CG_IsVRFollow( void );
 
+void CG_ResetViewOffsets( void );
 void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback );
 void CG_TrackClientTeamChange( void );
 void CG_WarmupEvent( void );

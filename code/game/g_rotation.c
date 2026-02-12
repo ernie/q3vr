@@ -70,7 +70,7 @@ qboolean ParseMapRotation( void )
 	len = trap_FS_FOpenFile( g_rotation.string, &fh, FS_READ );
 	if ( fh == FS_INVALID_HANDLE )
 	{
-		G_Printf( S_COLOR_YELLOW "%s: map rotation file doesn't exists.\n", g_rotation.string );
+		G_Printf( S_COLOR_YELLOW "%s: map rotation file doesn't exist.\n", g_rotation.string );
 		return qfalse;
 	}
 	if ( len >= sizeof( buf ) )
@@ -160,7 +160,7 @@ __rescan:
 		}
 		else
 		{
-			COM_ParseWarning( S_COLOR_YELLOW "map '%s' doesn't exists", tk );
+			COM_ParseWarning( S_COLOR_YELLOW "map '%s' doesn't exist.", tk );
 			SkipRestOfLine( &s );
 			continue;
 		}

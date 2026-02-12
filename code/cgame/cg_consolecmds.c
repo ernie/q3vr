@@ -24,10 +24,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // executed by a key binding
 
 #include "cg_local.h"
+#include "../vrcommon/vr_clientinfo.h"
 #ifdef MISSIONPACK
 #include "../ui/ui_shared.h"
 extern menuDef_t *menuScoreboard;
 #endif
+
+extern vr_clientinfo_t *vr;
 
 
 
@@ -452,6 +455,179 @@ static void CG_Camera_f( void ) {
 */
 
 
+static void CG_TVNext_f( void ) {
+	if ( !cgs.tvPlayback ) {
+		return;
+	}
+	trap_SendConsoleCommand( "tv_view_next\n" );
+}
+
+static void CG_TVPrev_f( void ) {
+	if ( !cgs.tvPlayback ) {
+		return;
+	}
+	trap_SendConsoleCommand( "tv_view_prev\n" );
+}
+
+static void CG_TVPlayer_f( void ) {
+	char arg[MAX_TOKEN_CHARS];
+
+	if ( !cgs.tvPlayback ) {
+		return;
+	}
+	if ( trap_Argc() < 2 ) {
+		CG_Printf( "usage: tv_player <clientnum>\n" );
+		return;
+	}
+	trap_Argv( 1, arg, sizeof( arg ) );
+	trap_SendConsoleCommand( va( "tv_view %s\n", arg ) );
+}
+
+static void CG_TVForward_f( void ) {
+	int	ms, target;
+
+	if ( !cgs.tvPlayback ) {
+		return;
+	}
+	ms = cg_tvTime.integer + cg_tvSkip.integer * 1000;
+	target = cg_tvDuration.integer;
+	if ( ms > target ) {
+		ms = target;
+	}
+	trap_SendConsoleCommand( va( "tv_seek %i\n", ms / 1000 ) );
+}
+
+static void CG_TVBackward_f( void ) {
+	int	ms;
+
+	if ( !cgs.tvPlayback ) {
+		return;
+	}
+	ms = cg_tvTime.integer - cg_tvSkip.integer * 1000;
+	if ( ms < 0 ) {
+		ms = 0;
+	}
+	trap_SendConsoleCommand( va( "tv_seek %i\n", ms / 1000 ) );
+}
+
+static void CG_TVScrubDown_f( void ) {
+	int		currentCatcher, newCatcher;
+	int		old_state, new_state;
+	float	playbackX, controllerYaw;
+
+	if ( !cgs.tvPlayback || cg_tvDuration.integer <= 0 ) {
+		return;
+	}
+
+	// Release scoreboard if held, so it doesn't stay stuck during scrub
+	if ( cg.showScores ) {
+		CG_ScoresUp_f();
+	}
+
+	cgs.tvScrubActive = qtrue;
+
+	// Compute playback position in screen coordinates
+	playbackX = 640.0f * (float)cg_tvTime.integer / (float)cg_tvDuration.integer;
+	if ( playbackX < 0.0f ) playbackX = 0.0f;
+	if ( playbackX > 640.0f ) playbackX = 640.0f;
+
+	// Read current controller yaw (must match cursor tracking logic in vr_input.c)
+	if ( vr->menuLeftHanded ) {
+		controllerYaw = vr->right_handed ? vr->offhandangles[YAW] : vr->weaponangles[YAW];
+	} else {
+		controllerYaw = vr->right_handed ? vr->weaponangles[YAW] : vr->offhandangles[YAW];
+	}
+
+	// Save current menuYaw and adjust so cursor maps to playback position
+	cgs.tvScrubSavedMenuYaw = vr->menuYaw;
+	vr->menuYaw = controllerYaw - RAD2DEG( atan( (320.0f - playbackX) / 400.0f ) );
+	vr->menuYawLocked = qtrue;
+	cgs.cursorX = (int)playbackX;
+
+	// Enable VR hand-pointing cursor tracking
+	vr->scoreboardCursorX = &cgs.cursorX;
+	vr->scoreboardCursorY = &cgs.cursorY;
+
+	// Capture input so key events reach CG_KeyEvent
+	cgs.tvScrubKey = trap_Key_GetKey( "+tv_scrub" );
+	currentCatcher = trap_Key_GetCatcher();
+	newCatcher = currentCatcher | KEYCATCH_CGAME;
+
+	if ( newCatcher != currentCatcher ) {
+		if ( cgs.tvScrubKey ) {
+			old_state = trap_Key_IsDown( cgs.tvScrubKey );
+			trap_Key_SetCatcher( newCatcher );
+			new_state = trap_Key_IsDown( cgs.tvScrubKey );
+			if ( new_state != old_state ) {
+				cgs.tvScrubFilterKeyUp = qtrue;
+			}
+		} else {
+			trap_Key_SetCatcher( newCatcher );
+		}
+	}
+}
+
+static void CG_TVScrubUp_f( void ) {
+	int		currentCatcher;
+	float	frac;
+	int		ms;
+
+	// Filter spurious key-up from input capture change
+	if ( cgs.tvScrubFilterKeyUp ) {
+		cgs.tvScrubFilterKeyUp = qfalse;
+		return;
+	}
+
+	if ( !cgs.tvScrubActive ) {
+		return;
+	}
+
+	cgs.tvScrubActive = qfalse;
+
+	// Restore menuYaw
+	vr->menuYawLocked = qfalse;
+	vr->menuYaw = cgs.tvScrubSavedMenuYaw;
+
+	// Convert cursor position to seek time
+	frac = cgs.cursorX / 640.0f;
+	if ( frac < 0.0f ) frac = 0.0f;
+	if ( frac > 1.0f ) frac = 1.0f;
+	ms = (int)( frac * cg_tvDuration.integer );
+
+	// Release input capture (but preserve if scoreboard is also active)
+	if ( !cgs.score_catched ) {
+		vr->scoreboardCursorX = NULL;
+		vr->scoreboardCursorY = NULL;
+		currentCatcher = trap_Key_GetCatcher();
+		trap_Key_SetCatcher( currentCatcher & ~KEYCATCH_CGAME );
+	}
+
+	// Send seek command to engine
+	trap_SendConsoleCommand( va( "tv_seek %i\n", ms / 1000 ) );
+}
+
+static void CG_TVScrubCancel_f( void ) {
+	int		currentCatcher;
+
+	if ( !cgs.tvScrubActive ) {
+		return;
+	}
+
+	cgs.tvScrubActive = qfalse;
+
+	// Restore menuYaw
+	vr->menuYawLocked = qfalse;
+	vr->menuYaw = cgs.tvScrubSavedMenuYaw;
+
+	// Release input capture (but preserve if scoreboard is also active)
+	if ( !cgs.score_catched ) {
+		vr->scoreboardCursorX = NULL;
+		vr->scoreboardCursorY = NULL;
+		currentCatcher = trap_Key_GetCatcher();
+		trap_Key_SetCatcher( currentCatcher & ~KEYCATCH_CGAME );
+	}
+}
+
 typedef struct {
 	char	*cmd;
 	void	(*function)(void);
@@ -511,7 +687,15 @@ static consoleCommand_t	commands[] = {
 #endif
 	{ "startOrbit", CG_StartOrbit_f },
 	//{ "camera", CG_Camera_f },
-	{ "loaddeferred", CG_LoadDeferredPlayers }	
+	{ "loaddeferred", CG_LoadDeferredPlayers },
+	{ "tv_next", CG_TVNext_f },
+	{ "tv_prev", CG_TVPrev_f },
+	{ "tv_player", CG_TVPlayer_f },
+	{ "tv_forward", CG_TVForward_f },
+	{ "tv_backward", CG_TVBackward_f },
+	{ "+tv_scrub", CG_TVScrubDown_f },
+	{ "-tv_scrub", CG_TVScrubUp_f },
+	{ "tv_scrub_cancel", CG_TVScrubCancel_f }
 };
 
 

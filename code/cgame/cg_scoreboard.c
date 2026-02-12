@@ -583,7 +583,9 @@ void CG_ScoreboardClick( void )
 			continue;
 		}
 
-		if ( !cg.demoPlayback ) {
+		if ( cgs.tvPlayback ) {
+			trap_SendConsoleCommand( va( "tv_view %i\n", score->client ) );
+		} else if ( !cg.demoPlayback ) {
 			trap_SendClientCommand( va( "follow %i", score->client ) );
 		}
 	}
@@ -604,7 +606,7 @@ void CG_SetScoreCatcher( qboolean enable )
 	if ( currentCatcher & KEYCATCH_CONSOLE || !cg.snap )
 		return;
 
-	spectator = cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR || ( cg.snap->ps.pm_flags & PMF_FOLLOW );
+	spectator = cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR || ( cg.snap->ps.pm_flags & PMF_FOLLOW ) || cg.demoPlayback || cgs.tvPlayback;
 
 	if ( enable && spectator ) {
 		cgs.score_key = trap_Key_GetKey( "+scores" );

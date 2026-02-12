@@ -131,6 +131,7 @@ cvar_t	*cl_activeAction;
 cvar_t	*cl_motdString;
 
 cvar_t	*cl_allowDownload;
+cvar_t	*cl_tvDownload;
 cvar_t	*cl_conXOffset;
 cvar_t	*cl_inGameVideo;
 
@@ -1107,7 +1108,33 @@ void CL_PlayDemo_f( void ) {
 
 	// open the demo file
 	Q_strncpyz( arg, Cmd_Argv(1), sizeof( arg ) );
-	
+
+	// Check for .tvd extension
+	ext_test = strrchr( arg, '.' );
+	if ( ext_test && !Q_stricmp( ext_test, ".tvd" ) ) {
+		Com_sprintf( name, sizeof( name ), "demos/%s", arg );
+
+		CL_Disconnect( qtrue );
+
+		clc.demoplaying = qtrue;
+		Con_Close();
+
+		if ( !CL_TV_Open( name ) ) {
+			Com_Printf( S_COLOR_YELLOW "couldn't open TV demo %s\n", name );
+			clc.demoplaying = qfalse;
+			return;
+		}
+
+		Q_strncpyz( clc.demoName, arg, sizeof( clc.demoName ) );
+		Q_strncpyz( clc.servername, arg, sizeof( clc.servername ) );
+		clc.state = CA_CONNECTED;
+		clc.lastPacketTime = cls.realtime;
+		clc.firstDemoFrameSkipped = qfalse;
+
+		CL_InitDownloads();
+		return;
+	}
+
 	CL_Disconnect( qtrue );
 
 	// check for an extension .DEMOEXT_?? (?? is protocol)
@@ -1407,12 +1434,22 @@ void CL_Disconnect( qboolean showMainMenu ) {
 		CL_StopRecord_f ();
 	}
 
+	if ( tvPlay.active ) {
+		CL_TV_Close();
+	}
+
 	if (clc.download) {
 		FS_FCloseFile( clc.download );
 		clc.download = 0;
 	}
 	*clc.downloadTempName = *clc.downloadName = 0;
 	Cvar_Set( "cl_downloadName", "" );
+
+#ifdef USE_HTTP
+	CL_TV_CleanupDownload();
+#endif
+	clc.tvDemoFile[0] = '\0';
+	clc.tvDemoMap[0] = '\0';
 
 #ifdef USE_MUMBLE
 	if (cl_useMumble->integer && mumble_islinked()) {
@@ -2922,7 +2959,11 @@ void CL_CheckTimeout( void ) {
 	//
 	// check timeout
 	//
-	if ( ( !CL_CheckPaused() || !sv_paused->integer ) 
+	if ( tvPlay.active ) {
+		clc.lastPacketTime = cls.realtime;
+		return;
+	}
+	if ( ( !CL_CheckPaused() || !sv_paused->integer )
 		&& clc.state >= CA_CONNECTED && clc.state != CA_CINEMATIC
 	    && cls.realtime - clc.lastPacketTime > cl_timeout->value*1000) {
 		if (++cl.timeoutcount > 5) {	// timeoutcount saves debugger
@@ -2977,6 +3018,53 @@ void CL_CheckUserinfo( void ) {
 	}
 }
 
+#ifdef USE_HTTP
+static qboolean tvDownloadActive = qfalse;
+
+void CL_TV_DownloadFrame( void ) {
+	// pump active TV download
+	if ( tvDownloadActive ) {
+		if ( CL_HTTP_TV_PerformDownload() ) {
+			tvDownloadActive = qfalse;
+		}
+		return;
+	}
+	// initiate TV demo download once the client has entered the game
+	if ( clc.state == CA_ACTIVE && clc.tvDemoFile[0]
+		&& cl_tvDownload->integer && CL_HTTP_Available() ) {
+		if ( clc.sv_dlURL[0] ) {
+			char url[MAX_OSPATH];
+			char localName[MAX_QPATH];
+			time_t now;
+			struct tm *tm_info;
+
+			Com_sprintf( url, sizeof( url ), "%s/%s", clc.sv_dlURL, clc.tvDemoFile );
+
+			now = time( NULL );
+			tm_info = localtime( &now );
+			if ( tm_info && clc.tvDemoMap[0] ) {
+				char timestamp[32];
+				strftime( timestamp, sizeof( timestamp ), "%Y%m%d_%H%M%S", tm_info );
+				Com_sprintf( localName, sizeof( localName ), "demos/%s_%s.tvd", timestamp, clc.tvDemoMap );
+			} else {
+				Q_strncpyz( localName, clc.tvDemoFile, sizeof( localName ) );
+			}
+
+			tvDownloadActive = CL_HTTP_TV_BeginDownload( localName, url );
+		} else {
+			Com_DPrintf( "TV: sv_dlURL not set, skipping demo download\n" );
+		}
+		clc.tvDemoFile[0] = '\0';
+		clc.tvDemoMap[0] = '\0';
+	}
+}
+
+void CL_TV_CleanupDownload( void ) {
+	CL_HTTP_TV_CleanupDownload();
+	tvDownloadActive = qfalse;
+}
+#endif
+
 /*
 ==================
 CL_Frame
@@ -3020,6 +3108,7 @@ void CL_Frame ( int msec ) {
 	}
 
 	CL_HTTP_PerformInMemoryDownload();
+	CL_TV_DownloadFrame();
 #endif
 
 	if ( cls.cddialog ) {
@@ -3796,7 +3885,11 @@ void CL_Init( void ) {
 	if(!CL_HTTP_Init()) {
 		Com_Printf("WARNING: couldn't initialize HTTP download support\n");
 	}
+	cl_tvDownload = Cvar_Get( "cl_tvDownload", "0", CVAR_ARCHIVE );
+	Cvar_SetDescription( cl_tvDownload, "Download TV demo recordings from server via HTTP at end of match." );
 #endif
+
+	CL_TV_Init();
 
 	// cgame might not be initialized before menu is used
 	Cvar_Get ("cg_viewsize", "100", CVAR_ARCHIVE );

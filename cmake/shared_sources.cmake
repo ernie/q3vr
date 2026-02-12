@@ -36,6 +36,14 @@ disable_warnings(
     ${SOURCE_DIR}/qcommon/ioapi.c
 )
 
+set(ZSTD_SOURCES
+    ${SOURCE_DIR}/libzstd/zstd.c
+)
+
+disable_warnings(
+    ${SOURCE_DIR}/libzstd/zstd.c
+)
+
 add_git_dependency(${SOURCE_DIR}/qcommon/common.c)
 
 set(SYSTEM_SOURCES
@@ -55,6 +63,7 @@ set(SERVER_SOURCES
     ${SOURCE_DIR}/server/sv_main.c
     ${SOURCE_DIR}/server/sv_net_chan.c
     ${SOURCE_DIR}/server/sv_snapshot.c
+    ${SOURCE_DIR}/server/sv_tv.c
     ${SOURCE_DIR}/server/sv_world.c
 )
 

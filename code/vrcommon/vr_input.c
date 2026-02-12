@@ -1189,9 +1189,9 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
 	vr.thumbstick_location[isRightController][0] = joystickX;
 	vr.thumbstick_location[isRightController][1] = joystickY;
 
-	// Weapon adjustment mode: suppress normal joystick processing.
+	// Weapon adjustment / TVD scrub mode: suppress normal joystick processing.
 	// Thumbstick values are already stored above for cgame to read.
-	if (vr.weapon_adjust)
+	if (vr.weapon_adjust || vr.menuYawLocked)
 	{
 		return;
 	}
@@ -1355,8 +1355,8 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 {
 	vrController_t* controller = isRightController == qtrue ? &rightController : &leftController;
 
-	// Weapon adjustment mode: suppress all trigger actions
-	if (vr.weapon_adjust)
+	// Weapon adjustment / TVD scrub mode: suppress all trigger actions
+	if (vr.weapon_adjust || vr.menuYawLocked)
 	{
 		return;
 	}
@@ -1519,25 +1519,79 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 
 	if (isRightController == !vr_righthanded->integer)
 	{
-		if (buttons & VR_Button_GripTrigger)
+		// Offhand grip
+		if (tvPlay.active && tvPlay.totalDuration > 0)
 		{
-			IN_HandleActiveInput(&controller->buttons, VR_Button_GripTrigger, "SECONDARYGRIP", 0, qfalse);
+			// During TVD playback, offhand grip cancels timeline scrubbing
+			if (buttons & VR_Button_GripTrigger)
+			{
+				if (!IN_InputActivated(&controller->buttons, VR_Button_GripTrigger))
+				{
+					IN_ActivateInput(&controller->buttons, VR_Button_GripTrigger);
+					Cbuf_AddText("tv_scrub_cancel\n");
+				}
+			}
+			else
+			{
+				if (IN_InputActivated(&controller->buttons, VR_Button_GripTrigger))
+				{
+					IN_DeactivateInput(&controller->buttons, VR_Button_GripTrigger);
+				}
+			}
 		}
 		else
 		{
-			IN_HandleInactiveInput(&controller->buttons, VR_Button_GripTrigger, "SECONDARYGRIP", 0, qfalse);
+			if (buttons & VR_Button_GripTrigger)
+			{
+				IN_HandleActiveInput(&controller->buttons, VR_Button_GripTrigger, "SECONDARYGRIP", 0, qfalse);
+			}
+			else
+			{
+				IN_HandleInactiveInput(&controller->buttons, VR_Button_GripTrigger, "SECONDARYGRIP", 0, qfalse);
+			}
 		}
 	}
 	else
 	{
-		if (buttons & VR_Button_GripTrigger)
+		// Primary grip
+		if (tvPlay.active && tvPlay.totalDuration > 0)
 		{
-			IN_HandleActiveInput(&controller->buttons, VR_Button_GripTrigger, "PRIMARYGRIP", 0, qfalse);
+			// During TVD playback, primary grip activates timeline scrubbing
+			if (buttons & VR_Button_GripTrigger)
+			{
+				if (!IN_InputActivated(&controller->buttons, VR_Button_GripTrigger))
+				{
+					IN_ActivateInput(&controller->buttons, VR_Button_GripTrigger);
+					Cbuf_AddText("+tv_scrub\n");
+				}
+			}
+			else
+			{
+				if (IN_InputActivated(&controller->buttons, VR_Button_GripTrigger))
+				{
+					IN_DeactivateInput(&controller->buttons, VR_Button_GripTrigger);
+					Cbuf_AddText("-tv_scrub\n");
+				}
+			}
 		}
 		else
 		{
-			IN_HandleInactiveInput(&controller->buttons, VR_Button_GripTrigger, "PRIMARYGRIP", 0, qfalse);
+			if (buttons & VR_Button_GripTrigger)
+			{
+				IN_HandleActiveInput(&controller->buttons, VR_Button_GripTrigger, "PRIMARYGRIP", 0, qfalse);
+			}
+			else
+			{
+				IN_HandleInactiveInput(&controller->buttons, VR_Button_GripTrigger, "PRIMARYGRIP", 0, qfalse);
+			}
 		}
+	}
+
+	// TVD scrub mode: suppress remaining buttons (trackpad, thumbstick, A, B)
+	// Menu button and grip are already handled above.
+	if (vr.menuYawLocked)
+	{
+		return;
 	}
 
 	// Trackpad
@@ -1601,6 +1655,15 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 			{
 				IN_ActivateInput(&controller->buttons, VR_Button_A);
 				Cbuf_AddText("cmd team spectator\n");
+			}
+		}
+		else if (tvPlay.active)
+		{
+			// TV playback: cycle to next viewpoint
+			if (!IN_InputActivated(&controller->buttons, VR_Button_A))
+			{
+				IN_ActivateInput(&controller->buttons, VR_Button_A);
+				Cbuf_AddText("tv_view_next\n");
 			}
 		}
 		else if (VR_Gameplay_ShouldRenderInVirtualScreen() || cl.snap.ps.pm_type == PM_INTERMISSION)
@@ -1668,7 +1731,9 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 				vr.follow_mode = (vr.follow_mode+1) % VRFM_NUM_FOLLOWMODES;
 				if (vr.follow_mode == VRFM_THIRDPERSON_1)
 				{
-					Cbuf_ExecuteText(EXEC_APPEND, "follow\n");
+					if (!tvPlay.active) {
+						Cbuf_ExecuteText(EXEC_APPEND, "follow\n");
+					}
 				}
 
 				// Initiate realign
@@ -1721,7 +1786,7 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 void VR_ProcessInputActions( void )
 {
 	vr.virtual_screen = VR_Gameplay_ShouldRenderInVirtualScreen();
-	vr.first_person_following = VR_IsFollowingInFirstPerson();
+	vr.first_person_following = vr.virtual_screen && VR_IsFollowingInFirstPerson();
 	vr.in_menu = VR_IsInMenu();
 	vr.right_handed = vr_righthanded->integer != 0;
 

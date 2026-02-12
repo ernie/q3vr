@@ -808,6 +808,38 @@ void FS_BaseDir_Rename( const char *from, const char *to, qboolean safe ) {
 }
 
 /*
+===========
+FS_Rename
+
+Renames a file within the current game directory (fs_gamedir).
+Removes the destination first if it exists.
+===========
+*/
+void FS_Rename( const char *from, const char *to ) {
+	const char *from_ospath, *to_ospath;
+	FILE *f;
+
+	if ( !fs_searchpaths ) {
+		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
+	}
+
+	from_ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, from );
+	to_ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, to );
+
+	if ( fs_debug->integer ) {
+		Com_Printf( "FS_Rename: %s --> %s\n", from_ospath, to_ospath );
+	}
+
+	f = Sys_FOpen( from_ospath, "rb" );
+	if ( f ) {
+		fclose( f );
+		FS_Remove( to_ospath );
+	}
+
+	rename( from_ospath, to_ospath );
+}
+
+/*
 ==============
 FS_FCloseFile
 

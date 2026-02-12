@@ -3069,7 +3069,7 @@ static void UI_LoadDemos( void ) {
 			uiInfo.demoList[i] = String_Alloc(demoname);
 			demoname += len + 1;
 		}
-		
+
 		if(!j)
 		{
 		        if(protocolLegacy > 0 && uiInfo.demoCount < MAX_DEMOS)
@@ -3081,6 +3081,24 @@ static void UI_LoadDemos( void ) {
                         else
                                 break;
 		}
+	}
+
+	// Append TV demo (.tvd) files
+	if ( uiInfo.demoCount < MAX_DEMOS ) {
+		int count, bufUsed;
+		bufUsed = 0;
+		demoname = demolist;
+		// walk buffer to find end offset (last pass may have reset demoname)
+		count = trap_FS_GetFileList( "demos", "tvd", demolist, ARRAY_LEN(demolist) );
+		if ( uiInfo.demoCount + count > MAX_DEMOS )
+			count = MAX_DEMOS - uiInfo.demoCount;
+		demoname = demolist;
+		for ( j = 0; j < count; j++ ) {
+			len = strlen( demoname );
+			uiInfo.demoList[uiInfo.demoCount + j] = String_Alloc( demoname );
+			demoname += len + 1;
+		}
+		uiInfo.demoCount += count;
 	}
 
 }

@@ -276,12 +276,16 @@ void VR_Renderer_EndFrame(VR_Engine* engine)
 	if (use_virtual_screen)
 	{
 		VR_DrawVirtualScreen(swapchains, swapchainColorIndex, fov, views, viewCount);
-		vr.menuYaw = VR_VirtualScreen_GetCurrentYaw();
+		if ( !vr.menuYawLocked ) {
+			vr.menuYaw = VR_VirtualScreen_GetCurrentYaw();
+		}
 	}
 	else
 	{
 		VR_VirtualScreen_ResetPosition();
-		vr.menuYaw = vr.hmdorientation[YAW];
+		if ( !vr.menuYawLocked ) {
+			vr.menuYaw = vr.hmdorientation[YAW];
+		}
 	}
 
 	VR_Swapchains_Release(swapchains);

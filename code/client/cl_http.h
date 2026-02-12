@@ -36,4 +36,8 @@ void CL_HTTP_BeginInMemoryDownload( const char *remoteURL, CL_HTTP_InMemoryDownl
 
 qboolean CL_HTTP_PerformInMemoryDownload( void );
 
+qboolean CL_HTTP_TV_BeginDownload( const char *localName, const char *remoteURL );
+qboolean CL_HTTP_TV_PerformDownload( void );
+void CL_HTTP_TV_CleanupDownload( void );
+
 #endif	// __CL_HTTP_H__
