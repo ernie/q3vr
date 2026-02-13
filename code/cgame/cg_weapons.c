@@ -1977,6 +1977,9 @@ void CG_WeaponAdjust_f( void ) {
 	if ( vr->weapon_adjust ) {
 		CG_WeaponAdjust_Exit();
 	} else {
+		if ( !trap_Cvar_VariableValue( "vr_weaponAdjust" ) ) {
+			return;
+		}
 		if ( !cg.snap ) return;
 		// Don't enter if in virtual screen, zoomed, spectator, or dead
 		if ( vr->virtual_screen || vr->weapon_zoomed ||

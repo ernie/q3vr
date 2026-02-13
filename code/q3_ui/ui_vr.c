@@ -44,7 +44,8 @@ VR OPTIONS MENU
 #define ID_SHOWOFFHAND           152
 #define ID_DRAWHUD               153
 #define ID_SELECTORWITHHUD       154
-#define ID_BACK                  155
+#define ID_WEAPONADJUST          155
+#define ID_BACK                  156
 
 
 typedef struct {
@@ -59,6 +60,7 @@ typedef struct {
   menuradiobutton_s showoffhand;
 	menulist_s drawhud;
 	menuradiobutton_s selectorwithhud;
+	menuradiobutton_s weaponadjust;
 
 	menubitmap_s back;
 } vr_t;
@@ -72,8 +74,13 @@ static void VR_SetMenuItems( void ) {
   s_vr.showoffhand.curvalue = trap_Cvar_VariableValue( "vr_showOffhand" ) != 0;
 	s_vr.drawhud.curvalue = trap_Cvar_VariableValue( "vr_hudDrawStatus" );
 	s_vr.selectorwithhud.curvalue = trap_Cvar_VariableValue( "vr_weaponSelectorWithHud" ) != 0;
+	s_vr.weaponadjust.curvalue = trap_Cvar_VariableValue( "vr_weaponAdjust" ) != 0;
 }
 
+
+static void VR_WeaponAdjustStatusBar( void *self ) {
+	UI_DrawString( SCREEN_WIDTH * 0.50, SCREEN_HEIGHT * 0.80, "Hold both grips for 1s to enter weapon adjustment mode", UI_SMALLFONT|UI_CENTER, colorWhite );
+}
 
 static void VR_MenuEvent( void* ptr, int notification ) {
 	if( notification != QM_ACTIVATED ) {
@@ -100,6 +107,10 @@ static void VR_MenuEvent( void* ptr, int notification ) {
 
 	  case ID_SELECTORWITHHUD:
 			trap_Cvar_SetValue( "vr_weaponSelectorWithHud", s_vr.selectorwithhud.curvalue);
+			break;
+
+		case ID_WEAPONADJUST:
+			trap_Cvar_SetValue( "vr_weaponAdjust", s_vr.weaponadjust.curvalue);
 			break;
 
 		case ID_BACK:
@@ -162,7 +173,7 @@ static void VR_MenuInit( void ) {
 	s_vr.framer.width  	   = 256;
 	s_vr.framer.height  	   = 334;
 
-	y = 198;
+	y = 176;
 	s_vr.virtualscreenmode.generic.type	     = MTYPE_SPINCONTROL;
 	s_vr.virtualscreenmode.generic.x			   = VR_X_POS;
 	s_vr.virtualscreenmode.generic.y			   = y;
@@ -212,6 +223,16 @@ static void VR_MenuInit( void ) {
 	s_vr.selectorwithhud.generic.x	         = VR_X_POS;
 	s_vr.selectorwithhud.generic.y	         = y;
 
+	y += BIGCHAR_HEIGHT+2;
+	s_vr.weaponadjust.generic.type        = MTYPE_RADIOBUTTON;
+	s_vr.weaponadjust.generic.name	       = "Weapon Adjustment:";
+	s_vr.weaponadjust.generic.flags	     = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_vr.weaponadjust.generic.callback    = VR_MenuEvent;
+	s_vr.weaponadjust.generic.id          = ID_WEAPONADJUST;
+	s_vr.weaponadjust.generic.x	         = VR_X_POS;
+	s_vr.weaponadjust.generic.y	         = y;
+	s_vr.weaponadjust.generic.statusbar   = VR_WeaponAdjustStatusBar;
+
 	s_vr.back.generic.type	    = MTYPE_BITMAP;
 	s_vr.back.generic.name      = ART_BACK0;
 	s_vr.back.generic.flags     = QMF_LEFT_JUSTIFY|QMF_PULSEIFFOCUS;
@@ -232,6 +253,7 @@ static void VR_MenuInit( void ) {
 	Menu_AddItem( &s_vr.menu, &s_vr.showoffhand );
 	Menu_AddItem( &s_vr.menu, &s_vr.drawhud );
 	Menu_AddItem( &s_vr.menu, &s_vr.selectorwithhud );
+	Menu_AddItem( &s_vr.menu, &s_vr.weaponadjust );
 
 	Menu_AddItem( &s_vr.menu, &s_vr.back );
 

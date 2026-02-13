@@ -41,6 +41,7 @@ cvar_t *vr_desktopMenuStyle = NULL;
 cvar_t *vr_desktopMode = NULL;
 cvar_t *vr_virtualScreenMode = NULL;
 cvar_t *vr_virtualScreenShape = NULL;
+cvar_t *vr_weaponAdjust = NULL;
 cvar_t *vr_thumbstickDeadzone = NULL;
 cvar_t *vr_thumbstickFullDeflection = NULL;
 
@@ -89,6 +90,7 @@ void VR_InitCvars( void )
 	vr_desktopMode = Cvar_Get ("vr_desktopMode", "1", CVAR_ARCHIVE | CVAR_LATCH); // 0 - off, 1 - on
 	vr_virtualScreenMode = Cvar_Get ("vr_virtualScreenMode", "0", CVAR_ARCHIVE); // 0 - fixed, 1 - follow
 	vr_virtualScreenShape = Cvar_Get ("vr_virtualScreenShape", "0", CVAR_ARCHIVE); // 0 - curved, 1 - flat
+	vr_weaponAdjust = Cvar_Get ("vr_weaponAdjust", "0", CVAR_ARCHIVE); // 0 - disabled, 1 - enabled
 	vr_thumbstickDeadzone = Cvar_Get ("vr_thumbstickDeadzone", "0.15", CVAR_ARCHIVE);
 	vr_thumbstickFullDeflection = Cvar_Get ("vr_thumbstickFullDeflection", "0.85", CVAR_ARCHIVE);
 

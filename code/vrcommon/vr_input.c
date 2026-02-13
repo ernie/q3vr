@@ -123,6 +123,7 @@ extern cvar_t *vr_weaponScope;
 extern cvar_t *vr_hapticIntensity;
 extern cvar_t *vr_thumbstickDeadzone;
 extern cvar_t *vr_thumbstickFullDeflection;
+extern cvar_t *vr_weaponAdjust;
 extern cvar_t *vr_weaponSelectorMode;
 
 qboolean alt_key_mode_active = qfalse;
@@ -1816,6 +1817,7 @@ void VR_ProcessInputActions( void )
 	IN_VRButtons(qtrue, rButtons);
 
 	// Dual-grip hold detection for weapon adjustment mode activation
+	if (vr_weaponAdjust->integer)
 	{
 		qboolean bothGripsHeld = (lButtons & VR_Button_GripTrigger) && (rButtons & VR_Button_GripTrigger);
 		if (bothGripsHeld)
