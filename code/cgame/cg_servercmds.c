@@ -1088,17 +1088,7 @@ static void CG_ServerCommand( void ) {
 		memset( cg_entities, 0, sizeof( cg_entities ) );
 		memset( &cg.predictedPlayerEntity, 0, sizeof( cg.predictedPlayerEntity ) );
 		cg.validPPS = qfalse;
-
-		// Clear transient UI state — scoreFadeTime from the old
-		// timeline would cause CG_FadeColor to never expire after
-		// a backward seek
-		cg.showScores = qfalse;
-		cg.scoreFadeTime = 0;
-		cg.scoreBoardShowing = qfalse;
-		CG_SetScoreCatcher( qfalse );
-
-		// VR-specific: reset view offsets after seek
-		CG_ResetViewOffsets();
+		CG_ResetSeekState();
 		return;
 	}
 
