@@ -43,6 +43,7 @@ NETWORK OPTIONS MENU
 #define ID_RATE				14
 #define ID_ALLOWDOWNLOAD	15
 #define ID_SENDROLL			16
+#define ID_TVDOWNLOAD	18
 #define ID_BACK				17
 
 
@@ -69,6 +70,7 @@ typedef struct {
 
 	menulist_s		rate;
 	menuradiobutton_s	allowdownload;
+	menuradiobutton_s	tvdownload;
 	menuradiobutton_s	sendroll;
 
 	menubitmap_s	back;
@@ -129,6 +131,10 @@ static void UI_NetworkOptionsMenu_Event( void* ptr, int event ) {
 	case ID_ALLOWDOWNLOAD:
 		trap_Cvar_SetValue( "cl_allowDownload", networkOptionsInfo.allowdownload.curvalue );
 		trap_Cvar_SetValue( "sv_allowDownload", networkOptionsInfo.allowdownload.curvalue );
+		break;
+
+	case ID_TVDOWNLOAD:
+		trap_Cvar_SetValue( "cl_tvDownload", networkOptionsInfo.tvdownload.curvalue );
 		break;
 
 	case ID_SENDROLL:
@@ -243,6 +249,15 @@ static void UI_NetworkOptionsMenu_Init( void ) {
 	networkOptionsInfo.allowdownload.generic.y	       = y;
 
 	y += BIGCHAR_HEIGHT+2;
+	networkOptionsInfo.tvdownload.generic.type      = MTYPE_RADIOBUTTON;
+	networkOptionsInfo.tvdownload.generic.name      = "Auto Download TVD:";
+	networkOptionsInfo.tvdownload.generic.flags     = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	networkOptionsInfo.tvdownload.generic.callback  = UI_NetworkOptionsMenu_Event;
+	networkOptionsInfo.tvdownload.generic.id        = ID_TVDOWNLOAD;
+	networkOptionsInfo.tvdownload.generic.x         = 400;
+	networkOptionsInfo.tvdownload.generic.y         = y;
+
+	y += BIGCHAR_HEIGHT+2;
 	networkOptionsInfo.sendroll.generic.type        = MTYPE_RADIOBUTTON;
 	networkOptionsInfo.sendroll.generic.name	      = "Send Roll Angle:";
 	networkOptionsInfo.sendroll.generic.flags	      = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
@@ -273,6 +288,7 @@ static void UI_NetworkOptionsMenu_Init( void ) {
 	Menu_AddItem( &networkOptionsInfo.menu, ( void * ) &networkOptionsInfo.network );
 	Menu_AddItem( &networkOptionsInfo.menu, ( void * ) &networkOptionsInfo.rate );
 	Menu_AddItem( &networkOptionsInfo.menu, ( void * ) &networkOptionsInfo.allowdownload );
+	Menu_AddItem( &networkOptionsInfo.menu, ( void * ) &networkOptionsInfo.tvdownload );
 	Menu_AddItem( &networkOptionsInfo.menu, ( void * ) &networkOptionsInfo.sendroll );
 	Menu_AddItem( &networkOptionsInfo.menu, ( void * ) &networkOptionsInfo.back );
 
@@ -293,6 +309,7 @@ static void UI_NetworkOptionsMenu_Init( void ) {
 		networkOptionsInfo.rate.curvalue = 4;
 	}
 	networkOptionsInfo.allowdownload.curvalue	= trap_Cvar_VariableValue( "cl_allowDownload" ) != 0;
+	networkOptionsInfo.tvdownload.curvalue		= trap_Cvar_VariableValue( "cl_tvDownload" ) != 0;
 	networkOptionsInfo.sendroll.curvalue		= trap_Cvar_VariableValue( "vr_sendRollToServer" ) != 0;
 }
 

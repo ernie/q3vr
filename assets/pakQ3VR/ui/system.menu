@@ -556,30 +556,45 @@ itemDef {
       		name other
 		group grpSystem
       		type ITEM_TYPE_YESNO
-		text "Auto-Download:"
-		cvar "cl_allowDownload"
+		text "Send Roll Angle:"
+		cvar "vr_sendRollToServer"
 		rect 99 286 256 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 128
       		textaligny 20
 		textscale .333
       		forecolor 1 1 1 1
-      		visible 1 
+      		visible 1
     		}
 
 	itemDef {
       		name other
 		group grpSystem
       		type ITEM_TYPE_YESNO
-		text "Send Roll Angle:"
-		cvar "vr_sendRollToServer"
+		text "Auto-Download:"
+		cvar "cl_allowDownload"
 		rect 99 313 256 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 128
       		textaligny 20
 		textscale .333
       		forecolor 1 1 1 1
-      		visible 1 
+      		visible 1
+    		}
+
+	itemDef {
+      		name other
+		group grpSystem
+      		type ITEM_TYPE_YESNO
+		text "Auto Download TVD:"
+		cvar "cl_tvDownload"
+		rect 99 340 256 20
+      		textalign ITEM_ALIGN_RIGHT
+      		textalignx 128
+      		textaligny 20
+		textscale .333
+      		forecolor 1 1 1 1
+      		visible 1
     		}
 
 itemDef {
