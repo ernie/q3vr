@@ -2447,7 +2447,7 @@ static qboolean CG_DrawScoreboard( void ) {
 		return qfalse;
 	}
 
-	if ( cg.showScores || cg.predictedPlayerState.pm_type == PM_DEAD || cg.predictedPlayerState.pm_type == PM_INTERMISSION ) {
+	if ( cg.showScores || (cg.predictedPlayerState.pm_type == PM_DEAD && !CG_IsThirdPersonFollowMode(VRFM_THIRDPERSON_2)) || cg.predictedPlayerState.pm_type == PM_INTERMISSION ) {
 	} else {
 		if ( !CG_FadeColor( cg.scoreFadeTime, FADE_TIME ) ) {
 			// next time scoreboard comes up, don't print killer

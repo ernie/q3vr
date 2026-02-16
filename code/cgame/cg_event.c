@@ -948,10 +948,8 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 			vr->realign = 3; // Initiate position reset for fake 6DoF
 			trap_HapticEvent("spark", 0, 0, 80, 0, 0);
 		}
-		// Recenter camera on followed player when they teleport/respawn in THIRDPERSON_2 mode
-		if (CG_IsThirdPersonFollowMode(VRFM_THIRDPERSON_2) && clientNum == cg.snap->ps.clientNum) {
-			vr->recenter_follow_camera = qtrue;
-		}
+		// Note: previously recentered camera on followed player teleport/respawn in THIRDPERSON_2,
+		// but this disrupts free-fly camera positioning. Manual recenter (B button) still works.
 		break;
 
 	case EV_PLAYER_TELEPORT_OUT:
