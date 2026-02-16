@@ -455,32 +455,54 @@ static void CG_Camera_f( void ) {
 */
 
 
-static void CG_TVNext_f( void ) {
-	if ( !cgs.tvPlayback ) {
-		return;
+static void CG_FollowNext_f( void ) {
+	if ( cgs.tvPlayback ) {
+		trap_SendConsoleCommand( "tv_view_next\n" );
+	} else {
+		trap_SendClientCommand( "follownext" );
 	}
-	trap_SendConsoleCommand( "tv_view_next\n" );
 }
 
-static void CG_TVPrev_f( void ) {
-	if ( !cgs.tvPlayback ) {
-		return;
+static void CG_FollowPrev_f( void ) {
+	if ( cgs.tvPlayback ) {
+		trap_SendConsoleCommand( "tv_view_prev\n" );
+	} else {
+		trap_SendClientCommand( "followprev" );
 	}
-	trap_SendConsoleCommand( "tv_view_prev\n" );
 }
 
-static void CG_TVPlayer_f( void ) {
+static void CG_Follow_f( void ) {
 	char arg[MAX_TOKEN_CHARS];
 
-	if ( !cgs.tvPlayback ) {
-		return;
-	}
 	if ( trap_Argc() < 2 ) {
-		CG_Printf( "usage: tv_player <clientnum>\n" );
+		trap_SendClientCommand( "follow" );
 		return;
 	}
 	trap_Argv( 1, arg, sizeof( arg ) );
-	trap_SendConsoleCommand( va( "tv_view %s\n", arg ) );
+	if ( cgs.tvPlayback ) {
+		trap_SendConsoleCommand( va( "tv_view %s\n", arg ) );
+	} else {
+		trap_SendClientCommand( va( "follow %s", arg ) );
+	}
+}
+
+static void CG_DemoPause_f( void ) {
+	if ( !cg.demoPlayback && !cgs.tvPlayback ) {
+		return;
+	}
+	if ( cg_timescale.value != 0.0f ) {
+		trap_Cvar_Set( "timescale", "0" );
+		trap_Cvar_Set( "cg_timescaleFadeEnd", "0" );
+	} else {
+		trap_Cvar_Set( "timescale", "1" );
+		trap_Cvar_Set( "cg_timescaleFadeEnd", "1" );
+	}
+}
+
+static void CG_FollowRecenter_f( void ) {
+	if ( !cg.snap ) return;
+	if ( !cg.demoPlayback && !(cg.snap->ps.pm_flags & PMF_FOLLOW) ) return;
+	vr->recenter_follow_camera = qtrue;
 }
 
 static void CG_TVForward_f( void ) {
@@ -688,9 +710,11 @@ static consoleCommand_t	commands[] = {
 	{ "startOrbit", CG_StartOrbit_f },
 	//{ "camera", CG_Camera_f },
 	{ "loaddeferred", CG_LoadDeferredPlayers },
-	{ "tv_next", CG_TVNext_f },
-	{ "tv_prev", CG_TVPrev_f },
-	{ "tv_player", CG_TVPlayer_f },
+	{ "followrecenter", CG_FollowRecenter_f },
+	{ "follownext", CG_FollowNext_f },
+	{ "followprev", CG_FollowPrev_f },
+	{ "follow", CG_Follow_f },
+	{ "demopause", CG_DemoPause_f },
 	{ "tv_forward", CG_TVForward_f },
 	{ "tv_backward", CG_TVBackward_f },
 	{ "+tv_scrub", CG_TVScrubDown_f },
@@ -762,9 +786,6 @@ void CG_InitConsoleCommands( void ) {
 	trap_AddCommand ("noclip");
 	trap_AddCommand ("where");
 	trap_AddCommand ("team");
-	trap_AddCommand ("follow");
-	trap_AddCommand ("follownext");
-	trap_AddCommand ("followprev");
 	trap_AddCommand ("levelshot");
 	trap_AddCommand ("addbot");
 	trap_AddCommand ("setviewpos");

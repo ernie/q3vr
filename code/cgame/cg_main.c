@@ -2162,8 +2162,12 @@ Called before every level change or subsystem restart
 =================
 */
 void CG_Shutdown( void ) {
-	// some mods may need to do cleanup work here,
-	// like closing files or archiving session data
+	// Clear VR pointers that reference cgame memory (cgs.cursorX/Y)
+	// to prevent dangling pointer access if cgame is reloaded
+	if (vr) {
+		vr->scoreboardCursorX = NULL;
+		vr->scoreboardCursorY = NULL;
+	}
 }
 
 

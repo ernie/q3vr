@@ -104,7 +104,7 @@ typedef struct {
 
 	float recenterYaw;
 
-	// SP intermission overlay anchoring (world-fixed UI during podium view)
+	// SP intermission HUD anchoring (world-fixed UI during podium view)
 	qboolean sp_intermission_active;
 	float sp_intermission_yaw;  // The yaw angle the overlay is anchored to (degrees)
 

@@ -559,6 +559,7 @@ typedef struct {
 	float		smoothFollow_pitch;             // vertical angle (elevation)
 	float		smoothFollow_hmdYawOffset;      // HMD yaw captured at recenter
 	qboolean	smoothFollow_initialized;       // set once camera state has been seeded
+	int			followLastClientNum;            // detect followed-player changes
 
 	// VR first-person head view smoothing
 	float		vrViewPitch;

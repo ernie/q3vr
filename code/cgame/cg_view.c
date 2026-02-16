@@ -237,6 +237,7 @@ static void CG_InitSmoothFollow( void ) {
 	cg.smoothFollow_pitch = 0.0f;
 	cg.smoothFollow_hmdYawOffset = vr->hmdorientation[YAW];
 	cg.smoothFollow_initialized = qtrue;
+	cg.followLastClientNum = cg.snap->ps.clientNum;
 }
 
 /*
@@ -249,22 +250,15 @@ static void CG_OffsetVRThirdPersonView( void ) {
 	float scale = 1.0f;
 	cg.refdef.vieworg[2] += cg.predictedPlayerState.viewheight;
 
-	// Track followed player changes for automatic camera recentering in follow mode
-	static int lastFollowedClient = -1;
-
 	// Detect when we switch to a different followed player (any follow mode, not death cam)
 	if (CG_IsThirdPersonFollowMode(VRFM_QUERY))
 	{
 		int currentClient = cg.snap->ps.clientNum;
-		if (lastFollowedClient != -1 && lastFollowedClient != currentClient)
+		if (cg.followLastClientNum != currentClient)
 		{
 			vr->recenter_follow_camera = qtrue;
 		}
-		lastFollowedClient = currentClient;
-	}
-	else
-	{
-		lastFollowedClient = -1;  // Reset when not in follow mode
+		cg.followLastClientNum = currentClient;
 	}
 
 	//Follow mode 1
@@ -296,7 +290,21 @@ static void CG_OffsetVRThirdPersonView( void ) {
 			float distanceInput = vr->virtual_screen ? 0.0f : vr->thumbstick_location[secondaryThumb][1];
 
 			// Framerate-independent input scaling
-			float dt = cg.frametime / 1000.0f;
+			// Use real time when paused so camera still works at timescale 0
+			int ft;
+			{
+				static int lastRealTime;
+				int realTime = trap_Milliseconds();
+
+				if ( cg.frametime > 0 ) {
+					ft = cg.frametime;
+				} else {
+					ft = realTime - lastRealTime;
+					if ( ft < 0 || ft > 100 ) ft = 16;
+				}
+				lastRealTime = realTime;
+			}
+			float dt = ft / 1000.0f;
 
 			// Yaw: rotate around player (left/right on primary stick)
 			cg.smoothFollow_yaw += yawInput * 180.0f * dt;
@@ -1598,7 +1606,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 		cmdNum = trap_GetCurrentCmdNumber();
 		if ( trap_GetUserCmd( cmdNum, &cmd ) ) {
 			if ( ( cmd.buttons & BUTTON_ATTACK ) && !( tvLastButtons & BUTTON_ATTACK ) ) {
-				trap_SendConsoleCommand( "tv_view_next\n" );
+				trap_SendConsoleCommand( "follownext\n" );
 			}
 			tvLastButtons = cmd.buttons;
 		}

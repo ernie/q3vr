@@ -632,9 +632,14 @@ Set gain to 0 if muted, otherwise set it to given value.
 =================
 */
 
+static qboolean S_AL_DemoPaused(void)
+{
+	return (qboolean)(clc.demoplaying && com_timescale->value == 0.0f);
+}
+
 static void S_AL_Gain(ALuint source, float gainval)
 {
-	if(s_muted->integer)
+	if(s_muted->integer || S_AL_DemoPaused())
 		qalSourcef(source, AL_GAIN, 0.0f);
 	else
 		qalSourcef(source, AL_GAIN, gainval);
@@ -2274,16 +2279,23 @@ void S_AL_Update( void )
 {
 	int i;
 
-	if(s_muted->modified)
 	{
-		// muted state changed. Let S_AL_Gain turn up all sources again.
-		for(i = 0; i < srcCount; i++)
+		static qboolean wasPaused = qfalse;
+		qboolean isPaused = S_AL_DemoPaused();
+		qboolean reapplyGain = s_muted->modified || (isPaused != wasPaused);
+		wasPaused = isPaused;
+
+		if(reapplyGain)
 		{
-			if(srcList[i].isActive)
-				S_AL_Gain(srcList[i].alSource, srcList[i].scaleGain);
+			// mute/pause state changed. Let S_AL_Gain adjust all sources.
+			for(i = 0; i < srcCount; i++)
+			{
+				if(srcList[i].isActive)
+					S_AL_Gain(srcList[i].alSource, srcList[i].scaleGain);
+			}
+
+			s_muted->modified = qfalse;
 		}
-		
-		s_muted->modified = qfalse;
 	}
 
 	// Update SFX channels

@@ -1691,6 +1691,21 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
 void CG_MouseEvent(int x, int y) {
 	int n;
 
+	// timeline scrub owns the cursor — just update position
+	if ( cgs.tvScrubActive ) {
+		cgs.cursorX += x;
+		if ( cgs.cursorX < 0 )
+			cgs.cursorX = 0;
+		else if ( cgs.cursorX > 640 )
+			cgs.cursorX = 640;
+		cgs.cursorY += y;
+		if ( cgs.cursorY < 0 )
+			cgs.cursorY = 0;
+		else if ( cgs.cursorY > 480 )
+			cgs.cursorY = 480;
+		return;
+	}
+
 	if ( (cg.predictedPlayerState.pm_type == PM_NORMAL || cg.predictedPlayerState.pm_type == PM_SPECTATOR) && cg.showScores == qfalse) {
     trap_Key_SetCatcher(0);
 		return;
@@ -1777,6 +1792,11 @@ void CG_EventHandling(int type) {
 void CG_KeyEvent(int key, qboolean down) {
 	qboolean isFollowing;
 
+	// consume all keys while timeline scrubbing is active
+	if ( cgs.tvScrubActive ) {
+		return;
+	}
+
 	if (!down) {
 		return;
 	}
@@ -1784,7 +1804,7 @@ void CG_KeyEvent(int key, qboolean down) {
 	isFollowing = cg.snap && ( cg.snap->ps.pm_flags & PMF_FOLLOW );
 
 	// Allow key events through when scoreboard is shown (for click-to-follow)
-	if ( cg.showScores && (cg.predictedPlayerState.pm_type == PM_SPECTATOR || isFollowing) ) {
+	if ( cg.showScores && (cg.predictedPlayerState.pm_type == PM_SPECTATOR || isFollowing || cg.demoPlayback || cgs.tvPlayback) ) {
 		// Only process mouse clicks for scoreboard click-to-follow.
 		// Other keys like K_PGUP/K_PGDN would call feederSelection which sends follow commands.
 		if ( key != K_MOUSE1 && key != K_MOUSE2 ) {

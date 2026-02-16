@@ -953,7 +953,7 @@ static void IN_VRController( qboolean isRightController, XrPosef pose )
 				pitch = (vr_righthanded->integer != 0) ? vr.weaponangles[PITCH] : vr.offhandangles[PITCH];
 			}
 			// During SP intermission, use the anchored yaw for cursor calculation
-			// since the overlay is world-fixed rather than head-locked
+			// since the HUD is world-fixed rather than head-locked
 			float referenceYaw = vr.sp_intermission_active ? vr.sp_intermission_yaw : vr.menuYaw;
 			int x = 320 - tan((yaw - referenceYaw) * (M_PI*2 / 360)) * 800;
 			int y = 240 + tan((pitch + vr_weaponPitch->value) * (M_PI*2 / 360)) * 800;
@@ -1639,6 +1639,11 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 	{
 		if (buttons & VR_Button_RThumb)
 		{
+			if ((clc.demoplaying || tvPlay.active) && !IN_InputActivated(&controller->buttons, VR_Button_RThumb))
+			{
+				IN_ActivateInput(&controller->buttons, VR_Button_RThumb);
+				Cbuf_AddText("demopause\n");
+			}
 			IN_HandleActiveInput(&controller->buttons, VR_Button_RThumb, "PRIMARYTHUMBSTICK", 0, qfalse);
 		}
 		else
@@ -1664,7 +1669,7 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 			if (!IN_InputActivated(&controller->buttons, VR_Button_A))
 			{
 				IN_ActivateInput(&controller->buttons, VR_Button_A);
-				Cbuf_AddText("tv_view_next\n");
+				Cbuf_AddText("follownext\n");
 			}
 		}
 		else if (VR_Gameplay_ShouldRenderInVirtualScreen() || cl.snap.ps.pm_type == PM_INTERMISSION)
