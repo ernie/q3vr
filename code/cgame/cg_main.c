@@ -246,6 +246,10 @@ vmCvar_t cg_downloadName;
 vmCvar_t cg_downloadSize;
 vmCvar_t cg_downloadCount;
 vmCvar_t cg_downloadTime;
+vmCvar_t cg_tvdTimeout;
+vmCvar_t cg_tvdOffer;
+vmCvar_t cg_voteYesKey;
+vmCvar_t cg_voteNoKey;
 
 typedef struct {
 	vmCvar_t	*vmCvar;
@@ -399,7 +403,11 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_downloadName, "cl_downloadName", "", CVAR_ROM },
 	{ &cg_downloadSize, "cl_downloadSize", "0", CVAR_ROM },
 	{ &cg_downloadCount, "cl_downloadCount", "0", CVAR_ROM },
-	{ &cg_downloadTime, "cl_downloadTime", "0", CVAR_ROM }
+	{ &cg_downloadTime, "cl_downloadTime", "0", CVAR_ROM },
+	{ &cg_tvdTimeout, "cg_tvdTimeout", "10", CVAR_ARCHIVE },
+	{ &cg_tvdOffer, "cl_tvdOffer", "", CVAR_ROM },
+	{ &cg_voteYesKey, "cl_voteYesKey", "", CVAR_ROM },
+	{ &cg_voteNoKey, "cl_voteNoKey", "", CVAR_ROM }
 //	{ &cg_pmove_fixed, "cg_pmove_fixed", "0", CVAR_USERINFO | CVAR_ARCHIVE }
 };
 

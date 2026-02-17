@@ -19,6 +19,10 @@ extern vr_clientinfo_t vr;
 #define KEYBOARD_PADDING		12
 #define KEYBOARD_START_Y		308
 #define KEYBOARD_TEXT_SIZE		10	// 120% of SMALLCHAR_WIDTH (8)
+#define ICON_ARROW_SIZE			18	// arrow head triangles on composite icons
+#define ICON_LINE_SIZE			14	// horizontal line, vertical bar on composite icons
+#define ICON_GLYPH_OVERLAP		4	// overlap between adjacent glyphs to close gaps
+#define SHIFT_CHAR_SPACING		8	// tighter kerning for SHIFT/CAPS labels
 
 // Special key codes (internal to keyboard)
 #define VKEY_NONE		0
@@ -36,22 +40,15 @@ extern vr_clientinfo_t vr;
 // Time window for double-tap shift to enable caps lock (milliseconds)
 #define CAPSLOCK_DOUBLE_TAP_TIME	400
 
+// Key repeat timing (milliseconds)
+#define KEY_REPEAT_DELAY	500		// initial delay before repeat starts
+#define KEY_REPEAT_RATE		80		// interval between repeats (~12.5/sec)
+
 // Keyboard modes
 #define MODE_LOWERCASE	0
 #define MODE_UPPERCASE	1
 #define MODE_SYMBOLS1	2
 #define MODE_SYMBOLS2	3
-
-// Keyboard state
-typedef struct {
-	qboolean	active;
-	int			mode;
-	qboolean	capsLock;
-	int			lastShiftTime;
-	sfxHandle_t	clickSound;
-} vKeyboardState_t;
-
-static vKeyboardState_t vkb;
 
 // Key definition
 typedef struct {
@@ -64,6 +61,24 @@ typedef struct {
 	const char	*label;
 	const char	*symbolLabel;
 } vKeyDef_t;
+
+// Keyboard state
+typedef struct {
+	qboolean	active;
+	int			mode;
+	qboolean	capsLock;
+	int			lastShiftTime;
+	sfxHandle_t	clickSound;
+	// Key repeat state
+	vKeyDef_t	*repeatKey;			// key currently being held (NULL if none)
+	int			repeatChar;			// resolved character at initial press (0 for special keys)
+	int			repeatSpecial;		// VKEY_* code at initial press (0 for regular chars)
+	int			repeatPressTime;	// cls.realtime when key was first pressed
+	int			repeatLastTime;		// cls.realtime when last repeat fired
+	qboolean	repeatStarted;		// past initial delay?
+} vKeyboardState_t;
+
+static vKeyboardState_t vkb;
 
 // Row 0: Q W E R T Y U I O P (letters) / 1-0 (sym1) / [ ] { } # % ^ * + = (sym2)
 static vKeyDef_t vkbRow0[] = {
@@ -82,7 +97,7 @@ static vKeyDef_t vkbRow0[] = {
 
 // Row 1: [Tab/CON] A S D F G H J K L
 static vKeyDef_t vkbRow1[] = {
-	{0, 0, 0, 0, VKEY_TAB, 1.5f, "Tab", "Tab"},
+	{0, 0, 0, 0, VKEY_TAB, 1.5f, "TAB", "TAB"},
 	{'a', 'A', '-', '_', 0, 1.0f, NULL, NULL},
 	{'s', 'S', '/', '\\', 0, 1.0f, NULL, NULL},
 	{'d', 'D', ':', '|', 0, 1.0f, NULL, NULL},
@@ -133,6 +148,22 @@ static vKeyDef_t *vkbRows[KEYBOARD_ROWS] = { vkbRow0, vkbRow1, vkbRow2, vkbRow3 
 #define ICON_SHIFT		6
 #define ICON_CAPSLOCK	7
 #define ICON_ENTER		8
+#define ICON_TAB		9
+
+// Forward declarations for functions called before their definition
+static void VKeyboard_FireAction( int ch, int special );
+
+/*
+=================
+VKeyboard_DrawGlyph
+
+Draw a single bigchars glyph at a specific position and size.
+=================
+*/
+static void VKeyboard_DrawGlyph( int ch, int x, int y, int size, vec4_t color ) {
+	char str[2] = { (char)ch, '\0' };
+	SCR_DrawStringExtNoShadow( x, y, size, str, color, qtrue, qtrue );
+}
 
 /*
 =================
@@ -142,97 +173,81 @@ VKeyboard_DrawIcon
 static void VKeyboard_DrawIcon( int icon, int x, int y, int w, int h, vec4_t color ) {
 	int cx = x + w/2;
 	int cy = y + h/2;
-	static vec4_t xColor = {0.1f, 0.1f, 0.12f, 1.0f};
 
 	switch (icon) {
-		case ICON_BACKSPACE:
+		case ICON_LEFT:
+		case ICON_RIGHT:
+		case ICON_UP:
+		case ICON_DOWN:
 			{
-				int boxW = 18;
-				int boxH = 12;
-				int bx = cx - boxW/2 + 2;
-				int by = cy - boxH/2;
-				SCR_FillRect(bx + 6, by, boxW - 6, boxH, color);
-				SCR_FillRect(bx + 4, by + 1, 3, boxH - 2, color);
-				SCR_FillRect(bx + 2, by + 2, 3, boxH - 4, color);
-				SCR_FillRect(bx, by + 3, 3, boxH - 6, color);
-				{
-					int xCx = bx + 6 + (boxW - 6)/2;
-					int xCy = cy;
-					SCR_FillRect(xCx - 3, xCy - 3, 2, 2, xColor);
-					SCR_FillRect(xCx - 1, xCy - 1, 2, 2, xColor);
-					SCR_FillRect(xCx + 1, xCy + 1, 2, 2, xColor);
-					SCR_FillRect(xCx + 1, xCy - 3, 2, 2, xColor);
-					SCR_FillRect(xCx - 3, xCy + 1, 2, 2, xColor);
-				}
+				static const unsigned char glyphs[] = {
+					[ICON_LEFT]  = 136,
+					[ICON_RIGHT] = 141,
+					[ICON_UP]    = 135,
+					[ICON_DOWN]  = 134,
+				};
+				VKeyboard_DrawGlyph( glyphs[icon],
+					cx - KEYBOARD_TEXT_SIZE / 2,
+					cy - KEYBOARD_TEXT_SIZE / 2,
+					KEYBOARD_TEXT_SIZE, color );
 			}
 			break;
 
-		case ICON_LEFT:
-			SCR_FillRect(cx + 3, cy - 5, 2, 2, color);
-			SCR_FillRect(cx + 1, cy - 3, 2, 2, color);
-			SCR_FillRect(cx - 1, cy - 1, 2, 3, color);
-			SCR_FillRect(cx + 1, cy + 2, 2, 2, color);
-			SCR_FillRect(cx + 3, cy + 4, 2, 2, color);
-			break;
-
-		case ICON_RIGHT:
-			SCR_FillRect(cx - 4, cy - 5, 2, 2, color);
-			SCR_FillRect(cx - 2, cy - 3, 2, 2, color);
-			SCR_FillRect(cx, cy - 1, 2, 3, color);
-			SCR_FillRect(cx - 2, cy + 2, 2, 2, color);
-			SCR_FillRect(cx - 4, cy + 4, 2, 2, color);
-			break;
-
-		case ICON_UP:
-			SCR_FillRect(cx - 5, cy + 3, 2, 2, color);
-			SCR_FillRect(cx - 3, cy + 1, 2, 2, color);
-			SCR_FillRect(cx - 1, cy - 1, 3, 2, color);
-			SCR_FillRect(cx + 2, cy + 1, 2, 2, color);
-			SCR_FillRect(cx + 4, cy + 3, 2, 2, color);
-			break;
-
-		case ICON_DOWN:
-			SCR_FillRect(cx - 5, cy - 4, 2, 2, color);
-			SCR_FillRect(cx - 3, cy - 2, 2, 2, color);
-			SCR_FillRect(cx - 1, cy, 3, 2, color);
-			SCR_FillRect(cx + 2, cy - 2, 2, 2, color);
-			SCR_FillRect(cx + 4, cy - 4, 2, 2, color);
-			break;
-
-		case ICON_SHIFT:
-			SCR_FillRect(cx - 1, cy - 8, 3, 2, color);
-			SCR_FillRect(cx - 3, cy - 6, 2, 2, color);
-			SCR_FillRect(cx + 2, cy - 6, 2, 2, color);
-			SCR_FillRect(cx - 5, cy - 4, 2, 2, color);
-			SCR_FillRect(cx + 4, cy - 4, 2, 2, color);
-			SCR_FillRect(cx - 7, cy - 2, 2, 2, color);
-			SCR_FillRect(cx + 6, cy - 2, 2, 2, color);
-			SCR_FillRect(cx - 7, cy, 4, 2, color);
-			SCR_FillRect(cx + 4, cy, 4, 2, color);
-			SCR_FillRect(cx - 3, cy, 2, 8, color);
-			SCR_FillRect(cx + 2, cy, 2, 8, color);
-			SCR_FillRect(cx - 3, cy + 6, 7, 2, color);
-			break;
-
-		case ICON_CAPSLOCK:
-			SCR_FillRect(cx - 1, cy - 8, 3, 2, color);
-			SCR_FillRect(cx - 3, cy - 6, 7, 2, color);
-			SCR_FillRect(cx - 5, cy - 4, 11, 2, color);
-			SCR_FillRect(cx - 7, cy - 2, 15, 2, color);
-			SCR_FillRect(cx - 3, cy, 7, 6, color);
-			SCR_FillRect(cx - 5, cy + 8, 11, 2, color);
+		case ICON_BACKSPACE:
+			{
+				// Left-pointing arrow: triangle + horizontal line (nudge left)
+				int totalW = ICON_ARROW_SIZE + ICON_LINE_SIZE - ICON_GLYPH_OVERLAP;
+				int startX = cx - totalW / 2 - 2;
+				VKeyboard_DrawGlyph( 136, startX,
+					cy - ICON_ARROW_SIZE / 2, ICON_ARROW_SIZE, color );
+				VKeyboard_DrawGlyph( 30, startX + ICON_ARROW_SIZE - ICON_GLYPH_OVERLAP,
+					cy - ICON_LINE_SIZE / 2, ICON_LINE_SIZE, color );
+			}
 			break;
 
 		case ICON_ENTER:
-			// Draw return/enter symbol (bent arrow)
-			// Vertical stem going up from arrow
-			SCR_FillRect(cx + 6, cy - 6, 2, 8, color);
-			// Horizontal bar going left
-			SCR_FillRect(cx - 6, cy, 14, 2, color);
-			// Arrow head pointing left
-			SCR_FillRect(cx - 4, cy - 2, 2, 2, color);
-			SCR_FillRect(cx - 6, cy, 2, 2, color);
-			SCR_FillRect(cx - 4, cy + 2, 2, 2, color);
+			{
+				// Right-pointing arrow: horizontal line + triangle (nudge right)
+				int totalW = ICON_LINE_SIZE + ICON_ARROW_SIZE - ICON_GLYPH_OVERLAP;
+				int startX = cx - totalW / 2 + 2;
+				VKeyboard_DrawGlyph( 30, startX,
+					cy - ICON_LINE_SIZE / 2, ICON_LINE_SIZE, color );
+				VKeyboard_DrawGlyph( 141, startX + ICON_LINE_SIZE - ICON_GLYPH_OVERLAP,
+					cy - ICON_ARROW_SIZE / 2, ICON_ARROW_SIZE, color );
+			}
+			break;
+
+		case ICON_TAB:
+			{
+				// Right-pointing arrow + tab stop: line + triangle + vertical bar
+				// Glyph 21 is left-hugging so most of its cell is empty on the right;
+				// reduce its contribution to totalW to get a better visual center
+				int barVisual = ICON_LINE_SIZE / 3;
+				int totalW = ICON_LINE_SIZE + ICON_ARROW_SIZE + barVisual - ICON_GLYPH_OVERLAP * 2;
+				int startX = cx - totalW / 2;
+				VKeyboard_DrawGlyph( 30, startX,
+					cy - ICON_LINE_SIZE / 2, ICON_LINE_SIZE, color );
+				VKeyboard_DrawGlyph( 141, startX + ICON_LINE_SIZE - ICON_GLYPH_OVERLAP,
+					cy - ICON_ARROW_SIZE / 2, ICON_ARROW_SIZE, color );
+				VKeyboard_DrawGlyph( 21, startX + ICON_LINE_SIZE + ICON_ARROW_SIZE - ICON_GLYPH_OVERLAP * 2,
+					cy - ICON_LINE_SIZE / 2, ICON_LINE_SIZE, color );
+			}
+			break;
+
+		case ICON_SHIFT:
+		case ICON_CAPSLOCK:
+			{
+				const char *label = (icon == ICON_SHIFT) ? "SHIFT" : "CAPS";
+				int i, len = (int)strlen(label);
+				int totalW = len * SHIFT_CHAR_SPACING;
+				int startX = cx - totalW / 2;
+				for (i = 0; i < len; i++) {
+					VKeyboard_DrawGlyph( label[i],
+						startX + i * SHIFT_CHAR_SPACING,
+						cy - KEYBOARD_TEXT_SIZE / 2,
+						KEYBOARD_TEXT_SIZE, color );
+				}
+			}
 			break;
 	}
 }
@@ -268,6 +283,8 @@ static int VKeyboard_GetKeyIcon( vKeyDef_t *key ) {
 			return ICON_NONE;
 		case VKEY_ENTER:
 			return ICON_ENTER;
+		case VKEY_TAB:
+			return ICON_TAB;
 		default:
 			return ICON_NONE;
 	}
@@ -311,6 +328,7 @@ void VKeyboard_Show( void ) {
 	vkb.mode = MODE_LOWERCASE;
 	vkb.capsLock = qfalse;
 	vkb.lastShiftTime = 0;
+	vkb.repeatKey = NULL;
 	// Register click sound if not already registered
 	if ( !vkb.clickSound ) {
 		vkb.clickSound = S_RegisterSound( "sound/misc/click.wav", qfalse );
@@ -324,6 +342,7 @@ VKeyboard_Hide
 */
 void VKeyboard_Hide( void ) {
 	vkb.active = qfalse;
+	vkb.repeatKey = NULL;
 }
 
 /*
@@ -409,8 +428,11 @@ void VKeyboard_Draw( void ) {
 	vec4_t bgColor = {0.1f, 0.1f, 0.12f, 0.95f};
 	vec4_t keyColor = {0.25f, 0.25f, 0.28f, 1.0f};
 	vec4_t keyHoverColor = {0.4f, 0.4f, 0.45f, 1.0f};
+	vec4_t keyPressedColor = {0.35f, 0.35f, 0.4f, 1.0f};
 	vec4_t keyActiveColor = {0.3f, 0.5f, 0.8f, 1.0f};
 	vec4_t keySpecialColor = {0.2f, 0.2f, 0.22f, 1.0f};
+	vec4_t keyEnterColor = {0.2f, 0.35f, 0.6f, 1.0f};
+	vec4_t keyEnterHoverColor = {0.3f, 0.45f, 0.7f, 1.0f};
 	vec4_t textColor = {1.0f, 1.0f, 1.0f, 1.0f};
 	vec4_t textDimColor = {0.7f, 0.7f, 0.7f, 1.0f};
 	char str[2];
@@ -432,6 +454,29 @@ void VKeyboard_Draw( void ) {
 	}
 
 	hoverKey = VKeyboard_GetKeyAt(cursorX, cursorY);
+
+	// Key repeat logic
+	if (vkb.repeatKey) {
+		if (!keys[K_MOUSE1].down || hoverKey != vkb.repeatKey) {
+			vkb.repeatKey = NULL;
+		} else {
+			int elapsed = cls.realtime - vkb.repeatPressTime;
+			if (!vkb.repeatStarted) {
+				if (elapsed >= KEY_REPEAT_DELAY) {
+					vkb.repeatStarted = qtrue;
+					vkb.repeatLastTime = cls.realtime;
+					VKeyboard_FireAction(vkb.repeatChar, vkb.repeatSpecial);
+				}
+			} else if (cls.realtime - vkb.repeatLastTime >= KEY_REPEAT_RATE) {
+				// Clamp to prevent burst after long frame
+				if (cls.realtime - vkb.repeatLastTime > KEY_REPEAT_RATE * 3) {
+					vkb.repeatLastTime = cls.realtime - KEY_REPEAT_RATE;
+				}
+				vkb.repeatLastTime += KEY_REPEAT_RATE;
+				VKeyboard_FireAction(vkb.repeatChar, vkb.repeatSpecial);
+			}
+		}
+	}
 
 	// Draw background
 	SCR_FillRect(bgX, bgY, bgW, bgH, bgColor);
@@ -463,6 +508,10 @@ void VKeyboard_Draw( void ) {
 
 			if (isActive) {
 				color = &keyActiveColor;
+			} else if (key->special == VKEY_ENTER) {
+				color = isHovered ? &keyEnterHoverColor : &keyEnterColor;
+			} else if (isHovered && keys[K_MOUSE1].down) {
+				color = &keyPressedColor;
 			} else if (isHovered) {
 				color = &keyHoverColor;
 			} else if (isSpecial) {
@@ -571,6 +620,84 @@ static void VKeyboard_PlayClickSound( void ) {
 
 /*
 =================
+VKeyboard_IsRepeatable
+
+Returns qtrue if a key should support hold-to-repeat.
+=================
+*/
+static qboolean VKeyboard_IsRepeatable( vKeyDef_t *key ) {
+	if (!key->special) {
+		return qtrue;	// all regular characters
+	}
+	switch (key->special) {
+		case VKEY_BACKSPACE:
+		case VKEY_SPACE:
+		case VKEY_LEFT:
+		case VKEY_RIGHT:
+		case VKEY_UP:
+		case VKEY_DOWN:
+		case VKEY_TAB:
+		case VKEY_ENTER:
+			return qtrue;
+		default:
+			return qfalse;	// shift, symbols
+	}
+}
+
+/*
+=================
+VKeyboard_FireAction
+
+Fires a key action (with click sound) without mode side effects.
+Called by both initial press and repeat.
+=================
+*/
+static void VKeyboard_FireAction( int ch, int special ) {
+	if ( vkb.clickSound ) {
+		S_StartLocalSound( vkb.clickSound, CHAN_LOCAL_SOUND );
+	}
+
+	if (ch) {
+		VKeyboard_SendChar(ch);
+		return;
+	}
+
+	switch (special) {
+		case VKEY_BACKSPACE:
+			VKeyboard_SendChar('h' - 'a' + 1);
+			break;
+		case VKEY_SPACE:
+			VKeyboard_SendChar(' ');
+			break;
+		case VKEY_LEFT:
+			VKeyboard_SendKey(K_LEFTARROW, qtrue);
+			VKeyboard_SendKey(K_LEFTARROW, qfalse);
+			break;
+		case VKEY_RIGHT:
+			VKeyboard_SendKey(K_RIGHTARROW, qtrue);
+			VKeyboard_SendKey(K_RIGHTARROW, qfalse);
+			break;
+		case VKEY_UP:
+			VKeyboard_SendKey(K_UPARROW, qtrue);
+			VKeyboard_SendKey(K_UPARROW, qfalse);
+			break;
+		case VKEY_DOWN:
+			VKeyboard_SendKey(K_DOWNARROW, qtrue);
+			VKeyboard_SendKey(K_DOWNARROW, qfalse);
+			break;
+		case VKEY_TAB:
+			VKeyboard_SendKey(K_TAB, qtrue);
+			VKeyboard_SendKey(K_TAB, qfalse);
+			break;
+		case VKEY_ENTER:
+			VKeyboard_SendKey(K_ENTER, qtrue);
+			VKeyboard_SendKey(K_ENTER, qfalse);
+			break;
+	}
+}
+
+/*
+=================
 VKeyboard_HandleKey
 
 Returns qtrue if the keyboard handled this key event
@@ -624,12 +751,10 @@ qboolean VKeyboard_HandleKey( int key ) {
 		return qtrue;
 	}
 
-	// Play click sound for all key presses
-	VKeyboard_PlayClickSound();
-
 	if (keyDef->special) {
 		switch (keyDef->special) {
 			case VKEY_SHIFT:
+				VKeyboard_PlayClickSound();
 				if (vkb.mode == MODE_SYMBOLS1) {
 					vkb.mode = MODE_SYMBOLS2;
 				} else if (vkb.mode == MODE_SYMBOLS2) {
@@ -650,65 +775,53 @@ qboolean VKeyboard_HandleKey( int key ) {
 					vkb.mode = MODE_UPPERCASE;
 					vkb.lastShiftTime = cls.realtime;
 				}
-				return qtrue;
-
-			case VKEY_BACKSPACE:
-				// Send ctrl+H (character 8) which MField_CharEvent handles as backspace
-				VKeyboard_SendChar( 'h' - 'a' + 1 );
+				vkb.repeatKey = NULL;
 				return qtrue;
 
 			case VKEY_SYMBOLS:
+				VKeyboard_PlayClickSound();
 				if (vkb.mode == MODE_SYMBOLS1 || vkb.mode == MODE_SYMBOLS2) {
 					vkb.mode = vkb.capsLock ? MODE_UPPERCASE : MODE_LOWERCASE;
 				} else {
 					vkb.mode = MODE_SYMBOLS1;
 				}
-				return qtrue;
-
-			case VKEY_SPACE:
-				VKeyboard_SendChar(' ');
-				return qtrue;
-
-			case VKEY_LEFT:
-				VKeyboard_SendKey(K_LEFTARROW, qtrue);
-				VKeyboard_SendKey(K_LEFTARROW, qfalse);
-				return qtrue;
-
-			case VKEY_RIGHT:
-				VKeyboard_SendKey(K_RIGHTARROW, qtrue);
-				VKeyboard_SendKey(K_RIGHTARROW, qfalse);
-				return qtrue;
-
-			case VKEY_UP:
-				VKeyboard_SendKey(K_UPARROW, qtrue);
-				VKeyboard_SendKey(K_UPARROW, qfalse);
-				return qtrue;
-
-			case VKEY_DOWN:
-				VKeyboard_SendKey(K_DOWNARROW, qtrue);
-				VKeyboard_SendKey(K_DOWNARROW, qfalse);
-				return qtrue;
-
-			case VKEY_TAB:
-				VKeyboard_SendKey(K_TAB, qtrue);
-				VKeyboard_SendKey(K_TAB, qfalse);
+				vkb.repeatKey = NULL;
 				return qtrue;
 
 			case VKEY_ENTER:
-				// Send Enter key
-				VKeyboard_SendKey(K_ENTER, qtrue);
-				VKeyboard_SendKey(K_ENTER, qfalse);
 				// In console, keep keyboard open for multiple commands
 				// Otherwise (UI menu only), dismiss keyboard after Enter
 				if (!(Key_GetCatcher() & KEYCATCH_CONSOLE)) {
+					VKeyboard_PlayClickSound();
+					VKeyboard_SendKey(K_ENTER, qtrue);
+					VKeyboard_SendKey(K_ENTER, qfalse);
 					VKeyboard_Hide();
+					vkb.repeatKey = NULL;
+					return qtrue;
 				}
+				// Fall through to repeatable key handling for console mode
+			case VKEY_BACKSPACE:
+			case VKEY_SPACE:
+			case VKEY_LEFT:
+			case VKEY_RIGHT:
+			case VKEY_UP:
+			case VKEY_DOWN:
+			case VKEY_TAB:
+				VKeyboard_FireAction(0, keyDef->special);
+				vkb.repeatKey = keyDef;
+				vkb.repeatChar = 0;
+				vkb.repeatSpecial = keyDef->special;
+				vkb.repeatPressTime = cls.realtime;
+				vkb.repeatLastTime = cls.realtime;
+				vkb.repeatStarted = qfalse;
 				return qtrue;
 		}
+		vkb.repeatKey = NULL;
 		return qtrue;
 	}
 
 	// Regular character
+	ch = 0;
 	if (vkb.mode == MODE_SYMBOLS2) {
 		ch = keyDef->symbol2;
 	} else if (vkb.mode == MODE_SYMBOLS1) {
@@ -720,7 +833,15 @@ qboolean VKeyboard_HandleKey( int key ) {
 	}
 
 	if (ch) {
-		VKeyboard_SendChar(ch);
+		VKeyboard_FireAction(ch, 0);
+		// Set up repeat BEFORE shift revert so repeatChar captures the current char
+		vkb.repeatKey = keyDef;
+		vkb.repeatChar = ch;
+		vkb.repeatSpecial = 0;
+		vkb.repeatPressTime = cls.realtime;
+		vkb.repeatLastTime = cls.realtime;
+		vkb.repeatStarted = qfalse;
+		// Shift revert (after repeat state is captured)
 		if (vkb.mode == MODE_UPPERCASE && !vkb.capsLock) {
 			vkb.mode = MODE_LOWERCASE;
 		}

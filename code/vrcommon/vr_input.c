@@ -1654,7 +1654,16 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 
 	if (buttons & VR_Button_A)
 	{
-		if (cl.snap.ps.pm_flags & PMF_FOLLOW)
+		if (vr.vote_active)
+		{
+			// Vote/dialog active: A = vote yes
+			if (!IN_InputActivated(&controller->buttons, VR_Button_A))
+			{
+				IN_ActivateInput(&controller->buttons, VR_Button_A);
+				Cbuf_AddText("vote yes\n");
+			}
+		}
+		else if (cl.snap.ps.pm_flags & PMF_FOLLOW)
 		{
 			// Go back to free spectator mode if following player
 			if (!IN_InputActivated(&controller->buttons, VR_Button_A))
@@ -1705,7 +1714,16 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 
 	if (buttons & VR_Button_B)
 	{
-		if (!IN_InputActivated(&controller->buttons, VR_Button_B))
+		if (vr.vote_active)
+		{
+			// Vote/dialog active: B = vote no
+			if (!IN_InputActivated(&controller->buttons, VR_Button_B))
+			{
+				IN_ActivateInput(&controller->buttons, VR_Button_B);
+				Cbuf_AddText("vote no\n");
+			}
+		}
+		else if (!IN_InputActivated(&controller->buttons, VR_Button_B))
 		{
 			// If in any third-person follow mode or playing demo, recenter camera
 			if (((cl.snap.ps.pm_flags & PMF_FOLLOW) || clc.demoplaying) &&
@@ -1719,11 +1737,21 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 				VR_VirtualScreen_ResetPosition();
 			}
 		}
-		IN_HandleActiveInput(&controller->buttons, VR_Button_B, "B", 0, qfalse);
+		if (!vr.vote_active)
+		{
+			IN_HandleActiveInput(&controller->buttons, VR_Button_B, "B", 0, qfalse);
+		}
 	}
 	else
 	{
-		IN_HandleInactiveInput(&controller->buttons, VR_Button_B, "B", 0, qfalse);
+		if (!vr.vote_active)
+		{
+			IN_HandleInactiveInput(&controller->buttons, VR_Button_B, "B", 0, qfalse);
+		}
+		else
+		{
+			IN_DeactivateInput(&controller->buttons, VR_Button_B);
+		}
 	}
 
 	if (buttons & VR_Button_X)

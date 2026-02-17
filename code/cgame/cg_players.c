@@ -1795,10 +1795,8 @@ static void CG_PlayerAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 			headYawOffset = cent->currentState.angles2[ROLL];
 		}
 
-		qboolean vrSwinging = qtrue;
-		CG_SwingAngles(headPitch, 15, 90, 0.3f, &cent->pe.vrHeadPitch, &vrSwinging);
-		vrSwinging = qtrue;
-		CG_SwingAngles(headYawOffset, 25, 90, 0.3f, &cent->pe.vrHeadYawOffset, &vrSwinging);
+		cent->pe.vrHeadPitch = headPitch;
+		cent->pe.vrHeadYawOffset = headYawOffset;
 	}
 
 	// --------- yaw -------------

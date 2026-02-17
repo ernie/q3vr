@@ -58,6 +58,7 @@ typedef struct {
 	qboolean weapon_select_using_thumbstick;
 	qboolean weapon_adjust;
 	qboolean no_crosshair;
+	qboolean vote_active;           // true when any yes/no dialog is visible (vote, team vote, TVD offer)
 
 	int realign; // used to realign the fake 6DoF playspace in a multiplayer game
 	qboolean recenter_follow_camera; // flag to trigger camera recentering in follow mode

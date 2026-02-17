@@ -132,6 +132,9 @@ cvar_t	*cl_motdString;
 
 cvar_t	*cl_allowDownload;
 cvar_t	*cl_tvDownload;
+cvar_t	*cl_tvdOffer;
+cvar_t	*cl_voteYesKey;
+cvar_t	*cl_voteNoKey;
 cvar_t	*cl_conXOffset;
 cvar_t	*cl_inGameVideo;
 
@@ -1450,6 +1453,11 @@ void CL_Disconnect( qboolean showMainMenu ) {
 #endif
 	clc.tvDemoFile[0] = '\0';
 	clc.tvDemoMap[0] = '\0';
+	clc.tvDemoPendingUrl[0] = '\0';
+	clc.tvDemoPendingLocal[0] = '\0';
+	Cvar_Set( "cl_tvdOffer", "" );
+	Cvar_Set( "cl_voteYesKey", "" );
+	Cvar_Set( "cl_voteNoKey", "" );
 
 #ifdef USE_MUMBLE
 	if (cl_useMumble->integer && mumble_islinked()) {
@@ -1538,6 +1546,11 @@ void CL_Disconnect( qboolean showMainMenu ) {
 }
 
 
+#ifdef USE_HTTP
+static void CL_TVDYes_f( void );
+static void CL_TVDNo_f( void );
+#endif
+
 /*
 ===================
 CL_ForwardCommandToServer
@@ -1556,6 +1569,20 @@ void CL_ForwardCommandToServer( const char *string ) {
 	if ( cmd[0] == '-' ) {
 		return;
 	}
+
+#ifdef USE_HTTP
+	// intercept "vote yes/no" when a TVD offer is pending
+	if ( !Q_stricmp( cmd, "vote" ) && cl_tvdOffer && cl_tvdOffer->string[0] ) {
+		const char *arg = Cmd_Argv( 1 );
+		if ( arg[0] == 'y' || arg[0] == 'Y' || arg[0] == '1' ) {
+			CL_TVDYes_f();
+			return;
+		} else if ( arg[0] == 'n' || arg[0] == 'N' || arg[0] == '0' ) {
+			CL_TVDNo_f();
+			return;
+		}
+	}
+#endif
 
 	if ( clc.demoplaying || clc.state < CA_CONNECTED || cmd[0] == '+' ) {
 		Com_Printf ("Unknown command \"%s" S_COLOR_WHITE "\"\n", cmd);
@@ -3029,28 +3056,35 @@ void CL_TV_DownloadFrame( void ) {
 		}
 		return;
 	}
-	// initiate TV demo download once the client has entered the game
+	// initiate TV demo download offer once the client has entered the game
 	if ( clc.state == CA_ACTIVE && clc.tvDemoFile[0]
 		&& cl_tvDownload->integer && CL_HTTP_Available() ) {
 		if ( clc.sv_dlURL[0] ) {
-			char url[MAX_OSPATH];
-			char localName[MAX_QPATH];
 			time_t now;
 			struct tm *tm_info;
 
-			Com_sprintf( url, sizeof( url ), "%s/%s", clc.sv_dlURL, clc.tvDemoFile );
+			Com_sprintf( clc.tvDemoPendingUrl, sizeof( clc.tvDemoPendingUrl ),
+				"%s/%s", clc.sv_dlURL, clc.tvDemoFile );
 
+			// generate local filename with timestamp and map name
 			now = time( NULL );
 			tm_info = localtime( &now );
 			if ( tm_info && clc.tvDemoMap[0] ) {
 				char timestamp[32];
 				strftime( timestamp, sizeof( timestamp ), "%Y%m%d_%H%M%S", tm_info );
-				Com_sprintf( localName, sizeof( localName ), "demos/%s_%s.tvd", timestamp, clc.tvDemoMap );
+				Com_sprintf( clc.tvDemoPendingLocal, sizeof( clc.tvDemoPendingLocal ),
+					"demos/%s_%s.tvd", timestamp, clc.tvDemoMap );
 			} else {
-				Q_strncpyz( localName, clc.tvDemoFile, sizeof( localName ) );
+				Q_strncpyz( clc.tvDemoPendingLocal, clc.tvDemoFile,
+					sizeof( clc.tvDemoPendingLocal ) );
 			}
 
-			tvDownloadActive = CL_HTTP_TV_BeginDownload( localName, url );
+			// signal cgame via ROM cvar
+			Cvar_Set( "cl_tvdOffer", clc.tvDemoPendingLocal );
+
+			// resolve vote key labels for cgame display (VR: always A/B)
+			Cvar_Set( "cl_voteYesKey", "A" );
+			Cvar_Set( "cl_voteNoKey", "B" );
 		} else {
 			Com_DPrintf( "TV: sv_dlURL not set, skipping demo download\n" );
 		}
@@ -3062,6 +3096,43 @@ void CL_TV_DownloadFrame( void ) {
 void CL_TV_CleanupDownload( void ) {
 	CL_HTTP_TV_CleanupDownload();
 	tvDownloadActive = qfalse;
+}
+
+
+/*
+==================
+CL_TVDYes_f
+
+Accept a pending TV demo download.
+==================
+*/
+static void CL_TVDYes_f( void ) {
+	if ( !cl_tvdOffer->string[0] ) {
+		return;
+	}
+	if ( clc.tvDemoPendingUrl[0] && clc.tvDemoPendingLocal[0] ) {
+		tvDownloadActive = CL_HTTP_TV_BeginDownload( clc.tvDemoPendingLocal, clc.tvDemoPendingUrl );
+	}
+	Cvar_Set( "cl_tvdOffer", "" );
+	clc.tvDemoPendingUrl[0] = '\0';
+	clc.tvDemoPendingLocal[0] = '\0';
+}
+
+
+/*
+==================
+CL_TVDNo_f
+
+Decline a pending TV demo download.
+==================
+*/
+static void CL_TVDNo_f( void ) {
+	if ( !cl_tvdOffer->string[0] ) {
+		return;
+	}
+	Cvar_Set( "cl_tvdOffer", "" );
+	clc.tvDemoPendingUrl[0] = '\0';
+	clc.tvDemoPendingLocal[0] = '\0';
 }
 #endif
 
@@ -3886,7 +3957,14 @@ void CL_Init( void ) {
 		Com_Printf("WARNING: couldn't initialize HTTP download support\n");
 	}
 	cl_tvDownload = Cvar_Get( "cl_tvDownload", "0", CVAR_ARCHIVE );
-	Cvar_SetDescription( cl_tvDownload, "Download TV demo recordings from server via HTTP at end of match." );
+	Cvar_SetDescription( cl_tvDownload, "Download TV demo recordings from server via HTTP at end of match.\n 0 - off\n 1 - prompt (auto-decline)\n 2 - prompt (auto-accept)" );
+
+	cl_tvdOffer = Cvar_Get( "cl_tvdOffer", "", CVAR_ROM );
+	cl_voteYesKey = Cvar_Get( "cl_voteYesKey", "", CVAR_ROM );
+	cl_voteNoKey = Cvar_Get( "cl_voteNoKey", "", CVAR_ROM );
+
+	Cmd_AddCommand( "tvdyes", CL_TVDYes_f );
+	Cmd_AddCommand( "tvdno", CL_TVDNo_f );
 #endif
 
 	CL_TV_Init();
