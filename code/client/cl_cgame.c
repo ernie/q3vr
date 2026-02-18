@@ -259,6 +259,13 @@ void CL_ConfigstringModified( void ) {
 		CL_SystemInfoChanged();
 	}
 
+	// resolve vote key labels for cgame display when any vote starts
+	if ( index == CS_VOTE_TIME
+		|| index == CS_TEAMVOTE_TIME
+		|| index == CS_TEAMVOTE_TIME + 1 ) {
+		Cvar_Set( "cl_voteYesKey", "A" );
+		Cvar_Set( "cl_voteNoKey", "B" );
+	}
 }
 
 
