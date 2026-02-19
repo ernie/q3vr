@@ -576,9 +576,10 @@ itemDef {
 	itemDef {
       		name other
 		group grpSystem
-      		type ITEM_TYPE_YESNO
-		text "Auto Download TVD:"
+      		type ITEM_TYPE_MULTI
+		text "TVD Download:"
 		cvar "cl_tvDownload"
+		cvarFloatList { "Off" 0 "Decline" 1 "Accept" 2 }
 		rect 0 245 256 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 128
@@ -587,7 +588,6 @@ itemDef {
       		forecolor 1 1 1 1
       		visible 0
     		}
-
 
 itemDef {
 	name graphics

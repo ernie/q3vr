@@ -47,6 +47,13 @@ NETWORK OPTIONS MENU
 #define ID_BACK				17
 
 
+static const char *tvdownload_names[] = {
+	"Off",
+	"Decline",
+	"Accept",
+	NULL
+};
+
 static const char *rate_items[] = {
 	"<= 28.8K",
 	"33.6K",
@@ -70,7 +77,7 @@ typedef struct {
 
 	menulist_s		rate;
 	menuradiobutton_s	allowdownload;
-	menuradiobutton_s	tvdownload;
+	menulist_s			tvdownload;
 	menuradiobutton_s	sendroll;
 
 	menubitmap_s	back;
@@ -249,13 +256,14 @@ static void UI_NetworkOptionsMenu_Init( void ) {
 	networkOptionsInfo.allowdownload.generic.y	       = y;
 
 	y += BIGCHAR_HEIGHT+2;
-	networkOptionsInfo.tvdownload.generic.type      = MTYPE_RADIOBUTTON;
-	networkOptionsInfo.tvdownload.generic.name      = "Auto Download TVD:";
+	networkOptionsInfo.tvdownload.generic.type      = MTYPE_SPINCONTROL;
+	networkOptionsInfo.tvdownload.generic.name      = "TVD Download:";
 	networkOptionsInfo.tvdownload.generic.flags     = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	networkOptionsInfo.tvdownload.generic.callback  = UI_NetworkOptionsMenu_Event;
 	networkOptionsInfo.tvdownload.generic.id        = ID_TVDOWNLOAD;
 	networkOptionsInfo.tvdownload.generic.x         = 400;
 	networkOptionsInfo.tvdownload.generic.y         = y;
+	networkOptionsInfo.tvdownload.itemnames         = tvdownload_names;
 
 	y += BIGCHAR_HEIGHT+2;
 	networkOptionsInfo.sendroll.generic.type        = MTYPE_RADIOBUTTON;
@@ -309,7 +317,7 @@ static void UI_NetworkOptionsMenu_Init( void ) {
 		networkOptionsInfo.rate.curvalue = 4;
 	}
 	networkOptionsInfo.allowdownload.curvalue	= trap_Cvar_VariableValue( "cl_allowDownload" ) != 0;
-	networkOptionsInfo.tvdownload.curvalue		= trap_Cvar_VariableValue( "cl_tvDownload" ) != 0;
+	networkOptionsInfo.tvdownload.curvalue		= Com_Clamp( 0, 2, (int)trap_Cvar_VariableValue( "cl_tvDownload" ) );
 	networkOptionsInfo.sendroll.curvalue		= trap_Cvar_VariableValue( "vr_sendRollToServer" ) != 0;
 }
 

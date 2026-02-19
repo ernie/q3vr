@@ -3635,6 +3635,7 @@ static void CG_DrawHUD2D(void)
 
 	if ( cg.snap->ps.pm_type == PM_INTERMISSION ) {
 		CG_DrawIntermission();
+		CG_DrawTVOverlay();
 		return;
 	}
 
