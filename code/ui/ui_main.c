@@ -731,10 +731,12 @@ void _UI_Refresh( int realtime )
 		UI_BuildFindPlayerList(qfalse);
 	}
 
-	// draw cursor
-	UI_SetColor( NULL );
-	if (Menu_Count() > 0 && (trap_Key_GetCatcher() & KEYCATCH_UI)) {
-		UI_DrawHandlePic( uiInfo.uiDC.cursorx-16, uiInfo.uiDC.cursory-16, 32, 32, uiInfo.uiDC.Assets.cursor);
+	// draw cursor (hidden when virtual keyboard has its own cursors)
+	if (!trap_VKeyboard_IsActive()) {
+		UI_SetColor( NULL );
+		if (Menu_Count() > 0 && (trap_Key_GetCatcher() & KEYCATCH_UI)) {
+			UI_DrawHandlePic( uiInfo.uiDC.cursorx-16, uiInfo.uiDC.cursory-16, 32, 32, uiInfo.uiDC.Assets.cursor);
+		}
 	}
 
 #ifndef NDEBUG

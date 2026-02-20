@@ -50,6 +50,10 @@ extern vr_clientinfo_t vr;
 #define MODE_SYMBOLS1	2
 #define MODE_SYMBOLS2	3
 
+// Hand indices for repeat state ownership
+#define VKB_HAND_PRIMARY	0
+#define VKB_HAND_OFFHAND	1
+
 // Key definition
 typedef struct {
 	char		lowercase;
@@ -69,13 +73,14 @@ typedef struct {
 	qboolean	capsLock;
 	int			lastShiftTime;
 	sfxHandle_t	clickSound;
-	// Key repeat state
+	// Key repeat state (last-key-wins: only one hand repeats at a time)
 	vKeyDef_t	*repeatKey;			// key currently being held (NULL if none)
 	int			repeatChar;			// resolved character at initial press (0 for special keys)
 	int			repeatSpecial;		// VKEY_* code at initial press (0 for regular chars)
 	int			repeatPressTime;	// cls.realtime when key was first pressed
 	int			repeatLastTime;		// cls.realtime when last repeat fired
 	qboolean	repeatStarted;		// past initial delay?
+	int			repeatHand;			// which hand owns repeat (VKB_HAND_PRIMARY or VKB_HAND_OFFHAND)
 } vKeyboardState_t;
 
 static vKeyboardState_t vkb;
@@ -152,6 +157,7 @@ static vKeyDef_t *vkbRows[KEYBOARD_ROWS] = { vkbRow0, vkbRow1, vkbRow2, vkbRow3 
 
 // Forward declarations for functions called before their definition
 static void VKeyboard_FireAction( int ch, int special );
+static void VKeyboard_ProcessKeyPress( vKeyDef_t *keyDef, int handIndex );
 
 /*
 =================
@@ -343,6 +349,7 @@ VKeyboard_Hide
 void VKeyboard_Hide( void ) {
 	vkb.active = qfalse;
 	vkb.repeatKey = NULL;
+	vr.vkbOffhandTriggerDown = qfalse;
 }
 
 /*
@@ -436,28 +443,44 @@ void VKeyboard_Draw( void ) {
 	vec4_t textColor = {1.0f, 1.0f, 1.0f, 1.0f};
 	vec4_t textDimColor = {0.7f, 0.7f, 0.7f, 1.0f};
 	char str[2];
-	vKeyDef_t *hoverKey;
+	vKeyDef_t *hoverKey, *offhandHoverKey;
 	int cursorX, cursorY;
+	int offhandCursorX, offhandCursorY;
 
 	if (!vkb.active) {
 		return;
 	}
 
-	// Get cursor position from VR (which updates uis.cursorx/y through menuCursorX/Y pointers)
+	// Get primary cursor position from VR
 	if (vr.menuCursorX && vr.menuCursorY) {
 		cursorX = *vr.menuCursorX;
 		cursorY = *vr.menuCursorY;
 	} else {
-		// Fallback - center of screen
 		cursorX = SCREEN_WIDTH / 2;
 		cursorY = SCREEN_HEIGHT / 2;
 	}
 
-	hoverKey = VKeyboard_GetKeyAt(cursorX, cursorY);
+	// Get offhand cursor position
+	offhandCursorX = vr.offhandCursorX;
+	offhandCursorY = vr.offhandCursorY;
 
-	// Key repeat logic
+	hoverKey = VKeyboard_GetKeyAt(cursorX, cursorY);
+	offhandHoverKey = VKeyboard_GetKeyAt(offhandCursorX, offhandCursorY);
+
+	// Key repeat logic (last-key-wins: check the owning hand's trigger and hover)
 	if (vkb.repeatKey) {
-		if (!keys[K_MOUSE1].down || hoverKey != vkb.repeatKey) {
+		qboolean triggerDown;
+		vKeyDef_t *ownerHoverKey;
+
+		if (vkb.repeatHand == VKB_HAND_PRIMARY) {
+			triggerDown = keys[K_MOUSE1].down;
+			ownerHoverKey = hoverKey;
+		} else {
+			triggerDown = vr.vkbOffhandTriggerDown;
+			ownerHoverKey = offhandHoverKey;
+		}
+
+		if (!triggerDown || ownerHoverKey != vkb.repeatKey) {
 			vkb.repeatKey = NULL;
 		} else {
 			int elapsed = cls.realtime - vkb.repeatPressTime;
@@ -468,7 +491,6 @@ void VKeyboard_Draw( void ) {
 					VKeyboard_FireAction(vkb.repeatChar, vkb.repeatSpecial);
 				}
 			} else if (cls.realtime - vkb.repeatLastTime >= KEY_REPEAT_RATE) {
-				// Clamp to prevent burst after long frame
 				if (cls.realtime - vkb.repeatLastTime > KEY_REPEAT_RATE * 3) {
 					vkb.repeatLastTime = cls.realtime - KEY_REPEAT_RATE;
 				}
@@ -491,7 +513,11 @@ void VKeyboard_Draw( void ) {
 
 		for (i = 0; vkbRows[row][i].width > 0; i++) {
 			vKeyDef_t *key = &vkbRows[row][i];
-			qboolean isHovered = (key == hoverKey);
+			qboolean isHoveredPrimary = (key == hoverKey);
+			qboolean isHoveredOffhand = (key == offhandHoverKey);
+			qboolean isHovered = isHoveredPrimary || isHoveredOffhand;
+			qboolean isPressed = (isHoveredPrimary && keys[K_MOUSE1].down) ||
+			                     (isHoveredOffhand && vr.vkbOffhandTriggerDown);
 			qboolean isActive = qfalse;
 			qboolean isSpecial = (key->special != 0);
 			vec4_t *color;
@@ -510,7 +536,7 @@ void VKeyboard_Draw( void ) {
 				color = &keyActiveColor;
 			} else if (key->special == VKEY_ENTER) {
 				color = isHovered ? &keyEnterHoverColor : &keyEnterColor;
-			} else if (isHovered && keys[K_MOUSE1].down) {
+			} else if (isPressed) {
 				color = &keyPressedColor;
 			} else if (isHovered) {
 				color = &keyHoverColor;
@@ -563,25 +589,24 @@ void VKeyboard_Draw( void ) {
 		}
 	}
 
-	// Draw cursor on top of keyboard
-	// Use Team Arena pointer cursor for missionpack, q3_ui crosshair cursor for baseq3
-	// Re-register shader each time since game mod can change (vid_restart invalidates handles)
+	// Draw cursors on top of keyboard as colored dots
+	// Blue = left physical hand, Red = right physical hand
 	{
-		qhandle_t cursorShader;
-		const char *gamedir;
+		#define CURSOR_DOT_SIZE	6
 
-		// Check if we're running missionpack
-		gamedir = Cvar_VariableString("fs_game");
-		if (gamedir && *gamedir && !Q_stricmp(gamedir, "missionpack")) {
-			// Team Arena pointer cursor
-			cursorShader = re.RegisterShaderNoMip("ui/assets/3_cursor3");
-		} else {
-			// q3_ui crosshair cursor for baseq3
-			cursorShader = re.RegisterShaderNoMip("menu/art/3_cursor2");
-		}
-		if (cursorShader) {
-			SCR_DrawPic(cursorX - 16, cursorY - 16, 32, 32, cursorShader);
-		}
+		// menuLeftHanded == true means left physical hand drives the primary cursor
+		vec4_t colorLeft  = {0.3f, 0.5f, 1.0f, 1.0f};
+		vec4_t colorRight = {1.0f, 0.3f, 0.3f, 1.0f};
+		vec4_t *primaryColor = vr.menuLeftHanded ? colorLeft : colorRight;
+		vec4_t *offhandColor = vr.menuLeftHanded ? colorRight : colorLeft;
+
+		// Offhand cursor (draw first, behind primary)
+		SCR_FillRect(offhandCursorX - CURSOR_DOT_SIZE / 2, offhandCursorY - CURSOR_DOT_SIZE / 2,
+			CURSOR_DOT_SIZE, CURSOR_DOT_SIZE, *offhandColor);
+
+		// Primary cursor (on top)
+		SCR_FillRect(cursorX - CURSOR_DOT_SIZE / 2, cursorY - CURSOR_DOT_SIZE / 2,
+			CURSOR_DOT_SIZE, CURSOR_DOT_SIZE, *primaryColor);
 	}
 }
 
@@ -698,58 +723,16 @@ static void VKeyboard_FireAction( int ch, int special ) {
 
 /*
 =================
-VKeyboard_HandleKey
+VKeyboard_ProcessKeyPress
 
-Returns qtrue if the keyboard handled this key event
+Shared key press logic for both primary and offhand controllers.
+Handles mode changes, fires the key action, and sets up repeat state.
+The handIndex parameter (VKB_HAND_PRIMARY/VKB_HAND_OFFHAND) controls
+which hand owns the repeat (last-key-wins).
 =================
 */
-qboolean VKeyboard_HandleKey( int key ) {
-	vKeyDef_t *keyDef;
+static void VKeyboard_ProcessKeyPress( vKeyDef_t *keyDef, int handIndex ) {
 	char ch;
-	int cursorX, cursorY;
-
-	if (!vkb.active) {
-		return qfalse;
-	}
-
-	if (key == K_ESCAPE || key == K_MENU) {
-		VKeyboard_Hide();
-		// If console is active, also toggle it closed
-		if (Key_GetCatcher() & KEYCATCH_CONSOLE) {
-			Con_ToggleConsole_f();
-		}
-		return qtrue;
-	}
-
-	if (key != K_MOUSE1) {
-		return qfalse;
-	}
-
-	// Get cursor position from VR (which updates uis.cursorx/y through menuCursorX/Y pointers)
-	if (vr.menuCursorX && vr.menuCursorY) {
-		cursorX = *vr.menuCursorX;
-		cursorY = *vr.menuCursorY;
-	} else {
-		// Fallback - center of screen
-		cursorX = SCREEN_WIDTH / 2;
-		cursorY = SCREEN_HEIGHT / 2;
-	}
-
-	keyDef = VKeyboard_GetKeyAt(cursorX, cursorY);
-	if (!keyDef) {
-		// Check if click is within the keyboard background area
-		if (VKeyboard_IsInKeyboardArea(cursorX, cursorY)) {
-			// Clicked within keyboard area but not on a key - ignore (near miss)
-			return qtrue;
-		}
-		// Clicked outside keyboard area entirely - dismiss it
-		VKeyboard_Hide();
-		// If console is active, also toggle it closed
-		if (Key_GetCatcher() & KEYCATCH_CONSOLE) {
-			Con_ToggleConsole_f();
-		}
-		return qtrue;
-	}
 
 	if (keyDef->special) {
 		switch (keyDef->special) {
@@ -776,7 +759,7 @@ qboolean VKeyboard_HandleKey( int key ) {
 					vkb.lastShiftTime = cls.realtime;
 				}
 				vkb.repeatKey = NULL;
-				return qtrue;
+				return;
 
 			case VKEY_SYMBOLS:
 				VKeyboard_PlayClickSound();
@@ -786,7 +769,7 @@ qboolean VKeyboard_HandleKey( int key ) {
 					vkb.mode = MODE_SYMBOLS1;
 				}
 				vkb.repeatKey = NULL;
-				return qtrue;
+				return;
 
 			case VKEY_ENTER:
 				// In console, keep keyboard open for multiple commands
@@ -797,7 +780,7 @@ qboolean VKeyboard_HandleKey( int key ) {
 					VKeyboard_SendKey(K_ENTER, qfalse);
 					VKeyboard_Hide();
 					vkb.repeatKey = NULL;
-					return qtrue;
+					return;
 				}
 				// Fall through to repeatable key handling for console mode
 			case VKEY_BACKSPACE:
@@ -814,10 +797,11 @@ qboolean VKeyboard_HandleKey( int key ) {
 				vkb.repeatPressTime = cls.realtime;
 				vkb.repeatLastTime = cls.realtime;
 				vkb.repeatStarted = qfalse;
-				return qtrue;
+				vkb.repeatHand = handIndex;
+				return;
 		}
 		vkb.repeatKey = NULL;
-		return qtrue;
+		return;
 	}
 
 	// Regular character
@@ -841,11 +825,106 @@ qboolean VKeyboard_HandleKey( int key ) {
 		vkb.repeatPressTime = cls.realtime;
 		vkb.repeatLastTime = cls.realtime;
 		vkb.repeatStarted = qfalse;
+		vkb.repeatHand = handIndex;
 		// Shift revert (after repeat state is captured)
 		if (vkb.mode == MODE_UPPERCASE && !vkb.capsLock) {
 			vkb.mode = MODE_LOWERCASE;
 		}
 	}
+}
 
+/*
+=================
+VKeyboard_DismissWithConsole
+
+Dismiss the keyboard, and if console is active, close it too.
+=================
+*/
+static void VKeyboard_DismissWithConsole( void ) {
+	VKeyboard_Hide();
+	if (Key_GetCatcher() & KEYCATCH_CONSOLE) {
+		Con_ToggleConsole_f();
+	}
+}
+
+/*
+=================
+VKeyboard_HandleKey
+
+Returns qtrue if the keyboard handled this key event (primary hand via K_MOUSE1).
+=================
+*/
+qboolean VKeyboard_HandleKey( int key ) {
+	vKeyDef_t *keyDef;
+	int cursorX, cursorY;
+
+	if (!vkb.active) {
+		return qfalse;
+	}
+
+	if (key == K_ESCAPE || key == K_MENU) {
+		VKeyboard_DismissWithConsole();
+		return qtrue;
+	}
+
+	if (key != K_MOUSE1) {
+		return qfalse;
+	}
+
+	// Get cursor position from VR
+	if (vr.menuCursorX && vr.menuCursorY) {
+		cursorX = *vr.menuCursorX;
+		cursorY = *vr.menuCursorY;
+	} else {
+		cursorX = SCREEN_WIDTH / 2;
+		cursorY = SCREEN_HEIGHT / 2;
+	}
+
+	keyDef = VKeyboard_GetKeyAt(cursorX, cursorY);
+	if (!keyDef) {
+		if (VKeyboard_IsInKeyboardArea(cursorX, cursorY)) {
+			return qtrue;	// near miss
+		}
+		VKeyboard_DismissWithConsole();
+		return qtrue;
+	}
+
+	VKeyboard_ProcessKeyPress(keyDef, VKB_HAND_PRIMARY);
 	return qtrue;
+}
+
+/*
+=================
+VKeyboard_HandleOffhandKey
+
+Called directly from vr_input.c when the offhand trigger is pressed/released
+while the keyboard is active. Uses the offhand cursor position for hit testing.
+=================
+*/
+void VKeyboard_HandleOffhandKey( qboolean down ) {
+	vKeyDef_t *keyDef;
+
+	if (!vkb.active) {
+		return;
+	}
+
+	if (!down) {
+		// Trigger released -- clear repeat if offhand owns it
+		if (vkb.repeatHand == VKB_HAND_OFFHAND) {
+			vkb.repeatKey = NULL;
+		}
+		return;
+	}
+
+	// Trigger pressed -- hit test at offhand cursor position
+	keyDef = VKeyboard_GetKeyAt(vr.offhandCursorX, vr.offhandCursorY);
+	if (!keyDef) {
+		if (VKeyboard_IsInKeyboardArea(vr.offhandCursorX, vr.offhandCursorY)) {
+			return;		// near miss
+		}
+		VKeyboard_DismissWithConsole();
+		return;
+	}
+
+	VKeyboard_ProcessKeyPress(keyDef, VKB_HAND_OFFHAND);
 }

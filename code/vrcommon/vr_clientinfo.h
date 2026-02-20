@@ -102,6 +102,9 @@ typedef struct {
 	int *scoreboardCursorX;
 	int *scoreboardCursorY;
 	qboolean menuLeftHanded;
+	int offhandCursorX;             // offhand cursor X (640x480 virtual coords)
+	int offhandCursorY;             // offhand cursor Y (640x480 virtual coords)
+	qboolean vkbOffhandTriggerDown; // offhand trigger held while keyboard active
 
 	float recenterYaw;
 

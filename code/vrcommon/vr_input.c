@@ -971,6 +971,32 @@ static void IN_VRController( qboolean isRightController, XrPosef pose )
 			lastMenuCursorY = *vr.menuCursorY = y;
 
 			Com_QueueEvent(in_vrEventTime, SE_MOUSE, 0, 0, 0, NULL);
+
+			// When virtual keyboard is active, also compute offhand cursor
+			// from the OTHER controller's angles (opposite of primary)
+			if (VKeyboard_IsActive())
+			{
+				float ohYaw, ohPitch;
+				if (vr.menuLeftHanded)
+				{
+					ohYaw = (vr_righthanded->integer != 0) ? vr.weaponangles[YAW] : vr.offhandangles[YAW];
+					ohPitch = (vr_righthanded->integer != 0) ? vr.weaponangles[PITCH] : vr.offhandangles[PITCH];
+				}
+				else
+				{
+					ohYaw = (vr_righthanded->integer != 0) ? vr.offhandangles[YAW] : vr.weaponangles[YAW];
+					ohPitch = (vr_righthanded->integer != 0) ? vr.offhandangles[PITCH] : vr.weaponangles[PITCH];
+				}
+				int ohx = 320 - tan((ohYaw - referenceYaw) * (M_PI*2 / 360)) * 800;
+				int ohy = 240 + tan((ohPitch + vr_weaponPitch->value) * (M_PI*2 / 360)) * 800;
+
+				static int lastOffhandCursorX = 320;
+				static int lastOffhandCursorY = 240;
+				ohx = factor * ohx + (1.0f - factor) * lastOffhandCursorX;
+				ohy = factor * ohy + (1.0f - factor) * lastOffhandCursorY;
+				lastOffhandCursorX = vr.offhandCursorX = ohx;
+				lastOffhandCursorY = vr.offhandCursorY = ohy;
+			}
 		}
 		if (vr.scoreboardCursorX && vr.scoreboardCursorY)
 		{
@@ -1381,28 +1407,69 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 
 	if (inMenuMode)
 	{
-		// Triggers are used for menu navigation in screen mode, intermission, or scoreboard
-		if (triggerValue > triggerPressedThreshold && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+		qboolean isActiveController = (isRightController && !vr.menuLeftHanded) ||
+		                              (!isRightController && vr.menuLeftHanded);
+
+		if (VKeyboard_IsActive())
 		{
-			IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
-			if ((isRightController && !vr.menuLeftHanded) || (!isRightController && vr.menuLeftHanded))
+			// Dual-cursor keyboard mode: both controllers type independently
+			if (isActiveController)
 			{
-				// Active controller confirms selection
-				Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qtrue, 0, NULL);
-				VR_Vibrate(200, vr.menuLeftHanded ? 1 : 2, 0.8f);
+				// Primary hand: use K_MOUSE1 as normal
+				if (triggerValue > triggerPressedThreshold && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+				{
+					IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
+					Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qtrue, 0, NULL);
+					VR_Vibrate(200, isRightController ? 2 : 1, 0.8f);
+				}
+				else if (triggerValue < triggerReleasedThreshold && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+				{
+					IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
+					Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qfalse, 0, NULL);
+				}
 			}
 			else
 			{
-				// Inactive controller becomes active one
-				vr.menuLeftHanded = !vr.menuLeftHanded;
+				// Offhand: drive keyboard directly, bypass event system
+				if (triggerValue > triggerPressedThreshold && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+				{
+					IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
+					vr.vkbOffhandTriggerDown = qtrue;
+					VKeyboard_HandleOffhandKey(qtrue);
+					VR_Vibrate(200, isRightController ? 2 : 1, 0.8f);
+				}
+				else if (triggerValue < triggerReleasedThreshold && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+				{
+					IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
+					vr.vkbOffhandTriggerDown = qfalse;
+					VKeyboard_HandleOffhandKey(qfalse);
+				}
 			}
 		}
-		else if (triggerValue < triggerReleasedThreshold && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+		else
 		{
-			IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
-			if ((isRightController && !vr.menuLeftHanded) || (!isRightController && vr.menuLeftHanded))
+			// Normal single-cursor menu mode
+			if (triggerValue > triggerPressedThreshold && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
 			{
-				Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qfalse, 0, NULL);
+				IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
+				if (isActiveController)
+				{
+					Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qtrue, 0, NULL);
+					VR_Vibrate(200, vr.menuLeftHanded ? 1 : 2, 0.8f);
+				}
+				else
+				{
+					// Inactive controller becomes active one
+					vr.menuLeftHanded = !vr.menuLeftHanded;
+				}
+			}
+			else if (triggerValue < triggerReleasedThreshold && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+			{
+				IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
+				if (isActiveController)
+				{
+					Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qfalse, 0, NULL);
+				}
 			}
 		}
 	}

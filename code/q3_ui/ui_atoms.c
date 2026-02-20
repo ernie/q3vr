@@ -1397,9 +1397,11 @@ void UI_Refresh( int realtime )
 		}
 	}
 
-	// draw cursor
-	UI_SetColor( NULL );
-	UI_DrawHandlePic( uis.cursorx-16, uis.cursory-16, 32, 32, uis.cursor);
+	// draw cursor (hidden when virtual keyboard has its own cursors)
+	if (!VirtualKeyboard_IsActive()) {
+		UI_SetColor( NULL );
+		UI_DrawHandlePic( uis.cursorx-16, uis.cursory-16, 32, 32, uis.cursor);
+	}
 
 #ifndef NDEBUG
 	if (uis.debug)
