@@ -78,8 +78,12 @@ static int in_vrEventTime = 0;
 static double lastframetime = 0;
 static qboolean wasInMenuMode = qfalse;
 
-static float triggerPressedThreshold = 0.75f;
-static float triggerReleasedThreshold = 0.5f;
+extern cvar_t *vr_triggerSensitivity;
+static float IN_TriggerPressedThreshold(void) { return 1.0f - vr_triggerSensitivity->value; }
+static float IN_TriggerReleasedThreshold(void) {
+	float r = IN_TriggerPressedThreshold() - 0.25f;
+	return r < 0.1f ? 0.1f : r;
+}
 
 // Weapon adjustment mode: dual-grip hold detection
 static int dualGripHoldStartTime = 0;
@@ -610,8 +614,8 @@ void VR_InitInstanceInput( VR_Engine* engine )
 {
 	// Actions
 	runningActionSet = CreateActionSet(1, "running_action_set", "Action Set used on main loop");
-	indexLeftAction = CreateAction(runningActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "index_left", "Index left", 0, NULL);
-	indexRightAction = CreateAction(runningActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "index_right", "Index right", 0, NULL);
+	indexLeftAction = CreateAction(runningActionSet, XR_ACTION_TYPE_FLOAT_INPUT, "index_left", "Index left", 0, NULL);
+	indexRightAction = CreateAction(runningActionSet, XR_ACTION_TYPE_FLOAT_INPUT, "index_right", "Index right", 0, NULL);
 	menuAction = CreateAction(runningActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "menu_action", "Menu", 0, NULL);
 	buttonAAction = CreateAction(runningActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "button_a", "Button A", 0, NULL);
 	buttonBAction = CreateAction(runningActionSet, XR_ACTION_TYPE_BOOLEAN_INPUT, "button_b", "Button B", 0, NULL);
@@ -1396,7 +1400,7 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 	// On transition into menu mode, release any held +attack from gameplay.
 	// Only check primary trigger since that's what sends +attack.
 	qboolean isPrimaryTrigger = (isRightController == (vr_righthanded->integer != 0));
-	if (inMenuMode && !wasInMenuMode && isPrimaryTrigger && triggerValue > triggerPressedThreshold)
+	if (inMenuMode && !wasInMenuMode && isPrimaryTrigger && triggerValue > IN_TriggerPressedThreshold())
 	{
 		Cbuf_AddText("-attack\n");
 	}
@@ -1416,13 +1420,13 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 			if (isActiveController)
 			{
 				// Primary hand: use K_MOUSE1 as normal
-				if (triggerValue > triggerPressedThreshold && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+				if (triggerValue > IN_TriggerPressedThreshold() && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
 				{
 					IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
 					Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qtrue, 0, NULL);
 					VR_Vibrate(200, isRightController ? 2 : 1, 0.8f);
 				}
-				else if (triggerValue < triggerReleasedThreshold && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+				else if (triggerValue < IN_TriggerReleasedThreshold() && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
 				{
 					IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
 					Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qfalse, 0, NULL);
@@ -1431,14 +1435,14 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 			else
 			{
 				// Offhand: drive keyboard directly, bypass event system
-				if (triggerValue > triggerPressedThreshold && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+				if (triggerValue > IN_TriggerPressedThreshold() && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
 				{
 					IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
 					vr.vkbOffhandTriggerDown = qtrue;
 					VKeyboard_HandleOffhandKey(qtrue);
 					VR_Vibrate(200, isRightController ? 2 : 1, 0.8f);
 				}
-				else if (triggerValue < triggerReleasedThreshold && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+				else if (triggerValue < IN_TriggerReleasedThreshold() && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
 				{
 					IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
 					vr.vkbOffhandTriggerDown = qfalse;
@@ -1449,7 +1453,7 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 		else
 		{
 			// Normal single-cursor menu mode
-			if (triggerValue > triggerPressedThreshold && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+			if (triggerValue > IN_TriggerPressedThreshold() && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
 			{
 				IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
 				if (isActiveController)
@@ -1463,7 +1467,7 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 					vr.menuLeftHanded = !vr.menuLeftHanded;
 				}
 			}
-			else if (triggerValue < triggerReleasedThreshold && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
+			else if (triggerValue < IN_TriggerReleasedThreshold() && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
 			{
 				IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
 				if (isActiveController)
@@ -1478,11 +1482,11 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 		// Primary trigger
 		if (isRightController == (vr_righthanded->integer != 0))
 		{
-			if (triggerValue > triggerPressedThreshold)
+			if (triggerValue > IN_TriggerPressedThreshold())
 			{
 				IN_HandleActiveInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX, "PRIMARYTRIGGER", triggerValue, qfalse);
 			}
-			else if (triggerValue < triggerReleasedThreshold)
+			else if (triggerValue < IN_TriggerReleasedThreshold())
 			{
 				IN_HandleInactiveInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX, "PRIMARYTRIGGER", triggerValue, qfalse);
 			}
@@ -1491,11 +1495,11 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 		// Off hand trigger
 		if (isRightController != (vr_righthanded->integer != 0))
 		{
-			if (triggerValue > triggerPressedThreshold)
+			if (triggerValue > IN_TriggerPressedThreshold())
 			{
 				IN_HandleActiveInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX, "SECONDARYTRIGGER", triggerValue, qfalse);
 			}
-			else if (triggerValue < triggerReleasedThreshold)
+			else if (triggerValue < IN_TriggerReleasedThreshold())
 			{
 				IN_HandleInactiveInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX, "SECONDARYTRIGGER", triggerValue, qfalse);
 			}
@@ -1943,12 +1947,12 @@ void VR_ProcessInputActions( void )
 		}
 	}
 
-	//index finger click
-	XrActionStateBoolean indexState;
-	indexState = GetActionStateBoolean(indexLeftAction);
-	IN_VRTriggers(qfalse, indexState.currentState ? 1 : 0);
-	indexState = GetActionStateBoolean(indexRightAction);
-	IN_VRTriggers(qtrue, indexState.currentState ? 1 : 0);
+	//index finger trigger
+	XrActionStateFloat indexState;
+	indexState = GetActionStateFloat(indexLeftAction);
+	IN_VRTriggers(qfalse, indexState.currentState);
+	indexState = GetActionStateFloat(indexRightAction);
+	IN_VRTriggers(qtrue, indexState.currentState);
 
 	//thumbstick
 	XrActionStateVector2f moveJoystickState;

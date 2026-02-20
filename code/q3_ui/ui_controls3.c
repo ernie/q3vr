@@ -51,8 +51,9 @@ CONTROLS OPTIONS MENU
 #define ID_UTURN				136
 #define ID_CONTROLSCHEMA		137
 #define ID_SWITCHTHUMBSTICKS	138
+#define ID_TRIGGERSENSITIVITY	139
 
-#define ID_BACK					139
+#define ID_BACK					140
 
 #define	NUM_DIRECTIONMODE		2
 
@@ -76,6 +77,7 @@ typedef struct {
 	menulist_s			weaponselectormode;
 	menulist_s          controlschema;
 	menuradiobutton_s	switchthumbsticks;
+	menuslider_s		triggersensitivity;
 
 	menubitmap_s		back;
 } controls3_t;
@@ -96,6 +98,7 @@ static void Controls3_SetMenuItems( void ) {
 	s_controls3.weaponselectormode.curvalue	= (int)trap_Cvar_VariableValue( "vr_weaponSelectorMode" ) % 2;
 	s_controls3.controlschema.curvalue		= (int)trap_Cvar_VariableValue( "vr_controlSchema" ) % 3;
 	s_controls3.switchthumbsticks.curvalue	= trap_Cvar_VariableValue( "vr_switchThumbsticks" ) != 0;
+	s_controls3.triggersensitivity.curvalue	= trap_Cvar_VariableValue( "vr_triggerSensitivity" );
 }
 
 
@@ -234,6 +237,10 @@ static void Controls3_MenuEvent( void* ptr, int notification ) {
 				}
 			}
 			trap_Cvar_SetValue( "vr_switchThumbsticks", s_controls3.switchthumbsticks.curvalue );
+			break;
+
+		case ID_TRIGGERSENSITIVITY:
+			trap_Cvar_SetValue( "vr_triggerSensitivity", s_controls3.triggersensitivity.curvalue );
 			break;
 
 		case ID_BACK:
@@ -428,6 +435,17 @@ static void Controls3_MenuInit( void ) {
 	s_controls3.switchthumbsticks.generic.y	          = y;
 
 	y += BIGCHAR_HEIGHT+2;
+	s_controls3.triggersensitivity.generic.type       = MTYPE_SLIDER;
+	s_controls3.triggersensitivity.generic.x          = VR_X_POS;
+	s_controls3.triggersensitivity.generic.y          = y;
+	s_controls3.triggersensitivity.generic.flags      = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_controls3.triggersensitivity.generic.name       = "Trigger Sensitivity:";
+	s_controls3.triggersensitivity.generic.id         = ID_TRIGGERSENSITIVITY;
+	s_controls3.triggersensitivity.generic.callback   = Controls3_MenuEvent;
+	s_controls3.triggersensitivity.minvalue           = 0.1f;
+	s_controls3.triggersensitivity.maxvalue           = 0.9f;
+
+	y += BIGCHAR_HEIGHT+2;
 	s_controls3.weaponpitch.generic.type	     = MTYPE_SLIDER;
 	s_controls3.weaponpitch.generic.x			 = VR_X_POS;
 	s_controls3.weaponpitch.generic.y			 = y;
@@ -487,6 +505,7 @@ static void Controls3_MenuInit( void ) {
 	Menu_AddItem( &s_controls3.menu, &s_controls3.weaponselectormode );
 	Menu_AddItem( &s_controls3.menu, &s_controls3.controlschema );
 	Menu_AddItem( &s_controls3.menu, &s_controls3.switchthumbsticks );
+	Menu_AddItem( &s_controls3.menu, &s_controls3.triggersensitivity );
 
 	Menu_AddItem( &s_controls3.menu, &s_controls3.back );
 

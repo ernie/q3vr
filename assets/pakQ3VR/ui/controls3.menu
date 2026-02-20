@@ -165,9 +165,24 @@ itemDef {
       		name controls3
 		group grpControls3
       		type ITEM_TYPE_SLIDER
+		text "Trigger Sensitivity:"
+		cvarfloat "vr_triggerSensitivity" 0.1 0.1 0.9
+		rect 99 275 256 20
+      		textalign ITEM_ALIGN_RIGHT
+      		textalignx 128
+      		textaligny 20
+		textscale .333
+      		forecolor 1 1 1 1
+      		visible 1
+    		}
+
+	itemDef {
+      		name controls3
+		group grpControls3
+      		type ITEM_TYPE_SLIDER
 		text "Weapon Pitch:"
 		cvarfloat "vr_weaponPitch" 5 -25 5
-		rect 99 275 256 20
+		rect 99 300 256 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 128
       		textaligny 20
@@ -183,13 +198,13 @@ itemDef {
 		text "Weapon Wheel Mode:"
 		cvar "vr_weaponSelectorMode"
 		cvarFloatList { "VR Style / Pointing" 0 "Classic / Thumbstick" 1 }
-		rect 99 300 256 20
+		rect 99 325 256 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 128
       		textaligny 20
 		textscale .333
       		forecolor 1 1 1 1
-      		visible 1 
+      		visible 1
     		}
 
 	itemDef {
@@ -199,7 +214,7 @@ itemDef {
 		text "Control Schema:"
 		cvar "vr_controlSchema"
 		cvarFloatList { "Weapon Wheel on Grip" 0 "Weapon Wheel on Thumbstick" 1 "Weapon Wheel Disabled" 2 }
-		rect 99 325 256 20
+		rect 99 350 256 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 100
       		textaligny 20
@@ -215,7 +230,7 @@ itemDef {
       		type ITEM_TYPE_YESNO
 		text "Weapon Adjustment:"
 		cvar "vr_weaponAdjust"
-		rect 99 350 256 20
+		rect 99 375 256 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 128
       		textaligny 20
@@ -229,7 +244,7 @@ itemDef {
 	itemDef {
 		name message_weaponadjust
 		text "Hold both grips for 1s to enter weapon adjustment mode"
-		rect 99 375 256 20
+		rect 99 400 256 20
 		textalign ITEM_ALIGN_CENTER
 		textalignx 128
 		textaligny 14
