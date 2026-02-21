@@ -340,8 +340,7 @@ void VR_Renderer_EndFrame(VR_Engine* engine)
 		}
 	}
 
-	// Blit XR content to desktop window BEFORE releasing swapchains
-	// This must happen while XR swapchain images are still valid
+	// Blit XR content to desktop window BEFORE releasing swapchains.
 	re.SwapDesktopWindow();
 
 	// Release swapchains

@@ -120,6 +120,7 @@ int			com_frameTime;
 int			com_frameNumber;
 
 qboolean	com_errorEntered = qfalse;
+static qboolean	com_deferredFlush = qfalse;
 qboolean	com_fullyInitialized = qfalse;
 qboolean	com_gameRestarting = qfalse;
 qboolean	com_gameClientRestarting = qfalse;
@@ -317,10 +318,13 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 			CL_Init();
 		}
 		CL_Disconnect( qtrue );
-		CL_FlushMemory( );
-		VM_Forced_Unload_Done();
-		// make sure we can get at our local stuff
-		FS_PureServerSetLoadedPaks("", "");
+		// Defer CL_FlushMemory to after longjmp returns.
+		// CL_FlushMemory unloads the cgame DLL (Sys_UnloadDll), but cgame
+		// frames may still be on the call stack if the error was triggered
+		// during cgame rendering.  On Windows x64, longjmp uses RtlUnwindEx
+		// which walks stack unwind tables — if the DLL has been unloaded,
+		// those tables are gone and the unwind crashes.
+		com_deferredFlush = qtrue;
 		com_errorEntered = qfalse;
 		longjmp (abortframe, -1);
 	} else if (code == ERR_DROP) {
@@ -331,9 +335,8 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 			CL_Init();
 		}
 		CL_Disconnect( qtrue );
-		CL_FlushMemory( );
-		VM_Forced_Unload_Done();
-		FS_PureServerSetLoadedPaks("", "");
+		// Defer CL_FlushMemory — same DLL unwind safety issue as above.
+		com_deferredFlush = qtrue;
 		com_errorEntered = qfalse;
 		longjmp (abortframe, -1);
 	} else if ( code == ERR_NEED_CD ) {
@@ -344,15 +347,12 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 		}
 		if ( com_cl_running && com_cl_running->integer ) {
 			CL_Disconnect( qtrue );
-			CL_FlushMemory( );
-			VM_Forced_Unload_Done();
-			CL_CDDialog();
+			// Defer CL_FlushMemory — same DLL unwind safety issue as above.
+			com_deferredFlush = qtrue;
 		} else {
 			Com_Printf("Server didn't have CD\n" );
 			VM_Forced_Unload_Done();
 		}
-
-		FS_PureServerSetLoadedPaks("", "");
 
 		com_errorEntered = qfalse;
 		longjmp (abortframe, -1);
@@ -3096,6 +3096,20 @@ void Com_Frame( void ) {
   
 
 	if ( setjmp (abortframe) ) {
+		// Complete deferred cleanup that was postponed in Com_Error.
+		// CL_FlushMemory must run here (after longjmp) rather than in
+		// Com_Error (before longjmp) because it unloads the cgame DLL
+		// via Sys_UnloadDll.  If the error was triggered during cgame
+		// rendering, cgame stack frames are still on the call stack.
+		// On Windows x64, longjmp walks the stack's unwind tables via
+		// RtlUnwindEx — unloading the DLL removes those tables, crashing
+		// the unwind.  By doing the longjmp first, the stack is clean.
+		if ( com_deferredFlush ) {
+			CL_FlushMemory();
+			VM_Forced_Unload_Done();
+			FS_PureServerSetLoadedPaks("", "");
+			com_deferredFlush = qfalse;
+		}
 		return;			// an ERR_DROP was thrown
 	}
 

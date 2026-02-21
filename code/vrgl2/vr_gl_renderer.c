@@ -273,6 +273,7 @@ void VR_Renderer_EndFrame(VR_Engine* engine)
 
 	// Draw Virtual Screen if needed
 	const int use_virtual_screen = VR_Gameplay_ShouldRenderInVirtualScreen();
+
 	if (use_virtual_screen)
 	{
 		VR_DrawVirtualScreen(swapchains, swapchainColorIndex, fov, views, viewCount);
