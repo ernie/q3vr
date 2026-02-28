@@ -68,8 +68,8 @@ itemDef {
       		name comfort
 		group grpComfort
       		type ITEM_TYPE_YESNO
-		text "Snappy Movement (SP):"
-		cvar "vr_snappyMovement"
+		text "SP 6DoF Movement:"
+		cvar "vr_6dof"
 		rect 99 150 256 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 128
@@ -77,7 +77,22 @@ itemDef {
 		textscale .333
       		forecolor 1 1 1 1
       		visible 1
+		mouseEnter { show message_sixdof }
+		mouseExit { hide message_sixdof }
     		}
+
+	itemDef {
+		name message_sixdof
+		text "Physical head movement controls in-game movement (SP only)"
+		rect 99 395 256 20
+		textalign ITEM_ALIGN_CENTER
+		textalignx 128
+		textaligny 14
+		textscale .25
+		forecolor 1 .75 0 1
+		visible 0
+		decoration
+		}
 
 	itemDef {
       		name comfort

@@ -50,8 +50,7 @@ typedef struct {
 	qboolean in_menu;
 	qboolean local_server;
 	qboolean single_player;
-	qboolean snappy_movement;
-	qboolean use_fake_6dof;
+	qboolean use_6dof;
 	VR_FollowMode follow_mode;
 	qboolean weapon_select;
 	qboolean weapon_select_autoclose;
@@ -60,7 +59,7 @@ typedef struct {
 	qboolean no_crosshair;
 	qboolean vote_active;           // true when any yes/no dialog is visible (vote, team vote, TVD offer)
 
-	int realign; // used to realign the fake 6DoF playspace in a multiplayer game
+	int realign; // used to realign the 6DoF playspace in a multiplayer game
 	qboolean recenter_follow_camera; // flag to trigger camera recentering in follow mode
 	float snapTurnYaw; // yaw rotation to apply (like CL_SnapTurn), set by cgame
 
@@ -72,7 +71,7 @@ typedef struct {
 	vec3_t hmdposition;
 	vec3_t hmdposition_eye[2]; //per-eye positions from OpenXR (in HMD/VR space, not Quake space)
 	vrPosef_t eyePose[2]; // Raw OpenXR per-eye poses for direct view matrix construction
-	vec3_t hmdorigin; //used to recenter the mp fake 6DoF playspace
+	vec3_t hmdorigin; //used to recenter the mp 6DoF playspace
 	vec3_t hmdposition_delta;
 
 	vec3_t hmdorientation;

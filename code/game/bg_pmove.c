@@ -50,16 +50,16 @@ extern vr_clientinfo_t *vr;
 
 
 float PM_GetFrictionCoefficient( void ) {
-	if (vr != NULL && vr->clientNum == pm->ps->clientNum && !vr->use_fake_6dof && vr->snappy_movement) {
-		return 10.0f;
+	if (vr != NULL && vr->clientNum == pm->ps->clientNum && vr->use_6dof) {
+		return 10.0f; // Required for 6DoF: player must track HMD movement instantly
 	} else {
 		return 6.0f;
 	}
 }
 
 float PM_GetAccelerationCoefficient( void ) {
-	if (vr != NULL && vr->clientNum == pm->ps->clientNum && !vr->use_fake_6dof && vr->snappy_movement) {
-		return 1000.0f;
+	if (vr != NULL && vr->clientNum == pm->ps->clientNum && vr->use_6dof) {
+		return 1000.0f; // Required for 6DoF: player must track HMD movement instantly
 	} else {
 		return 10.0f;
 	}
@@ -1827,9 +1827,9 @@ void PM_UpdateViewAngles( playerState_t *ps, const usercmd_t *cmd ) {
 
 	// circularly clamp the angles with deltas
 	for (i=0 ; i<3 ; i++) {
-		if (vr != NULL && vr->clientNum == ps->clientNum && !vr->use_fake_6dof)
+		if (vr != NULL && vr->clientNum == ps->clientNum && vr->use_6dof)
 		{
-			//Client is the VR player in the singleplayer game
+			//Client is the VR player with 6DoF enabled
 			temp = cmd->angles[i] + (i == YAW ? ps->delta_angles[i] : 0);
 		}
 		else

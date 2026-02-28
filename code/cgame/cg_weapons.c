@@ -227,9 +227,9 @@ void CG_ConvertFromVR(vec3_t in, vec3_t offset, vec3_t out)
 	VectorSet(vrSpace, in[2], in[0], in[1] );
 
 	vec2_t r;
-	if (vr->use_fake_6dof)
+	if (!vr->use_6dof)
 	{
-		//We are running multiplayer, so make the appropriate adjustment to the view
+		//We are not using true 6DoF, so make the appropriate adjustment to the view
 		//angles as we send orientation to the server that includes the weapon angles
 		float deltaYaw = SHORT2ANGLE(cg.predictedPlayerState.delta_angles[YAW]);
 		if (cg.demoPlayback || (cg.snap->ps.pm_flags & PMF_FOLLOW))
@@ -269,9 +269,9 @@ void CG_ConvertFromVR(vec3_t in, vec3_t offset, vec3_t out)
 
 static void CG_CalculateVRPositionInWorld( vec3_t in_position,  vec3_t in_offset, vec3_t in_orientation, vec3_t origin, vec3_t angles )
 {
-	if (vr->use_fake_6dof)
+	if (!vr->use_6dof)
 	{
-		//Use absolute position for the faked 6DoF for multiplayer
+		//Use absolute position for faked 6DoF
 		vec3_t offset;
 		VectorSubtract(in_position, vr->hmdorigin, offset);
 		offset[1] = 0; // up/down is index 1 in this case
@@ -291,7 +291,7 @@ static void CG_CalculateVRPositionInWorld( vec3_t in_position,  vec3_t in_offset
 	}
 
 	VectorCopy(in_orientation, angles);
-	if ( vr->use_fake_6dof )
+	if ( !vr->use_6dof )
 	{
 		//Calculate the offhand angles from "first principles"
 		float deltaYaw = SHORT2ANGLE(cg.predictedPlayerState.delta_angles[YAW]);

@@ -129,6 +129,7 @@ extern cvar_t *vr_thumbstickDeadzone;
 extern cvar_t *vr_thumbstickFullDeflection;
 extern cvar_t *vr_weaponAdjust;
 extern cvar_t *vr_weaponSelectorMode;
+extern cvar_t *vr_6dof;
 
 qboolean alt_key_mode_active = qfalse;
 
@@ -1277,9 +1278,9 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
 			VectorClear(positional);
 
 			vec2_t joystick;
-			if ( vr.use_fake_6dof )
+			if ( !vr.use_6dof )
 			{
-				//multiplayer game
+				//not using true 6DoF
 				if (!vr_directionMode->integer)
 				{
 					//HMD Based
@@ -1318,8 +1319,7 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
 
 			// After rotation, ensure something close to maximum deflection is scaled to full
 			// deflection on the high axis. Otherwise, we end up running slower max speed when
-			// use_fake_6dof is true (in multiplayer, in other words), and this gets us fragged
-			// by our KBM-using friends.
+			// use_6dof is false, and this gets us fragged by our KBM-using friends.
 			float magnitude = sqrtf(joystick[0] * joystick[0] + joystick[1] * joystick[1]);
 			if (magnitude >= vr_thumbstickFullDeflection->value) {
 				// Input is at or near full deflection - scale so max component is 1.0
@@ -1890,6 +1890,11 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 
 void VR_ProcessInputActions( void )
 {
+	if (vr_6dof->modified) {
+		vr_6dof->modified = qfalse;
+		vr.use_6dof = vr.single_player && vr_6dof->integer;
+	}
+
 	vr.virtual_screen = VR_Gameplay_ShouldRenderInVirtualScreen();
 	vr.first_person_following = vr.virtual_screen && VR_IsFollowingInFirstPerson();
 	vr.in_menu = VR_IsInMenu();

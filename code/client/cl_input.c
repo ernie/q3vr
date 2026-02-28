@@ -613,7 +613,7 @@ void CL_FinishMove( usercmd_t *cmd ) {
 
 	//If we are running multiplayer, pass the angles from the weapon and adjust the move values accordingly,
 	// to "fake" a 3DoF weapon but keeping the movement correct (necessary with a remote non-vr server)
-	if ( vr.use_fake_6dof )
+	if ( !vr.use_6dof )
 	{
 		//Realign in playspace
 		if (--vr.realign == 0)

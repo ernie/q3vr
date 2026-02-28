@@ -4192,9 +4192,9 @@ void CG_DrawActive( void ) {
 		cg.refdef.vieworg[2] += (vr->hmdposition[1] + heightOffset) * worldscale;
 	}
 
-	if (vr->use_fake_6dof && !vr->virtual_screen)
+	if (!vr->use_6dof && !vr->virtual_screen)
 	{
-		//If running multiplayer, allow some amount of faked positional tracking
+		//If not using true 6DoF, allow some amount of faked positional tracking
 		if (cg.snap->ps.stats[STAT_HEALTH] > 0 &&
 		    //Don't use fake positional if following another player  - this is handled in  the
 		    //VR third person code
@@ -4274,9 +4274,9 @@ void CG_DrawActive( void ) {
 			hmd_yaw_x = 0.95f * hmd_yaw_x + 0.05f * cosf(DEG2RAD(vr->hmdorientation[YAW]));
 			hmd_yaw_y = 0.95f * hmd_yaw_y + 0.05f * sinf(DEG2RAD(vr->hmdorientation[YAW]));
 
-			if (vr->use_fake_6dof)
+			if (!vr->use_6dof)
 			{
-				// Multiplayer: use clientviewangles logic
+				// Fake 6DoF: use clientviewangles logic
 				float viewYaw = SHORT2ANGLE(cg.predictedPlayerState.delta_angles[YAW]) +
 				    (vr->clientviewangles[YAW] - vr->hmdorientation[YAW]);
 				angles[YAW] = viewYaw + RAD2DEG(atan2(hmd_yaw_y, hmd_yaw_x));
