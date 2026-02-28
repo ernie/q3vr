@@ -3956,7 +3956,7 @@ void CL_Init( void ) {
 	if(!CL_HTTP_Init()) {
 		Com_Printf("WARNING: couldn't initialize HTTP download support\n");
 	}
-	cl_tvDownload = Cvar_Get( "cl_tvDownload", "0", CVAR_ARCHIVE );
+	cl_tvDownload = Cvar_Get( "cl_tvDownload", "1", CVAR_ARCHIVE );
 	Cvar_SetDescription( cl_tvDownload, "Download TV demo recordings from server via HTTP at end of match.\n 0 - off\n 1 - prompt (auto-decline)\n 2 - prompt (auto-accept)" );
 
 	cl_tvdOffer = Cvar_Get( "cl_tvdOffer", "", CVAR_ROM );
