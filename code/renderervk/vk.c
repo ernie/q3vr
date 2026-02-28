@@ -6952,10 +6952,14 @@ void vk_update_mvp( const float *m ) {
 			// Portal/mirror view: use mirror projections with oblique near-plane clipping
 			// Must check BEFORE virtual_screen so portals/mirrors render correctly
 			if ( vr.virtual_screen || vr.weapon_zoomed ) {
-				// Virtual screen renders mono - use mono modelview with oblique projection
-				// backEnd.viewParms.projectionMatrix already has oblique clipping from R_SetupProjection
+				// Virtual screen renders mono - use mono modelview with oblique projection.
+				// backEnd.viewParms.projectionMatrix already has oblique clipping from R_SetupProjectionZ.
+				// Apply the same non-square framebuffer correction as the normal virtual_screen path.
 				float mvp[16];
-				myGlMultMatrix( vk_world.modelview_transform, backEnd.viewParms.projectionMatrix, mvp );
+				float proj[16];
+				Com_Memcpy( proj, backEnd.viewParms.projectionMatrix, sizeof(proj) );
+				proj[5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
+				myGlMultMatrix( vk_world.modelview_transform, proj, mvp );
 				Com_Memcpy( &push_constants[0], mvp, sizeof(float) * 16 );
 				Com_Memcpy( &push_constants[16], mvp, sizeof(float) * 16 );
 			} else {
@@ -6964,23 +6968,35 @@ void vk_update_mvp( const float *m ) {
 				myGlMultMatrix( backEnd.or.eyeViewMatrix[1], tr.vrParms.mirrorProjectionEye[1], &push_constants[16] );
 			}
 		} else if ( vr.virtual_screen || vr.weapon_zoomed ) {
-			// Virtual screen or weapon zoom mode
+			// Virtual screen or weapon zoom mode: mono rendering
 			float mvp[16];
+			float proj[16];
+			Com_Memcpy( proj, tr.vrParms.projection, sizeof(proj) );
 
-			// Menu 3D models (RDF_NOWORLDMODEL) need fixed 90° FOV projection
-			// to match Q3A's original 640x480 screen expectations
 			if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
-				const float *p = tr.vrParms.menuProjection;
-				float proj[16];
-				Com_Memcpy( proj, p, 64 );
-				proj[5] = -p[5];  // Invert Y for Vulkan coordinate system
-				myGlMultMatrix( vk_world.modelview_transform, proj, mvp );
+				// UI model scenes (player preview, 3D logo, etc.): build projection
+				// from the refdef's FOV so the UI code's framing is respected.
+				// Keep Z components from VR projection (reversed depth, Vulkan conventions).
+				//
+				// The virtual screen does a 4:3 center crop of the roughly-square
+				// framebuffer, but the UI code computed FOV for the full framebuffer.
+				// Scale the projection wider by the crop factor so models are framed
+				// correctly within the visible 4:3 region.
+				float cropHeight = (float)(glConfig.vidWidth * 3) / 4.0f;
+				float cropFactor = (float)glConfig.vidHeight / cropHeight;
+
+				proj[0] = (1.0f / tan( DEG2RAD( backEnd.viewParms.fovX ) * 0.5f )) / cropFactor;
+				proj[5] = (-1.0f / tan( DEG2RAD( backEnd.viewParms.fovY ) * 0.5f )) / cropFactor;
+				proj[8] = 0.0f;  // Symmetric FOV (no asymmetric offset)
+				proj[9] = 0.0f;
 			} else {
-				// Normal virtual screen content: use main VR projection (asymmetric headset FOV)
-				// Projection already has Vulkan conventions from vr_vk_renderer.c
-				myGlMultMatrix( vk_world.modelview_transform, tr.vrParms.projection, mvp );
+				// The virtual screen chain (4:3 crop → blit → 4:3 mesh) handles most
+				// aspect correction, but a slight residual remains when the framebuffer
+				// isn't exactly square. Compensate for the non-square framebuffer.
+				proj[5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
 			}
 
+			myGlMultMatrix( vk_world.modelview_transform, proj, mvp );
 			Com_Memcpy( &push_constants[0], mvp, sizeof(float) * 16 );
 			Com_Memcpy( &push_constants[16], mvp, sizeof(float) * 16 );
 		} else {

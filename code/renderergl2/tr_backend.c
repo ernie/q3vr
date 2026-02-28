@@ -951,6 +951,23 @@ const void	*RB_DrawSurfs( const void *data ) {
 	backEnd.refdef = cmd->refdef;
 	backEnd.viewParms = cmd->viewParms;
 
+	// UI model scenes (player preview, 3D logo, etc.): rebuild menu projection
+	// from the refdef's FOV so the UI code's framing is respected.
+	// Matches vk_update_mvp's RDF_NOWORLDMODEL path. Keep Z components from
+	// the initial setup in RE_SetVRHeadsetParms (standard depth, OpenGL conventions).
+	if ((backEnd.refdef.rdflags & RDF_NOWORLDMODEL) && vr.virtual_screen)
+	{
+		float cropHeight = (float)(glConfig.vidWidth * 3) / 4.0f;
+		float cropFactor = (float)glConfig.vidHeight / cropHeight;
+
+		tr.vrParms.menuProjection[0] = (1.0f / tan(DEG2RAD(backEnd.viewParms.fovX) * 0.5f)) / cropFactor;
+		tr.vrParms.menuProjection[5] = (1.0f / tan(DEG2RAD(backEnd.viewParms.fovY) * 0.5f)) / cropFactor;
+		tr.vrParms.menuProjection[8] = 0.0f;
+		tr.vrParms.menuProjection[9] = 0.0f;
+
+		GLSL_UpdateMenuProjection();
+	}
+
 	isShadowView = !!(backEnd.viewParms.flags & VPF_DEPTHSHADOW);
 
 	// clear the z buffer, set the modelview, etc

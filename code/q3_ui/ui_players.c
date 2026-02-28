@@ -707,13 +707,6 @@ float	UI_MachinegunSpinAngle( playerInfo_t *pi ) {
 	return angle;
 }
 
-static void UI_ScaleModel(refEntity_t *ent)
-{
-	VectorScale(ent->axis[1], 1.6f, ent->axis[1]);
-	VectorScale(ent->axis[2], 1.4f, ent->axis[2]);
-	ent->nonNormalizedAxes = qtrue;
-}
-
 /*
 ===============
 UI_DrawPlayer
@@ -775,8 +768,8 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 
 	// calculate distance so the player nearly fills the box
 	len = 0.7 * ( maxs[2] - mins[2] );
-	origin[0] = len / tan( DEG2RAD(refdef.fov_x) * 0.5 ) - 15;
-	origin[1] = 0.5 * ( mins[1] + maxs[1] ) + 5;
+	origin[0] = len / tan( DEG2RAD(refdef.fov_x) * 0.5 );
+	origin[1] = 0.5 * ( mins[1] + maxs[1] );
 	origin[2] = -0.5 * ( mins[2] + maxs[2] );
 
 	refdef.time = dp_realtime;
@@ -803,8 +796,6 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 	VectorCopy( origin, legs.lightingOrigin );
 	legs.renderfx = renderfx;
 	VectorCopy (legs.origin, legs.oldorigin);
-
-	UI_ScaleModel(&legs);
 
 	trap_R_AddRefEntityToScene( &legs );
 

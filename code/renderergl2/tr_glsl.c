@@ -1869,8 +1869,12 @@ void GLSL_PrepareUniformBuffers(void)
   else if (vr.virtual_screen)
   {
     // Virtual screen: symmetric projection (content on virtual screen quad)
+    // Compensate for non-square framebuffer (matches vk_update_mvp virtual_screen path)
+    float proj[16];
+    Com_Memcpy(proj, tr.vrParms.projection, sizeof(proj));
+    proj[5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
     GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[VR_PROJECTION],
-            tr.vrParms.projection, tr.vrParms.projection);
+            proj, proj);
   }
   else
   {

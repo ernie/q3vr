@@ -773,9 +773,9 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 
 	// calculate distance so the player nearly fills the box
 	len = 0.7 * ( maxs[2] - mins[2] );
-	origin[0] = (len / tan( DEG2RAD(refdef.fov_x) * 0.5 )) / 1.75f;
+	origin[0] = len / tan( DEG2RAD(refdef.fov_x) * 0.5 );
 	origin[1] = 0.5 * ( mins[1] + maxs[1] );
-	origin[2] = -0.5 * ( mins[2] + maxs[2] ) -10.0f;
+	origin[2] = -0.5 * ( mins[2] + maxs[2] );
 
 	refdef.time = dp_realtime;
 

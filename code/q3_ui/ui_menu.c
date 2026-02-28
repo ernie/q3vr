@@ -198,7 +198,7 @@ static void Main_MenuDraw( void ) {
 
 	origin[0] = 300;
 	origin[1] = 0;
-	origin[2] = -128;
+	origin[2] = -32;
 
 	trap_R_ClearScene();
 
@@ -206,14 +206,9 @@ static void Main_MenuDraw( void ) {
 
 	memset( &ent, 0, sizeof(ent) );
 
-#if 0
 	adjust = 5.0 * sin( (float)uis.realtime / 5000 );
-#endif
-	VectorSet( angles, 5.0 * sin( (float)uis.realtime / 3000 ), 180 + 5.0 * sin( (float)uis.realtime / 4000 ), 0 );
+	VectorSet( angles, 0, 180 + adjust, 0 );
 	AnglesToAxis( angles, ent.axis );
-	VectorScale(ent.axis[1], 1.6f, ent.axis[1]);
-	VectorScale(ent.axis[2], 6.0f, ent.axis[2]);
-	ent.nonNormalizedAxes = qtrue;
 	ent.hModel = s_main.bannerModel;
 	VectorCopy( origin, ent.origin );
 	VectorCopy( origin, ent.lightingOrigin );
