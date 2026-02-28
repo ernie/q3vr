@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-msvc:
+    name: Windows MSVC
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          cache: true
+          stripdown: true
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022"
+          cmake --build build --config Release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-msvc
+          path: |
+            build/Release/**/*.dll
+            build/Release/**/q3vr.exe
+            build/Release/**/*.pk3
+          if-no-files-found: error
+          retention-days: 5
+
+  windows-mingw:
+    name: Windows MinGW
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          cache: true
+          stripdown: true
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-mingw
+          path: |
+            build/Release/**/*.dll
+            build/Release/**/q3vr.exe
+            build/Release/**/*.pk3
+          if-no-files-found: error
+          retention-days: 5
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libxcb-glx0-dev libgl-dev libxxf86vm-dev
+
+      - name: Install Vulkan SDK
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          cache: true
+          stripdown: true
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            build/Release/**/*.so
+            build/Release/**/q3vr
+            build/Release/**/*.pk3
+          if-no-files-found: error
+          retention-days: 5
+
+  release:
+    needs: [windows-msvc, windows-mingw, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create archives
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          7z a -r q3vr-${VERSION}-windows-msvc.zip    ./windows-msvc/*
+          7z a -r q3vr-${VERSION}-windows-mingw.zip   ./windows-mingw/*
+          7z a -r q3vr-${VERSION}-linux.zip            ./linux/*
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.zip
+          generate_release_notes: true

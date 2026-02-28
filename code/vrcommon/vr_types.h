@@ -11,7 +11,11 @@
 #define XR_USE_PLATFORM_ANDROID
 #else
 #include <X11/Xlib.h>
+#ifndef USE_VULKAN
+// GLX types needed for XrGraphicsBindingOpenGLXlibKHR in openxr_platform.h
+#include <GL/glx.h>
 #define XR_USE_PLATFORM_XLIB
+#endif
 #endif
 
 // Graphics API defines for OpenXR
