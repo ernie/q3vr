@@ -518,6 +518,7 @@ void CG_LaserSight( vec3_t start, vec3_t end, byte colour[4], float width ) {
 	cgs.media.railCoreShader = trap_R_RegisterShader( "railCore" );
 
   re.reType = RT_LASERSIGHT;
+  re.renderfx = RF_FIRST_PERSON;
   re.customShader = cgs.media.railCoreShader;
 
   VectorCopy( start, re.origin );
@@ -2500,6 +2501,7 @@ void CG_DrawWeaponSelector( void )
 		VectorScale( blob.axis[1], scale - 0.01f, blob.axis[1] );
 		VectorScale( blob.axis[2], scale - 0.01f, blob.axis[2] );
 		blob.nonNormalizedAxes = qtrue;
+		blob.renderfx = RF_FIRST_PERSON;
 		blob.hModel = cgs.media.smallSphereModel;
 		trap_R_AddRefEntityToScene( &blob );
 
@@ -2598,6 +2600,7 @@ void CG_DrawWeaponSelector( void )
 				VectorCopy( iconOrigin, sprite.origin );
 				sprite.origin[2] += 2.5f + (0.5f * sinf(DEG2RAD(AngleNormalize360((cg.time - cg.weaponSelectorTime)/4))));
 				sprite.reType = RT_SPRITE;
+				sprite.renderfx = RF_FIRST_PERSON;
 				sprite.customShader = cgs.media.friendShader;
 				sprite.radius = 0.5f;
 				sprite.shaderRGBA.rgba[0] = 255;
@@ -2651,7 +2654,7 @@ void CG_DrawWeaponSelector( void )
 				}
 
 				ent.hModel = cg_weapons[weaponId].weaponModel;
-				ent.renderfx = RF_OVERBRIGHT;
+				ent.renderfx = RF_OVERBRIGHT | RF_FIRST_PERSON;
 				if (!selectable)
 				{
 					ent.customShader = cgs.media.invisShader;
@@ -2663,7 +2666,7 @@ void CG_DrawWeaponSelector( void )
 				refEntity_t barrel;
 				memset(&barrel, 0, sizeof(barrel));
 				barrel.hModel = cg_weapons[weaponId].barrelModel;
-				barrel.renderfx = RF_OVERBRIGHT;
+				barrel.renderfx = RF_OVERBRIGHT | RF_FIRST_PERSON;
 				vec3_t barrelAngles;
 				VectorClear(barrelAngles);
 				barrelAngles[ROLL] = AngleNormalize360((cg.time - cg.weaponSelectorTime) * 0.9f);
@@ -2686,6 +2689,7 @@ void CG_DrawWeaponSelector( void )
 
 				VectorCopy(iconOrigin, sprite.origin);
 				sprite.reType = RT_SPRITE;
+				sprite.renderfx = RF_FIRST_PERSON;
 				sprite.customShader = cg_weapons[weaponId].weaponIcon;
 				sprite.radius = sRadius * 0.9f * (cg.weaponSelectorSelection == weaponId ? 1.1f : 1.0);
 				sprite.shaderRGBA.rgba[0] = 255;
@@ -2698,6 +2702,7 @@ void CG_DrawWeaponSelector( void )
 				memset( &sprite, 0, sizeof( sprite ) );
 				VectorCopy( iconBackground, sprite.origin );
 				sprite.reType = RT_SPRITE;
+				sprite.renderfx = RF_FIRST_PERSON;
 				sprite.customShader = cgs.media.selectShader;
 				sprite.radius = sRadius * (cg.weaponSelectorSelection == weaponId ? 1.1f : 1.0);
 				sprite.shaderRGBA.rgba[0] = 255;
@@ -2711,6 +2716,7 @@ void CG_DrawWeaponSelector( void )
 					memset(&sprite, 0, sizeof(sprite));
 					VectorCopy(iconForeground, sprite.origin);
 					sprite.reType = RT_SPRITE;
+					sprite.renderfx = RF_FIRST_PERSON;
 					sprite.customShader = cgs.media.noammoShader;
 					sprite.radius = sRadius;
 					sprite.shaderRGBA.rgba[0] = 255;
