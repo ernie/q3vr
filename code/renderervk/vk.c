@@ -6874,10 +6874,9 @@ void vk_update_mvp( const float *m ) {
 		float asymmetryOffsetX[2] = { 0.0f, 0.0f };
 		float asymmetryOffsetY = 0.0f;
 		qboolean isHudMode1 = ( backEnd.isDrawingHUD && hudStatus == 1 );
-		if ( tr.vrParms.valid && !isVirtualScreen && !isHudMode1 ) {
-			float scale = vr.weapon_zoomed ? 2.0f : 1.0f;
-			asymmetryOffsetX[0] = tr.vrParms.projectionEye[0][8] * scale;
-			asymmetryOffsetX[1] = tr.vrParms.projectionEye[1][8] * scale;
+		if ( tr.vrParms.valid && !isVirtualScreen && !isHudMode1 && !vr.weapon_zoomed ) {
+			asymmetryOffsetX[0] = tr.vrParms.projectionEye[0][8];
+			asymmetryOffsetX[1] = tr.vrParms.projectionEye[1][8];
 			asymmetryOffsetY = tr.vrParms.projectionEye[0][9];
 		}
 
@@ -6885,7 +6884,7 @@ void vk_update_mvp( const float *m ) {
 		// Uses height-fraction for resolution/aspect-ratio independence (prevents convergence issues on ultrawide)
 		// Inverse relationship (0.05 / (depth+1)) matches mode 1's linear distance scaling
 		float depthOffset = 0.0f;
-		if ( backEnd.isDrawingHUD && hudStatus == 2 && !vr.first_person_following ) {
+		if ( backEnd.isDrawingHUD && hudStatus == 2 && !vr.first_person_following && !vr.weapon_zoomed ) {
 			float hudDepth = vr_currentHudDepth ? vr_currentHudDepth->value : 3.0f;
 			float heightFraction = 0.05f / (hudDepth + 1.0f);
 			depthOffset = heightFraction * (float)vk.renderHeight * mvp0;
@@ -6931,7 +6930,7 @@ void vk_update_mvp( const float *m ) {
 		for ( int eye = 0; eye < 2; eye++ ) {
 			myGlMultMatrix( m, tr.vrParms.projectionEye[eye], &push_constants[eye * 16] );
 		}
-	} else if ( tr.vrParms.valid && !backEnd.projection2D && !vr.weapon_zoomed ) {
+	} else if ( tr.vrParms.valid && !backEnd.projection2D ) {
 		// VR 3D rendering: Use per-eye view matrices from backend orientation
 		// backEnd.or.eyeViewMatrix contains the combined entity-to-eye transform
 		// (built by R_RotateForViewer for world, R_RotateForEntity for entities)
@@ -6952,7 +6951,7 @@ void vk_update_mvp( const float *m ) {
 			// Portal/mirror view: use mirror projections with oblique near-plane clipping
 			// Must check BEFORE virtual_screen so portals/mirrors render correctly
 			if ( vr.virtual_screen || vr.weapon_zoomed ) {
-				// Virtual screen renders mono - use mono modelview with oblique projection.
+				// Virtual screen / weapon zoom renders mono - use mono modelview with oblique projection.
 				// backEnd.viewParms.projectionMatrix already has oblique clipping from R_SetupProjectionZ.
 				// Apply the same non-square framebuffer correction as the normal virtual_screen path.
 				float mvp[16];
@@ -6968,7 +6967,7 @@ void vk_update_mvp( const float *m ) {
 				myGlMultMatrix( backEnd.or.eyeViewMatrix[1], tr.vrParms.mirrorProjectionEye[1], &push_constants[16] );
 			}
 		} else if ( vr.virtual_screen || vr.weapon_zoomed ) {
-			// Virtual screen or weapon zoom mode: mono rendering
+			// Virtual screen / weapon zoom: cyclopean mono rendering
 			float mvp[16];
 			float proj[16];
 			Com_Memcpy( proj, tr.vrParms.projection, sizeof(proj) );
@@ -7006,34 +7005,10 @@ void vk_update_mvp( const float *m ) {
 		}
 	} else {
 		// Fallback: mono rendering (same matrix for both eyes)
-		// For weapon zoom, apply per-eye asymmetry for correct aiming per-eye,
-		// then compensate with opposite shift for correct stereo convergence
-		if ( vr.weapon_zoomed && tr.vrParms.valid ) {
-			float mvp[16];
-			float proj[16];
-			float scale = 2.0f;  // 2x scale to account for full IPD (each eye shifts half from center)
-
-			// Left eye
-			Com_Memcpy( proj, backEnd.viewParms.projectionMatrix, sizeof(proj) );
-			proj[8] = tr.vrParms.projectionEye[0][8] * scale;  // Apply scaled left eye asymmetry
-			myGlMultMatrix( vk_world.modelview_transform, proj, mvp );
-			// Compensate: shift image toward optical center (subtract scaled asymmetry)
-			mvp[12] -= tr.vrParms.projectionEye[0][8] * scale;
-			Com_Memcpy( &push_constants[0], mvp, sizeof(float) * 16 );
-
-			// Right eye
-			Com_Memcpy( proj, backEnd.viewParms.projectionMatrix, sizeof(proj) );
-			proj[8] = tr.vrParms.projectionEye[1][8] * scale;  // Apply scaled right eye asymmetry
-			myGlMultMatrix( vk_world.modelview_transform, proj, mvp );
-			// Compensate: shift image toward optical center (subtract scaled asymmetry)
-			mvp[12] -= tr.vrParms.projectionEye[1][8] * scale;
-			Com_Memcpy( &push_constants[16], mvp, sizeof(float) * 16 );
-		} else {
-			float mvp[16];
-			myGlMultMatrix( vk_world.modelview_transform, backEnd.viewParms.projectionMatrix, mvp );
-			Com_Memcpy( &push_constants[0], mvp, sizeof(float) * 16 );
-			Com_Memcpy( &push_constants[16], mvp, sizeof(float) * 16 );
-		}
+		float mvp[16];
+		myGlMultMatrix( vk_world.modelview_transform, backEnd.viewParms.projectionMatrix, mvp );
+		Com_Memcpy( &push_constants[0], mvp, sizeof(float) * 16 );
+		Com_Memcpy( &push_constants[16], mvp, sizeof(float) * 16 );
 	}
 
 	qvkCmdPushConstants( vk.cmd->command_buffer, vk.pipeline_layout,

@@ -225,16 +225,22 @@ static void GLSL_ViewMatricesUniformBuffer(const float eyeView[2][16], const flo
         break;
       case STEREO_ORTHO_PROJECTION:
         {
-          // Stereo parallax using height-fraction for resolution/aspect-ratio independence
-          // Inverse relationship (0.05 / (depth+1)) matches mode 1's linear distance scaling
-          float heightFraction = 0.05f / (vr_currentHudDepth->value + 1.0f);
-          float depthOffset = heightFraction * glConfig.vidHeight;
-          vec3_t translate;
-          VectorSet(translate, depthOffset, 0, 0);
-          Mat4Translation( translate, viewMatrices );
+          if (vr.weapon_zoomed) {
+            // Weapon zoom: no stereo parallax on HUD — must match the mono 3D world
+            Mat4Identity( viewMatrices );
+            Mat4Identity( viewMatrices + 16 );
+          } else {
+            // Stereo parallax using height-fraction for resolution/aspect-ratio independence
+            // Inverse relationship (0.05 / (depth+1)) matches mode 1's linear distance scaling
+            float heightFraction = 0.05f / (vr_currentHudDepth->value + 1.0f);
+            float depthOffset = heightFraction * glConfig.vidHeight;
+            vec3_t translate;
+            VectorSet(translate, depthOffset, 0, 0);
+            Mat4Translation( translate, viewMatrices );
 
-          VectorSet(translate, -depthOffset, 0, 0);
-          Mat4Translation( translate, viewMatrices + 16 );
+            VectorSet(translate, -depthOffset, 0, 0);
+            Mat4Translation( translate, viewMatrices + 16 );
+          }
         }
         break;
       case MIRROR_VR_PROJECTION:
@@ -1836,12 +1842,14 @@ void GLSL_PrepareUniformBuffers(void)
     Com_Memcpy(orthoEye1, scaledOrtho, sizeof(orthoEye1));
 
     // Asymmetry compensation (X differs per eye, Y same for both)
-    float scale = vr.weapon_zoomed ? 2.0f : 1.0f;
-    orthoEye0[12] -= tr.vrParms.projectionEye[0][8] * scale;
-    orthoEye1[12] -= tr.vrParms.projectionEye[1][8] * scale;
-    float yAsymmetry = tr.vrParms.projectionEye[0][9] * 0.5f;
-    orthoEye0[13] -= yAsymmetry;
-    orthoEye1[13] -= yAsymmetry;
+    // Skip during weapon zoom: cyclopean rendering uses symmetric projection + averaged compositor FOV
+    if (!vr.weapon_zoomed) {
+      orthoEye0[12] -= tr.vrParms.projectionEye[0][8];
+      orthoEye1[12] -= tr.vrParms.projectionEye[1][8];
+      float yAsymmetry = tr.vrParms.projectionEye[0][9] * 0.5f;
+      orthoEye0[13] -= yAsymmetry;
+      orthoEye1[13] -= yAsymmetry;
+    }
 
     GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[STEREO_ORTHO_PROJECTION],
             orthoEye0, orthoEye1);
@@ -1853,20 +1861,9 @@ void GLSL_PrepareUniformBuffers(void)
           hudOrthoProjectionMatrix, hudOrthoProjectionMatrix);
 
   // VR_PROJECTION - 3D world rendering
-  if (vr.weapon_zoomed)
-  {
-    // Weapon zoom: symmetric projection with 2x asymmetry for mono content convergence
-    float projEye0[16], projEye1[16];
-    Com_Memcpy(projEye0, tr.vrParms.projection, sizeof(projEye0));
-    Com_Memcpy(projEye1, tr.vrParms.projection, sizeof(projEye1));
-
-    projEye0[8] = tr.vrParms.projectionEye[0][8] * 2.0f;
-    projEye1[8] = tr.vrParms.projectionEye[1][8] * 2.0f;
-
-    GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[VR_PROJECTION],
-            projEye0, projEye1);
-  }
-  else if (vr.virtual_screen)
+  // Weapon zoom uses cyclopean approach: symmetric projection from center viewpoint,
+  // both eyes get identical content, compositor receives averaged FOV for both eyes
+  if (vr.virtual_screen || vr.weapon_zoomed)
   {
     // Virtual screen: symmetric projection (content on virtual screen quad)
     // Compensate for non-square framebuffer (matches vk_update_mvp virtual_screen path)
