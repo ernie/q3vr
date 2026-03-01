@@ -178,14 +178,6 @@ if(DEFINED PRIMARY_CLIENT)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3"
         "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/missionpack/"
-        # Copy Trinity pak (baseq3)
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak8t.pk3"
-        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/"
-        # Copy Trinity pak (missionpack)
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak3t.pk3"
-        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/missionpack/"
         # Copy point release files
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/assets/third_party/point_release_v1.32"
@@ -205,12 +197,6 @@ install(FILES "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3" DESTINATION
     $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
     COMPONENT game_engine)
 install(FILES "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3" DESTINATION
-    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/missionpack/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-    COMPONENT game_engine)
-install(FILES "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak8t.pk3" DESTINATION
-    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-    COMPONENT game_engine)
-install(FILES "${CMAKE_SOURCE_DIR}/assets/third_party/trinity/pak3t.pk3" DESTINATION
     $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/missionpack/,${CMAKE_BINARY_DIR}/$<CONFIG>>
     COMPONENT game_engine)
 install(

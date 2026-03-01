@@ -103,8 +103,26 @@ jobs:
     needs: [windows-msvc, windows-mingw, linux]
     runs-on: ubuntu-latest
     steps:
-      - name: Download artifacts
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
+
+      - name: Download Trinity assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p trinity-assets
+          gh release download --repo ernie/trinity --pattern 'pak8t.pk3' --dir trinity-assets
+          gh release download --repo ernie/trinity --pattern 'pak3t.pk3' --dir trinity-assets
+
+      - name: Bundle Trinity assets
+        run: |
+          for dir in windows-msvc windows-mingw linux; do
+            if [ -d "$dir" ]; then
+              echo "Bundling Trinity assets into $dir/"
+              find "$dir" -type d -name baseq3 -exec cp trinity-assets/pak8t.pk3 {} \;
+              find "$dir" -type d -name missionpack -exec cp trinity-assets/pak3t.pk3 {} \;
+            fi
+          done
 
       - name: Create archives
         run: |
