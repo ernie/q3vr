@@ -1042,7 +1042,7 @@ UI_ParseAnimationFile
 ======================
 */
 static qboolean UI_ParseAnimationFile( const char *filename, playerInfo_t *pi ) {
-	char		*text_p, *prev;
+	const char	*text_p, *prev;
 	int			len;
 	int			i;
 	char		*token;

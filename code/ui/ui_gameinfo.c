@@ -48,7 +48,7 @@ static int		ui_numSpecialSinglePlayerArenas;
 UI_ParseInfos
 ===============
 */
-int UI_ParseInfos( char *buf, int max, char *infos[] ) {
+int UI_ParseInfos( const char *buf, int max, char *infos[] ) {
 	char	*token;
 	int		count;
 	char	key[MAX_TOKEN_CHARS];

@@ -164,7 +164,7 @@ float trap_Cvar_VariableValue( const char *var_name ) {
 G_ParseInfos
 ===============
 */
-int G_ParseInfos( char *buf, int max, char *infos[] ) {
+int G_ParseInfos( const char *buf, int max, char *infos[] ) {
 	char	*token;
 	int		count;
 	char	key[MAX_TOKEN_CHARS];

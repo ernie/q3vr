@@ -1560,7 +1560,8 @@ Load the console history from cl_consoleHistory
 */
 void CL_LoadConsoleHistory( void )
 {
-	char					*token, *text_p;
+	char					*token;
+	const char				*text_p;
 	int						i, numChars, numLines = 0;
 	fileHandle_t	f;
 

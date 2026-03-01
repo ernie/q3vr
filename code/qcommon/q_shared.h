@@ -789,17 +789,17 @@ int		Com_Split( char *in, char **out, int outsz, int delim );
 
 void	COM_BeginParseSession( const char *name );
 int		COM_GetCurrentParseLine( void );
-char	*COM_Parse( char **data_p );
-char	*COM_ParseExt( char **data_p, qboolean allowLineBreak );
-char	*COM_ParseComplex( char **data_p, qboolean allowLineBreaks );
+char	*COM_Parse( const char **data_p );
+char	*COM_ParseExt( const char **data_p, qboolean allowLineBreak );
+char	*COM_ParseComplex( const char **data_p, qboolean allowLineBreaks );
 int		COM_Compress( char *data_p );
-void	COM_ParseError( char *format, ... ) Q_PRINTF_FUNC(1, 2);
-void	COM_ParseWarning( char *format, ... ) Q_PRINTF_FUNC(1, 2);
+void	COM_ParseError( const char *format, ... ) Q_PRINTF_FUNC(1, 2);
+void	COM_ParseWarning( const char *format, ... ) Q_PRINTF_FUNC(1, 2);
 //int		COM_ParseInfos( char *buf, int max, char infos[][MAX_INFO_STRING] );
-void	SkipRestOfLine( char **data );
-void	SkipTillSeparators( char **data );
+void	SkipRestOfLine( const char **data );
+void	SkipTillSeparators( const char **data );
 void	Com_InitSeparators( void );
-char	*COM_ParseSep( char **data_p, qboolean allowLineBreaks );
+char	*COM_ParseSep( const char **data_p, qboolean allowLineBreaks );
 
 // Quake3e enhanced parsing - token types for COM_ParseComplex
 typedef enum {
@@ -845,14 +845,14 @@ typedef struct pc_token_s
 
 // data is an in/out parm, returns a parsed out token
 
-void	COM_MatchToken( char**buf_p, char *match );
+void	COM_MatchToken( const char **buf_p, const char *match );
 
-qboolean SkipBracedSection (char **program, int depth);
-void SkipRestOfLine ( char **data );
+qboolean SkipBracedSection (const char **program, int depth);
+void SkipRestOfLine ( const char **data );
 
-void Parse1DMatrix (char **buf_p, int x, float *m);
-void Parse2DMatrix (char **buf_p, int y, int x, float *m);
-void Parse3DMatrix (char **buf_p, int z, int y, int x, float *m);
+void Parse1DMatrix (const char **buf_p, int x, float *m);
+void Parse2DMatrix (const char **buf_p, int y, int x, float *m);
+void Parse3DMatrix (const char **buf_p, int z, int y, int x, float *m);
 int Com_HexStrToInt( const char *str );
 
 int QDECL Com_sprintf (char *dest, int size, const char *fmt, ...) Q_PRINTF_FUNC(3, 4);

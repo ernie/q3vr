@@ -120,7 +120,7 @@ GametypeBits
 */
 static int GametypeBits( char *string ) {
 	int		bits;
-	char	*p;
+	const char	*p;
 	char	*token;
 
 	bits = 0;

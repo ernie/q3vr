@@ -3462,7 +3462,7 @@ static void UI_Update(const char *name) {
 	}
 }
 
-static void UI_RunMenuScript(char **args) {
+static void UI_RunMenuScript(const char **args) {
 	const char *command;
 	char buff[1024];
 
@@ -4835,7 +4835,7 @@ static void UI_FeederSelection(float feederID, int index) {
 	}
 }
 
-static qboolean Team_Parse(char **p) {
+static qboolean Team_Parse(const char **p) {
   char *token;
   const char *tempStr;
 	int i;
@@ -4897,7 +4897,7 @@ static qboolean Team_Parse(char **p) {
   return qfalse;
 }
 
-static qboolean Character_Parse(char **p) {
+static qboolean Character_Parse(const char **p) {
   char *token;
   const char *tempStr;
 
@@ -4955,7 +4955,7 @@ static qboolean Character_Parse(char **p) {
 }
 
 
-static qboolean Alias_Parse(char **p) {
+static qboolean Alias_Parse(const char **p) {
   char *token;
 
   token = COM_ParseExt(p, qtrue);
@@ -5007,7 +5007,7 @@ static qboolean Alias_Parse(char **p) {
 // 2 - character parsing
 static void UI_ParseTeamInfo(const char *teamFile) {
 	char	*token;
-  char *p;
+  const char *p;
   char *buff = NULL;
   //static int mode = 0; TTimo: unused
 
@@ -5050,7 +5050,7 @@ static void UI_ParseTeamInfo(const char *teamFile) {
 }
 
 
-static qboolean GameType_Parse(char **p, qboolean join) {
+static qboolean GameType_Parse(const char **p, qboolean join) {
 	char *token;
 
 	token = COM_ParseExt(p, qtrue);
@@ -5111,7 +5111,7 @@ static qboolean GameType_Parse(char **p, qboolean join) {
 	return qfalse;
 }
 
-static qboolean MapList_Parse(char **p) {
+static qboolean MapList_Parse(const char **p) {
 	char *token;
 
 	token = COM_ParseExt(p, qtrue);
@@ -5177,7 +5177,7 @@ static qboolean MapList_Parse(char **p) {
 
 static void UI_ParseGameInfo(const char *teamFile) {
 	char	*token;
-	char *p;
+	const char *p;
 	char *buff = NULL;
 	//int mode = 0; TTimo: unused
 

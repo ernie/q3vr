@@ -234,7 +234,7 @@ models/players/visor/animation.cfg, etc
 ======================
 */
 static qboolean	CG_ParseAnimationFile( const char *filename, clientInfo_t *ci ) {
-	char		*text_p, *prev;
+	const char	*text_p, *prev;
 	int			len;
 	int			i;
 	char		*token;

@@ -36,7 +36,7 @@ static	int				shader_realLightmapIndex;
 static	shader_t*		hashTable[FILE_HASH_SIZE];
 
 #define MAX_SHADERTEXT_HASH		2048
-static char **shaderTextHashTable[MAX_SHADERTEXT_HASH];
+static const char **shaderTextHashTable[MAX_SHADERTEXT_HASH];
 
 /*
 ================
@@ -116,7 +116,7 @@ void R_RemapShader(const char *shaderName, const char *newShaderName, const char
 ParseVector
 ===============
 */
-static qboolean ParseVector( char **text, int count, float *v ) {
+static qboolean ParseVector( const char **text, int count, float *v ) {
 	char	*token;
 	int		i;
 
@@ -317,7 +317,7 @@ static genFunc_t NameToGenFunc( const char *funcname )
 ParseWaveForm
 ===================
 */
-static void ParseWaveForm( char **text, waveForm_t *wave )
+static void ParseWaveForm( const char **text, waveForm_t *wave )
 {
 	char *token;
 
@@ -369,10 +369,10 @@ static void ParseWaveForm( char **text, waveForm_t *wave )
 ParseTexMod
 ===================
 */
-static void ParseTexMod( char *_text, shaderStage_t *stage )
+static void ParseTexMod( const char *_text, shaderStage_t *stage )
 {
 	const char *token;
-	char **text = &_text;
+	const char **text = &_text;
 	texModInfo_t *tmi;
 
 	if ( stage->bundle[0].numTexMods == TR_MAX_TEXMODS ) {
@@ -599,7 +599,7 @@ static void ParseTexMod( char *_text, shaderStage_t *stage )
 ParseStage
 ===================
 */
-static qboolean ParseStage( shaderStage_t *stage, char **text )
+static qboolean ParseStage( shaderStage_t *stage, const char **text )
 {
 	char *token;
 	int depthMaskBits = GLS_DEPTHMASK_TRUE, blendSrcBits = 0, blendDstBits = 0, atestBits = 0, depthFuncBits = 0;
@@ -1417,7 +1417,7 @@ deformVertexes autoSprite2
 deformVertexes text[0-7]
 ===============
 */
-static void ParseDeform( char **text ) {
+static void ParseDeform( const char **text ) {
 	char	*token;
 	deformStage_t	*ds;
 
@@ -1565,7 +1565,7 @@ ParseSkyParms
 skyParms <outerbox> <cloudheight> <innerbox>
 ===============
 */
-static void ParseSkyParms( char **text ) {
+static void ParseSkyParms( const char **text ) {
 	char		*token;
 	static char	*suf[6] = {"rt", "bk", "lf", "ft", "up", "dn"};
 	char		pathname[MAX_QPATH];
@@ -1629,7 +1629,7 @@ static void ParseSkyParms( char **text ) {
 ParseSort
 =================
 */
-void ParseSort( char **text ) {
+void ParseSort( const char **text ) {
 	char	*token;
 
 	token = COM_ParseExt( text, qfalse );
@@ -1721,7 +1721,7 @@ ParseSurfaceParm
 surfaceparm <name>
 ===============
 */
-static void ParseSurfaceParm( char **text ) {
+static void ParseSurfaceParm( const char **text ) {
 	char	*token;
 	int		numInfoParms = ARRAY_LEN( infoParms );
 	int		i;
@@ -1750,7 +1750,7 @@ shader.  Parse it into the global shader variable.  Later functions
 will optimize it.
 =================
 */
-static qboolean ParseShader( char **text )
+static qboolean ParseShader( const char **text )
 {
 	char *token;
 	int s;
@@ -3252,9 +3252,9 @@ return NULL if not found
 If found, it will return a valid shader
 =====================
 */
-static char *FindShaderInShaderText( const char *shadername ) {
+static const char *FindShaderInShaderText( const char *shadername ) {
 
-	char *token, *p;
+	const char *token, *p;
 
 	int i, hash;
 
@@ -3372,7 +3372,7 @@ shader_t *R_FindShader( const char *name, int lightmapIndex, qboolean mipRawImag
 shader_t *R_FindShaderEx( const char *name, int lightmapIndex, qboolean mipRawImage, int realLightmapIndex ) {
 	char		strippedName[MAX_QPATH];
 	int			hash;
-	char		*shaderText;
+	const char	*shaderText;
 	image_t		*image;
 	shader_t	*sh;
 
@@ -3787,10 +3787,11 @@ static void ScanAndLoadShaderFiles( void )
 {
 	char **shaderFiles;
 	char *buffers[MAX_SHADER_FILES] = {NULL};
-	char *p;
+	const char *p;
 	int numShaderFiles;
 	int i;
-	char *oldp, *token, *hashMem, *textEnd;
+	const char *oldp, *token, *hashMem;
+	char *textEnd;
 	int shaderTextHashTableSizes[MAX_SHADERTEXT_HASH], hash, size;
 	char shaderName[MAX_QPATH];
 	int shaderLine;
@@ -3922,8 +3923,8 @@ static void ScanAndLoadShaderFiles( void )
 	hashMem = ri.Hunk_Alloc( size * sizeof(char *), h_low );
 
 	for (i = 0; i < MAX_SHADERTEXT_HASH; i++) {
-		shaderTextHashTable[i] = (char **) hashMem;
-		hashMem = ((char *) hashMem) + ((shaderTextHashTableSizes[i] + 1) * sizeof(char *));
+		shaderTextHashTable[i] = (const char **) hashMem;
+		hashMem = ((const char *) hashMem) + ((shaderTextHashTableSizes[i] + 1) * sizeof(char *));
 	}
 
 	Com_Memset(shaderTextHashTableSizes, 0, sizeof(shaderTextHashTableSizes));

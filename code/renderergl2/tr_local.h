@@ -1227,7 +1227,7 @@ typedef struct {
 	const byte	*vis;			// may be passed in by CM_LoadMap to save space
 
 	char		*entityString;
-	char		*entityParsePoint;
+	const char	*entityParsePoint;
 } world_t;
 
 

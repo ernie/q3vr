@@ -56,10 +56,10 @@ qboolean ParseMapRotation( void )
 	char buf[ 4096 ];
 	char cvar[ 256 ];
 	char map[ 256 ];
-	char *s;
+	const char *s;
 	fileHandle_t fh;
 	int	len;
-	char *tk;
+	const char *tk;
 	int reqIndex;
 	int curIndex = 0;
 	int scopeLevel = 0;

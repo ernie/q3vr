@@ -2271,7 +2271,8 @@ R_LoadEntities
 ================
 */
 void R_LoadEntities( lump_t *l ) {
-	char *p, *token, *s;
+	const char *p, *token;
+	char *s;
 	char keyname[MAX_TOKEN_CHARS];
 	char value[MAX_TOKEN_CHARS];
 	world_t	*w;
@@ -2281,7 +2282,7 @@ void R_LoadEntities( lump_t *l ) {
 	w->lightGridSize[1] = 64;
 	w->lightGridSize[2] = 128;
 
-	p = (char *)(fileBase + l->fileofs);
+	p = (const char *)(fileBase + l->fileofs);
 
 	// store for reference by the cgame
 	w->entityString = ri.Hunk_Alloc( l->filelen + 1, h_low );
