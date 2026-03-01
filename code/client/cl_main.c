@@ -40,7 +40,7 @@ extern const void* VR_Vulkan_GetSwapchainInfo(void);
 extern qboolean VR_GetVirtualScreenMVP(float screenMVP[2][16], float floorMVP[2][16]);
 extern void VKimp_Init(glconfig_t *config);
 extern void VKimp_Shutdown(qboolean unloadDLL);
-extern qboolean VK_CreateSurface(VkInstance instance, VkSurfaceKHR *surface);
+extern qboolean VK_CreateSurface(void *instance, void *pSurface);
 #else
 static const void* VR_Vulkan_GetDeviceInfo(void) { return NULL; }
 static const void* VR_Vulkan_GetSwapchainInfo(void) { return NULL; }

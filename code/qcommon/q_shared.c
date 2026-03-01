@@ -1005,7 +1005,7 @@ Quake3e enhanced parser with token type detection.
 Used by renderervk shader parsing.
 ==============
 */
-char *COM_ParseComplex( const char **data_p, qboolean allowLineBreaks )
+char *COM_ParseComplex( char **data_p, qboolean allowLineBreaks )
 {
 	static const byte is_sep[ 256 ] =
 	{

@@ -791,7 +791,7 @@ void	COM_BeginParseSession( const char *name );
 int		COM_GetCurrentParseLine( void );
 char	*COM_Parse( char **data_p );
 char	*COM_ParseExt( char **data_p, qboolean allowLineBreak );
-char	*COM_ParseComplex( const char **data_p, qboolean allowLineBreaks );
+char	*COM_ParseComplex( char **data_p, qboolean allowLineBreaks );
 int		COM_Compress( char *data_p );
 void	COM_ParseError( char *format, ... ) Q_PRINTF_FUNC(1, 2);
 void	COM_ParseWarning( char *format, ... ) Q_PRINTF_FUNC(1, 2);

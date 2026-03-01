@@ -1600,15 +1600,17 @@ VK_CreateSurface
 Create a VkSurfaceKHR for the SDL window (for desktop mirror).
 ===============
 */
-qboolean VK_CreateSurface(VkInstance instance, VkSurfaceKHR *surface)
+qboolean VK_CreateSurface(void *instance, void *pSurface)
 {
+	VkSurfaceKHR *surface = (VkSurfaceKHR *)pSurface;
+
 	if (!SDL_window)
 	{
 		ri.Printf(PRINT_WARNING, "VK_CreateSurface: No SDL window\n");
 		return qfalse;
 	}
 
-	if (!SDL_Vulkan_CreateSurface(SDL_window, instance, surface))
+	if (!SDL_Vulkan_CreateSurface(SDL_window, (VkInstance)instance, surface))
 	{
 		ri.Printf(PRINT_WARNING, "VK_CreateSurface: SDL_Vulkan_CreateSurface failed: %s\n", SDL_GetError());
 		return qfalse;
