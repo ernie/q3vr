@@ -29,6 +29,7 @@ jobs:
           path: |
             build/Release/**/*.dll
             build/Release/**/q3vr.exe
+            build/Release/**/glq3vr.exe
             build/Release/**/*.pk3
           retention-days: 5
 
@@ -61,5 +62,6 @@ jobs:
           path: |
             build/Release/**/*.so
             build/Release/**/q3vr
+            build/Release/**/glq3vr
             build/Release/**/*.pk3
           retention-days: 5
