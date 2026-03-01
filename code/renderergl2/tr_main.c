@@ -956,25 +956,39 @@ void R_SetupProjectionZ(viewParms_t *dest)
 		tr.vrParms.mirrorProjection[10] = c[2] + 1.0f;
 		tr.vrParms.mirrorProjection[14] = c[3];
 
-		// Create per-eye mirror projections with oblique near-plane clipping
-		// Use the same clip plane distance for both eyes - the small IPD offset (~3cm)
-		// doesn't significantly affect the clipping and avoids complex calculations
-		for (int eye = 0; eye < 2; eye++)
+		if (VR_ShouldDisableStereo())
 		{
-			Mat4Copy(tr.vrParms.projectionEye[eye], tr.vrParms.mirrorProjectionEye[eye]);
+			// Virtual screen / weapon zoom: use symmetric mirror projection for both eyes.
+			// Matches renderervk's mono portal path in vk_update_mvp.
+			for (int eye = 0; eye < 2; eye++)
+			{
+				Mat4Copy(tr.vrParms.mirrorProjection, tr.vrParms.mirrorProjectionEye[eye]);
+				// Non-square framebuffer correction (matches VR_PROJECTION mono path)
+				tr.vrParms.mirrorProjectionEye[eye][5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
+			}
+		}
+		else
+		{
+			// Normal stereo: per-eye asymmetric mirror projections with oblique clipping.
+			// Use the same clip plane distance for both eyes - the small IPD offset (~3cm)
+			// doesn't significantly affect the clipping and avoids complex calculations.
+			for (int eye = 0; eye < 2; eye++)
+			{
+				Mat4Copy(tr.vrParms.projectionEye[eye], tr.vrParms.mirrorProjectionEye[eye]);
 
-			// Compute per-eye oblique clipping using same plane but per-eye projection params
-			q[0] = (SGN(plane2[0]) + tr.vrParms.projectionEye[eye][8]) / tr.vrParms.projectionEye[eye][0];
-			q[1] = (SGN(plane2[1]) + tr.vrParms.projectionEye[eye][9]) / tr.vrParms.projectionEye[eye][5];
-			q[2] = -1.0f;
-			q[3] = (1.0f + tr.vrParms.projectionEye[eye][10]) / tr.vrParms.projectionEye[eye][14];
+				// Compute per-eye oblique clipping using same plane but per-eye projection params
+				q[0] = (SGN(plane2[0]) + tr.vrParms.projectionEye[eye][8]) / tr.vrParms.projectionEye[eye][0];
+				q[1] = (SGN(plane2[1]) + tr.vrParms.projectionEye[eye][9]) / tr.vrParms.projectionEye[eye][5];
+				q[2] = -1.0f;
+				q[3] = (1.0f + tr.vrParms.projectionEye[eye][10]) / tr.vrParms.projectionEye[eye][14];
 
-			VectorScale4(plane2, 2.0f / DotProduct4(plane2, q), c);
+				VectorScale4(plane2, 2.0f / DotProduct4(plane2, q), c);
 
-			tr.vrParms.mirrorProjectionEye[eye][2]  = c[0];
-			tr.vrParms.mirrorProjectionEye[eye][6]  = c[1];
-			tr.vrParms.mirrorProjectionEye[eye][10] = c[2] + 1.0f;
-			tr.vrParms.mirrorProjectionEye[eye][14] = c[3];
+				tr.vrParms.mirrorProjectionEye[eye][2]  = c[0];
+				tr.vrParms.mirrorProjectionEye[eye][6]  = c[1];
+				tr.vrParms.mirrorProjectionEye[eye][10] = c[2] + 1.0f;
+				tr.vrParms.mirrorProjectionEye[eye][14] = c[3];
+			}
 		}
 
 		// Update the GPU buffer with the newly calculated mirror projection
