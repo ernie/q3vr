@@ -15,6 +15,8 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
 
       - name: Install Vulkan SDK
         uses: jakoch/install-vulkan-sdk-action@v1
@@ -43,6 +45,8 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
 
       - name: Install Vulkan SDK
         uses: jakoch/install-vulkan-sdk-action@v1
@@ -71,6 +75,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
 
       - name: Install dependencies
         run: |
@@ -103,6 +109,12 @@ jobs:
     needs: [windows-msvc, windows-mingw, linux]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            misc/update-trinity.bat
+            misc/update-trinity.sh
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
 
@@ -123,6 +135,13 @@ jobs:
               find "$dir" -type d -name missionpack -exec cp trinity-assets/pak3t.pk3 {} \;
             fi
           done
+
+      - name: Bundle update scripts
+        run: |
+          for dir in windows-msvc windows-mingw; do
+            [ -d "$dir" ] && cp misc/update-trinity.bat "$dir/"
+          done
+          [ -d linux ] && cp misc/update-trinity.sh linux/
 
       - name: Create archives
         run: |
