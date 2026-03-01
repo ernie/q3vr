@@ -2591,7 +2591,7 @@ void RE_ClearVRFramebuffer( int width, int height, qboolean isThirdPersonSpectat
 void RE_SwapDesktopWindow( void );
 void RE_WaitForRenderComplete( void );
 qboolean RE_InitXRResources( void );
-void RE_BeginXRFrame( uint32_t colorIndex, uint32_t depthIndex );
+void RE_BeginXRFrame( uint32_t colorIndex );
 
 void RE_SaveJPG(char * filename, int quality, int image_width, int image_height,
                 unsigned char *image_buffer, int padding);

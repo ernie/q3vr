@@ -582,12 +582,11 @@ qboolean RE_InitXRResources( void )
 	return qtrue;
 }
 
-void RE_BeginXRFrame( uint32_t colorIndex, uint32_t depthIndex )
+void RE_BeginXRFrame( uint32_t colorIndex )
 {
 	// OpenGL path: FBO is bound directly by VR layer via VR_Swapchains_BindFramebuffers()
 	// This function is only needed for Vulkan's command buffer setup.
 	(void)colorIndex;
-	(void)depthIndex;
 }
 
 void RE_SetVRHeadsetParms( const float projectionMatrix[16],  const float nonVRProjectionMatrix[16], int renderBuffer,

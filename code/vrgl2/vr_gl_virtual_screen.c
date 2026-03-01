@@ -473,7 +473,7 @@ void GetCurrentVirtualScreenPositionAndRotation(
 		}
 
 		XrVector3f lerped;
-		XrVector3f_Lerp(&lerped, &currentPosition, &targetPosition, 0.01);
+		XrVector3f_Lerp(&lerped, &currentPosition, &targetPosition, 0.01f);
 		EnsureNewPositionInExpectedDistance(&leftEyePose->position, &lerped);
 		currentPosition = lerped;
 		currentRotation = YawFacingQuaternion(&currentPosition, &leftEyePose->position);

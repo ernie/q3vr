@@ -190,9 +190,6 @@ cvar_t	*r_saveFontData;
 
 cvar_t	*r_marksOnTriangleMeshes;
 
-cvar_t	*vr_currentHudDrawStatus;
-cvar_t	*vr_currentHudDepth;
-
 cvar_t	*r_aviMotionJpegQuality;
 cvar_t	*r_screenshotJpegQuality;
 

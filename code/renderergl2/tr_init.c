@@ -75,8 +75,6 @@ cvar_t	*r_measureOverdraw;
 cvar_t	*r_inGameVideo;
 cvar_t	*r_fastsky;
 cvar_t	*vr_thirdPersonSpectator;
-cvar_t	*vr_currentHudDrawStatus;
-cvar_t	*vr_currentHudDepth;
 cvar_t	*r_drawSun;
 cvar_t	*r_dynamiclight;
 cvar_t	*r_dlightBacks;

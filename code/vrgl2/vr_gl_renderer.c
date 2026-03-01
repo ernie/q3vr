@@ -44,7 +44,7 @@ void VR_Renderer_EndFrame(VR_Engine* engine);
 void VR_Recenter(VR_Engine* engine, XrTime predictedDisplayTime);
 void VR_ClearFrameBuffer( int width, int height);
 void VR_UpdatePerFrameState( void );
-void VR_DrawVirtualScreen(VR_SwapchainInfos* swapchains, uint32_t swapchainImageIndex, XrFovf fov, XrView* views, uint32_t viewCount);
+void VR_DrawVirtualScreen(VR_SwapchainInfos* swapchains, uint32_t swapchainImageIndex, XrFovf frameFov, XrView* frameViews, uint32_t frameViewCount);
 XrDesktopViewConfiguration VR_GetDesktopViewConfiguration( void );
 
 void VR_GetResolution(VR_Engine* engine, int *pWidth, int *pHeight)
@@ -171,7 +171,7 @@ void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 
 	VR_BeginFrame(engine->appState.Session);
 
-	const XrViewState viewState = VR_LocateViews(
+	VR_LocateViews(
 		engine->appState.Session,
 		lastPredictedDisplayTime,
 		engine->appState.CurrentSpace,
@@ -388,7 +388,7 @@ void VR_UpdatePerFrameState( void )
 {
 	if (vr.weapon_zoomed)
 	{
-		vr.weapon_zoomLevel += 0.05;
+		vr.weapon_zoomLevel += 0.05f;
 		if (vr.weapon_zoomLevel > 2.5f)
 				vr.weapon_zoomLevel = 2.5f;
 	}
@@ -401,7 +401,7 @@ void VR_UpdatePerFrameState( void )
 	}
 }
 
-void VR_DrawVirtualScreen(VR_SwapchainInfos* swapchains, uint32_t swapchainImageIndex, XrFovf fov, XrView* views, uint32_t viewCount)
+void VR_DrawVirtualScreen(VR_SwapchainInfos* swapchains, uint32_t swapchainImageIndex, XrFovf frameFov, XrView* frameViews, uint32_t frameViewCount)
 {
 	// Copy current image to Virtual Screen's texture
 	VR_Swapchains_BlitXRToVirtualScreen(swapchains, swapchainImageIndex);
@@ -410,7 +410,7 @@ void VR_DrawVirtualScreen(VR_SwapchainInfos* swapchains, uint32_t swapchainImage
 	// Using re.ClearVRFramebuffer handles the viewport/scissor setup
 	re.ClearVRFramebuffer(swapchains->color.width, swapchains->color.height, qfalse);
 
-	VR_VirtualScreen_Draw(views, viewCount, swapchains->color.virtualScreenImage);
+	VR_VirtualScreen_Draw(frameViews, frameViewCount, swapchains->color.virtualScreenImage);
 }
 
 XrDesktopViewConfiguration VR_GetDesktopViewConfiguration( void )
