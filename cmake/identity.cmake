@@ -1,8 +1,10 @@
 set(PROJECT_NAME q3vr)
 set(PROJECT_VERSION 1.0.0)
 
-# Override version from git tag if available (e.g., v1.2.3 -> 1.2.3)
-if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+# Override version from CI tag (GITHUB_REF_NAME) or git tag
+if(DEFINED ENV{GITHUB_REF_NAME} AND "$ENV{GITHUB_REF_NAME}" MATCHES "^v([0-9]+\\.[0-9]+(\\.[0-9]+)?)")
+    set(PROJECT_VERSION "${CMAKE_MATCH_1}")
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/.git")
     execute_process(
         COMMAND git describe --tags --abbrev=0
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
