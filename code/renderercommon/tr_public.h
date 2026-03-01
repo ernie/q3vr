@@ -220,7 +220,7 @@ typedef struct {
 	qboolean (*Sys_LowPhysicalMemory)( void );
 
 	// Time utilities
-	void	(*Com_RealTime)( qtime_t *qtime );
+	int		(*Com_RealTime)( qtime_t *qtime );
 
 	// memory cleanup (Quake3e pattern)
 	void	(*FreeAll)( void );
