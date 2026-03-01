@@ -5,8 +5,8 @@ on:
     branches: [renderervk]
 
 jobs:
-  windows-msvc:
-    name: Windows MSVC
+  windows-mingw:
+    name: Windows MinGW
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -19,13 +19,13 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -G "Visual Studio 17 2022"
-          cmake --build build --config Release
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: windows-msvc
+          name: windows-mingw
           path: |
             build/Release/**/*.dll
             build/Release/**/q3vr.exe
