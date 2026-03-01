@@ -245,9 +245,11 @@ static void Main_MenuDraw( void ) {
 	vec4_t color_dark_grey = {0.23f, 0.23f, 0.23f, 1.0f};
 
 	yPos += SMALLCHAR_HEIGHT + 12;
-	UI_DrawString( 320, yPos, "Quake 3 VR", UI_CENTER|UI_SMALLFONT, color_white );
-	yPos += SMALLCHAR_HEIGHT + 2;
-	UI_DrawString( 320, yPos, "by RippeR37", UI_CENTER|UI_SMALLFONT, color_grey );
+	UI_DrawString( 232, yPos, "Quake 3 VR", UI_LEFT|UI_SMALLFONT, color_white );
+	UI_DrawString( 320, yPos, "by RippeR37", UI_LEFT|UI_SMALLFONT, color_grey );
+	yPos += SMALLCHAR_HEIGHT;
+	vec4_t color_dim_white = {1.0f, 1.0f, 1.0f, 0.35f};
+	UI_DrawString( 320, yPos, "Unofficial build maintained by ^1Nil^4Class", UI_CENTER|UI_SMALLFONT, color_dim_white );
 
 	yPos += 2;
 	UI_DrawString( 20, yPos, "based on ioquake3", UI_LEFT|UI_TINYFONT, color_dark_grey );
@@ -256,7 +258,7 @@ static void Main_MenuDraw( void ) {
 
 	// Version
 	vec4_t color_dark_red = {0.65f, 0.0f, 0.0f, 1.0f};
-	UI_DrawString( 610, 455, "v1.0", UI_CENTER|UI_SMALLFONT|UI_PULSE|UI_LEFT, color_dark_red );
+	UI_DrawString( 610, 455, "v" XSTRING(Q3VR_VERSION_MAJOR) "." XSTRING(Q3VR_VERSION_MINOR), UI_CENTER|UI_SMALLFONT|UI_PULSE|UI_LEFT, color_dark_red );
 }
 
 

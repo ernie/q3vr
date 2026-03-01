@@ -1,5 +1,5 @@
 set(PROJECT_NAME q3vr)
-set(PROJECT_VERSION 1.0)
+set(PROJECT_VERSION 1.1)
 
 set(SERVER_NAME q3vr-ded)
 set(CLIENT_NAME q3vr)
