@@ -3019,7 +3019,7 @@ static void vk_alloc_persistent_pipelines( void )
 		Com_Memset( &def, 0, sizeof( def ) );
 		def.face_culling = CT_FRONT_SIDED;
 		def.polygon_offset = qfalse;
-		def.state_bits = GLS_DEPTHMASK_TRUE | GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO;
+		def.state_bits = GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO | GLS_DEPTHTEST_DISABLE;
 		def.shader_type = TYPE_SIGNLE_TEXTURE;
 		def.mirror = qfalse;
 		def.shadow_phase = SHADOW_FS_QUAD;
@@ -6396,16 +6396,28 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	depth_stencil_state.depthCompareOp = (state_bits & GLS_DEPTHFUNC_EQUAL) ? VK_COMPARE_OP_EQUAL : VK_COMPARE_OP_LESS_OR_EQUAL;
 #endif
 	depth_stencil_state.depthBoundsTestEnable = VK_FALSE;
-	depth_stencil_state.stencilTestEnable = (def->shadow_phase != SHADOW_DISABLED) ? VK_TRUE : VK_FALSE;
+	depth_stencil_state.stencilTestEnable = (def->shadow_phase != SHADOW_DISABLED || def->stencil_mark) ? VK_TRUE : VK_FALSE;
 
-	if (def->shadow_phase == SHADOW_EDGES) {
+	if (def->stencil_mark) {
+		// mark entity pixels with stencil bit 0x80 so shadow finish skips them
+		depth_stencil_state.front.failOp = VK_STENCIL_OP_KEEP;
+		depth_stencil_state.front.passOp = VK_STENCIL_OP_REPLACE;
+		depth_stencil_state.front.depthFailOp = VK_STENCIL_OP_KEEP;
+		depth_stencil_state.front.compareOp = VK_COMPARE_OP_ALWAYS;
+		depth_stencil_state.front.compareMask = 0xFF;
+		depth_stencil_state.front.writeMask = 0x80;
+		depth_stencil_state.front.reference = 0x80;
+
+		depth_stencil_state.back = depth_stencil_state.front;
+
+	} else if (def->shadow_phase == SHADOW_EDGES) {
 		depth_stencil_state.front.failOp = VK_STENCIL_OP_KEEP;
 		depth_stencil_state.front.passOp = (def->face_culling == CT_FRONT_SIDED) ? VK_STENCIL_OP_INCREMENT_AND_CLAMP : VK_STENCIL_OP_DECREMENT_AND_CLAMP;
 		depth_stencil_state.front.depthFailOp = VK_STENCIL_OP_KEEP;
-		depth_stencil_state.front.compareOp = VK_COMPARE_OP_ALWAYS;
-		depth_stencil_state.front.compareMask = 255;
-		depth_stencil_state.front.writeMask = 255;
-		depth_stencil_state.front.reference = 0;
+		depth_stencil_state.front.compareOp = VK_COMPARE_OP_EQUAL;
+		depth_stencil_state.front.compareMask = 0x80;  // skip entity-marked pixels
+		depth_stencil_state.front.writeMask = 0x7F;    // only write shadow count to bits 0-6
+		depth_stencil_state.front.reference = 0;        // pass where bit 7 == 0 (not entity)
 
 		depth_stencil_state.back = depth_stencil_state.front;
 
@@ -6414,8 +6426,8 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		depth_stencil_state.front.passOp = VK_STENCIL_OP_KEEP;
 		depth_stencil_state.front.depthFailOp = VK_STENCIL_OP_KEEP;
 		depth_stencil_state.front.compareOp = VK_COMPARE_OP_NOT_EQUAL;
-		depth_stencil_state.front.compareMask = 255;
-		depth_stencil_state.front.writeMask = 255;
+		depth_stencil_state.front.compareMask = 0x7F;  // check shadow bits 0-6 only
+		depth_stencil_state.front.writeMask = 0x7F;
 		depth_stencil_state.front.reference = 0;
 
 		depth_stencil_state.back = depth_stencil_state.front;

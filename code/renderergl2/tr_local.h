@@ -125,6 +125,7 @@ typedef struct {
 	float		modelMatrix[16];
 	float		modelView[16];
 	float		eyeViewMatrix[2][16];
+	float		entityMatrix[16];	// pure entity transform (local-to-world, no view) for multiview stereo
 } orientationr_t;
 
 // Ensure this is >= the ATTR_INDEX_COUNT enum below
@@ -180,13 +181,14 @@ typedef enum {
 
 	SS_UNDERWATER,		// for items that should be drawn in front of the water plane
 
+	SS_STENCIL_SHADOW,	// stencil shadow volumes (before blended surfaces)
+
 	SS_BLEND0 = 17,		// regular transparency and filters
 	SS_BLEND1,			// generally only used for additive type effects
 	SS_BLEND2,
 	SS_BLEND3,
 
 	SS_BLEND6,
-	SS_STENCIL_SHADOW,
 	SS_ALMOST_NEAREST,	// gun smoke puffs
 
 	SS_NEAREST			// blood blobs
@@ -1528,6 +1530,7 @@ typedef struct {
 	FBO_t *last2DFBO;
 	qboolean    colorMask[4];
 	qboolean    depthFill;
+	qboolean    doneShadows;
 } backEndState_t;
 
 /*
@@ -1803,6 +1806,7 @@ extern	cvar_t	*r_shownormals;					// draws wireframe normals
 extern	cvar_t	*r_clear;						// force screen clear every frame
 
 extern	cvar_t	*r_shadows;						// controls global shadows: 0 = none, 1 = blur, 2 = stencil, 3 = black planar projection
+extern	cvar_t	*r_shadowDistance;				// shadow volume extrusion distance in game units
 extern	cvar_t	*r_playerShadow;				// controls player shadow: 0 = none, 1 = blur, 2 = stencil, 3 = black planar projection
 extern	cvar_t	*r_flares;						// light flares
 
@@ -2094,7 +2098,7 @@ typedef struct stageVars
 typedef struct shaderCommands_s 
 {
 	glIndex_t	indexes[SHADER_MAX_INDEXES] Q_ALIGN(16);
-	vec4_t		xyz[SHADER_MAX_VERTEXES] Q_ALIGN(16);
+	vec4_t		xyz[SHADER_MAX_VERTEXES*2] Q_ALIGN(16); // 2x for shadow projection
 	int16_t		normal[SHADER_MAX_VERTEXES][4] Q_ALIGN(16);
 	int16_t		tangent[SHADER_MAX_VERTEXES][4] Q_ALIGN(16);
 	vec2_t		texCoords[SHADER_MAX_VERTEXES] Q_ALIGN(16);
@@ -2296,12 +2300,14 @@ GLSL
 
 void GLSL_InitGPUShaders(void);
 void GLSL_PrepareUniformBuffers(void);
+void GLSL_ViewMatricesUniformBuffer(const float eyeView[2][16], const float modelView[16]);
 void GLSL_UpdateMirrorProjection(void);
 void GLSL_UpdateMenuProjection(void);
 void GLSL_ShutdownGPUShaders(void);
 void GLSL_VertexAttribPointers(uint32_t attribBits);
 void GLSL_BindProgram(shaderProgram_t * program);
 void GLSL_BindBuffers( shaderProgram_t * program );
+void GLSL_BindFullscreenOrthoBuffers( shaderProgram_t * program );
 
 void GLSL_SetUniformInt(shaderProgram_t *program, int uniformNum, GLint value);
 void GLSL_SetUniformFloat(shaderProgram_t *program, int uniformNum, GLfloat value);

@@ -1265,7 +1265,7 @@ void RB_SurfaceVaoMdvMesh(srfVaoMdvMesh_t * surface)
 
 	GLimp_LogComment("--- RB_SurfaceVaoMdvMesh ---\n");
 
-	if (ShaderRequiresCPUDeforms(tess.shader))
+	if (ShaderRequiresCPUDeforms(tess.shader) || tess.shader == tr.shadowShader)
 	{
 		RB_SurfaceMesh(surface->mdvSurface);
 		return;

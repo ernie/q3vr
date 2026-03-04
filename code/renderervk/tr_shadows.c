@@ -44,6 +44,8 @@ typedef struct {
 static	edgeDef_t	edgeDefs[SHADER_MAX_VERTEXES][MAX_EDGE_DEFS];
 static	int			numEdgeDefs[SHADER_MAX_VERTEXES];
 static	int			facing[SHADER_MAX_INDEXES/3];
+static	int			numLitTris;
+static	int			litTriIndexes[SHADER_MAX_INDEXES];
 
 static void R_AddEdgeDef( int i1, int i2, int f ) {
 	int		c;
@@ -162,15 +164,9 @@ void RB_ShadowTessEnd( void ) {
 #endif
 		VectorCopy( backEnd.currentEntity->lightDir, lightDir );
 
-	// clamp projection by height
-	if ( lightDir[2] > 0.1 ) {
-		float s = 0.1 / lightDir[2];
-		VectorScale( lightDir, s, lightDir );
-	}
-
 	// project vertexes away from light direction
 	for ( i = 0; i < tess.numVertexes; i++ ) {
-		VectorMA( tess.xyz[i], -512, lightDir, tess.xyz[i+tess.numVertexes] );
+		VectorMA( tess.xyz[i], -r_shadowDistance->value, lightDir, tess.xyz[i+tess.numVertexes] );
 	}
 
 	// decide which triangles face the light
@@ -208,7 +204,33 @@ void RB_ShadowTessEnd( void ) {
 		R_AddEdgeDef( i3, i1, facing[ i ] );
 	}
 
+	// save lit-facing triangle indices for back cap generation
+	numLitTris = 0;
+	for ( i = 0; i < numTris; i++ ) {
+		if ( facing[i] ) {
+			litTriIndexes[ numLitTris*3 + 0 ] = tess.indexes[ i*3 + 0 ];
+			litTriIndexes[ numLitTris*3 + 1 ] = tess.indexes[ i*3 + 1 ];
+			litTriIndexes[ numLitTris*3 + 2 ] = tess.indexes[ i*3 + 2 ];
+			numLitTris++;
+		}
+	}
+
 	R_CalcShadowEdges();
+
+	// append back cap: lit-facing triangles at extruded positions
+	// Vulkan Y-flip reverses apparent winding, so use original order
+	// (same reason R_CalcShadowEdges has different winding for VK vs GL)
+	{
+		int nvOrig = tess.numVertexes / 2;
+		for ( i = 0; i < numLitTris; i++ ) {
+			if ( tess.numIndexes > ARRAY_LEN( tess.indexes ) - 3 )
+				break;
+			tess.indexes[ tess.numIndexes + 0 ] = litTriIndexes[ i*3 + 0 ] + nvOrig;
+			tess.indexes[ tess.numIndexes + 1 ] = litTriIndexes[ i*3 + 1 ] + nvOrig;
+			tess.indexes[ tess.numIndexes + 2 ] = litTriIndexes[ i*3 + 2 ] + nvOrig;
+			tess.numIndexes += 3;
+		}
+	}
 
 	// draw the silhouette edges
 #ifdef USE_VULKAN
@@ -335,7 +357,7 @@ void RB_ShadowFinish( void ) {
 
 	vk_bind_pipeline( vk.shadow_finish_pipeline );
 
-	vk_update_mvp( NULL );
+	vk_update_mvp( vk_world.modelview_transform );
 
 	vk_bind_geometry( TESS_XYZ | TESS_RGBA0 /*| TESS_ST0 */ );
 	vk_draw_geometry( DEPTH_RANGE_NORMAL, qfalse );

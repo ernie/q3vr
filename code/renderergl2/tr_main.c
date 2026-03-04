@@ -536,6 +536,7 @@ void R_RotateForEntity( const trRefEntity_t *ent, const viewParms_t *viewParms,
 	glMatrix[11] = 0;
 	glMatrix[15] = 1;
 
+	Com_Memcpy( or->entityMatrix, glMatrix, sizeof( or->entityMatrix ) );
 	myGlMultMatrix( glMatrix, viewParms->world.modelMatrix, or->modelMatrix );
 	myGlMultMatrix( glMatrix, viewParms->world.modelView, or->modelView );
 
@@ -746,6 +747,7 @@ void R_RotateForViewer (void)
 			// World model matrix
 			Mat4Copy(viewerMatrix, tr.or.modelMatrix);
 			myGlMultMatrix(viewerMatrix, s_flipMatrix, tr.or.modelView);
+			Mat4Identity(tr.or.entityMatrix);
 		}
 	}
 

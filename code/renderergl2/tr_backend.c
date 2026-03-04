@@ -381,6 +381,7 @@ void RB_BeginDrawingView (void) {
 	if ( r_measureOverdraw->integer || r_shadows->integer == 2 )
 	{
 		clearBits |= GL_STENCIL_BUFFER_BIT;
+		qglStencilMask( 0xFF );  // ensure all stencil bits are cleared
 	}
 	if ( r_fastsky->integer && !( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) )
 	{
@@ -394,6 +395,11 @@ void RB_BeginDrawingView (void) {
 	}
 
 	qglClear( clearBits );
+
+	// Prevent stencil state leaking between views
+	if ( r_shadows->integer == 2 ) {
+		qglDisable( GL_STENCIL_TEST );
+	}
 
 	if ( ( backEnd.refdef.rdflags & RDF_HYPERSPACE ) )
 	{
@@ -467,6 +473,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	oldCubemapIndex = -1;
 	oldSort = -1;
 
+	backEnd.doneShadows = qfalse;
 	backEnd.pc.c_surfaces += numDrawSurfs;
 
 	for (i = 0, drawSurf = drawSurfs ; i < numDrawSurfs ; i++, drawSurf++) {
@@ -490,6 +497,11 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 			|| ( entityNum != oldEntityNum && !shader->entityMergable ) ) ) {
 			if (oldShader != NULL) {
 				RB_EndSurface();
+			}
+			// composite shadow finish before blended surfaces so sprites draw on top
+			if ( backEnd.doneShadows && shader->sort >= SS_BLEND0 ) {
+				RB_ShadowFinish();
+				oldEntityNum = -1;
 			}
 			RB_BeginSurface( shader, fogNum, cubemapIndex );
 			backEnd.pc.c_surfBatches++;
@@ -545,8 +557,22 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 				R_TransformDlights( backEnd.refdef.num_dlights, backEnd.refdef.dlights, &backEnd.or );
 			}
 
-			GL_SetModelMatrix( backEnd.or.modelMatrix );
+			GL_SetModelMatrix( backEnd.or.entityMatrix );
       GL_SetProjectionMatrix( backEnd.viewParms.projectionMatrix );
+
+			// Mark RT_MODEL entity pixels with stencil bit 0x80 (self-shadow exclusion)
+			if ( r_shadows->integer == 2 && !backEnd.depthFill ) {
+				if ( entityNum != REFENTITYNUM_WORLD
+					&& backEnd.currentEntity->e.reType == RT_MODEL ) {
+					qglEnable( GL_STENCIL_TEST );
+					qglStencilFunc( GL_ALWAYS, 0x80, 0xFF );
+					qglStencilOp( GL_KEEP, GL_KEEP, GL_REPLACE );
+					qglStencilMask( 0x80 );
+				} else {
+					qglDisable( GL_STENCIL_TEST );
+					qglStencilMask( 0xFF );
+				}
+			}
 
 			//
 			// change depthrange. Also change projection matrix so first person weapon does not look like coming
@@ -950,6 +976,10 @@ const void	*RB_DrawSurfs( const void *data ) {
 
 	backEnd.refdef = cmd->refdef;
 	backEnd.viewParms = cmd->viewParms;
+
+	// Update View UBOs with current frame's view matrices
+	GLSL_ViewMatricesUniformBuffer(backEnd.viewParms.world.eyeViewMatrix,
+	                               backEnd.viewParms.world.modelView);
 
 	// UI model scenes (player preview, 3D logo, etc.): rebuild menu projection
 	// from the refdef's FOV so the UI code's framing is respected.

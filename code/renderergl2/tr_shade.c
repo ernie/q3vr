@@ -1694,15 +1694,18 @@ void RB_EndSurface( void ) {
 		return;
 	}
 
-	if (input->indexes[SHADER_MAX_INDEXES-1] != 0) {
+	if (input->numIndexes > SHADER_MAX_INDEXES) {
 		ri.Error (ERR_DROP, "RB_EndSurface() - SHADER_MAX_INDEXES hit");
-	}	
-	if (input->xyz[SHADER_MAX_VERTEXES-1][0] != 0) {
+	}
+	if (input->numVertexes > SHADER_MAX_VERTEXES) {
 		ri.Error (ERR_DROP, "RB_EndSurface() - SHADER_MAX_VERTEXES hit");
 	}
 
 	if ( tess.shader == tr.shadowShader ) {
-		RB_ShadowTessEnd();
+		// Skip shadow volumes during depth prepass
+		if ( !backEnd.depthFill ) {
+			RB_ShadowTessEnd();
+		}
 		return;
 	}
 

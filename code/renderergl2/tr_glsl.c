@@ -196,7 +196,7 @@ glslPrintLog_t;
 GLSL_ViewMatricesUniformBuffer
 ====================
 */
-static void GLSL_ViewMatricesUniformBuffer(const float eyeView[2][16], const float modelView[32]) {
+void GLSL_ViewMatricesUniformBuffer(const float eyeView[2][16], const float modelView[16]) {
 
 	for (int i = 0; i < PROJECTION_COUNT; ++i)
 	{
@@ -1892,8 +1892,8 @@ void GLSL_PrepareUniformBuffers(void)
   GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[MENU_PROJECTION],
           tr.vrParms.menuProjection, tr.vrParms.menuProjection);
 
-  //Set all view matrices
-	GLSL_ViewMatricesUniformBuffer(tr.viewParms.world.eyeViewMatrix, tr.viewParms.world.modelView);
+  // Also updated per-view from RB_DrawSurfs; needed here for loading screens
+  GLSL_ViewMatricesUniformBuffer(tr.viewParms.world.eyeViewMatrix, tr.viewParms.world.modelView);
 }
 
 void GLSL_BindProgram(shaderProgram_t * program)
@@ -1966,6 +1966,19 @@ void GLSL_BindBuffers( shaderProgram_t * program )
 			GL_UNIFORM_BUFFER,
 			program->projectionMatrixBinding,
 			projectionMatricesBuffer[projection]);
+}
+
+void GLSL_BindFullscreenOrthoBuffers( shaderProgram_t * program )
+{
+	qglBindBufferBase(
+			GL_UNIFORM_BUFFER,
+			program->viewMatricesBinding,
+			viewMatricesBuffer[FULLSCREEN_ORTHO_PROJECTION]);
+
+	qglBindBufferBase(
+			GL_UNIFORM_BUFFER,
+			program->projectionMatrixBinding,
+			projectionMatricesBuffer[FULLSCREEN_ORTHO_PROJECTION]);
 }
 
 

@@ -53,6 +53,8 @@ int64_t VR_GL_GetBestDepthSwapchainFormat(int64_t* formats, uint32_t formatCount
 {
 	int64_t preferredDepthFormats[] =
 	{
+		GL_DEPTH24_STENCIL8,
+		GL_DEPTH32F_STENCIL8,
 		GL_DEPTH_COMPONENT32F,
 		GL_DEPTH_COMPONENT32,
 		GL_DEPTH_COMPONENT24,
@@ -73,7 +75,7 @@ int64_t VR_GL_GetBestDepthSwapchainFormat(int64_t* formats, uint32_t formatCount
 }
 
 // Framebuffer creation
-GLuint VR_CreateImageView(GLuint colorImage, GLuint depthImage, uint32_t viewCount)
+GLuint VR_CreateImageView(GLuint colorImage, GLuint depthImage, uint32_t viewCount, GLenum depthAttachment)
 {
 	const int baseMipLevel = 0;
 	const int baseArrayLayer = 0;
@@ -84,7 +86,7 @@ GLuint VR_CreateImageView(GLuint colorImage, GLuint depthImage, uint32_t viewCou
 
 	qglBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 	qglFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, colorImage, baseMipLevel, baseArrayLayer, viewCount);
-	qglFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthImage, baseMipLevel, baseArrayLayer, viewCount);
+	qglFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, depthAttachment, depthImage, baseMipLevel, baseArrayLayer, viewCount);
 
 	GLenum result = qglCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
 	CHECK(result == GL_FRAMEBUFFER_COMPLETE, "Failed to create complete Framebuffer");
@@ -265,15 +267,32 @@ VR_SwapchainInfos* VR_CreateSwapchains(XrInstance instance, XrSystemId systemId,
 	fprintf(stderr, "[OpenXR] Created color swapchain: %dx%d, %u images\n", swapchains->color.width, swapchains->color.height, swapchains->color.imageCount);
 
 	//
-	// Create native depth texture (replaces XR depth swapchain for driver compatibility)
+	// Create native depth-stencil texture (replaces XR depth swapchain for driver compatibility)
+	// Prefer depth-stencil format for stencil shadow support (cg_shadows 2)
 	//
 	qglGenTextures(1, &swapchains->nativeDepthTexture);
 	qglBindTexture(GL_TEXTURE_2D_ARRAY, swapchains->nativeDepthTexture);
-	qglTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F,
+	qglTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH24_STENCIL8,
 		supersampledWidth, supersampledHeight, viewCount,
-		0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+		0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, NULL);
+	{
+		GLenum err = qglGetError();
+		if (err != GL_NO_ERROR) {
+			// Fallback to depth-only if depth-stencil not supported
+			fprintf(stderr, "[OpenXR] GL_DEPTH24_STENCIL8 failed (0x%x), falling back to depth-only\n", err);
+			qglTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F,
+				supersampledWidth, supersampledHeight, viewCount,
+				0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+			swapchains->depthAttachment = GL_DEPTH_ATTACHMENT;
+			glConfig.stencilBits = 0;
+			fprintf(stderr, "[OpenXR] Created native depth texture: %dx%d, %u layers (no stencil)\n", supersampledWidth, supersampledHeight, viewCount);
+		} else {
+			swapchains->depthAttachment = GL_DEPTH_STENCIL_ATTACHMENT;
+			glConfig.stencilBits = 8;
+			fprintf(stderr, "[OpenXR] Created native depth-stencil texture: %dx%d, %u layers (8-bit stencil)\n", supersampledWidth, supersampledHeight, viewCount);
+		}
+	}
 	qglBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-	fprintf(stderr, "[OpenXR] Created native depth texture: %dx%d, %u layers\n", supersampledWidth, supersampledHeight, viewCount);
 
 	//
 	// Framebuffers
@@ -287,7 +306,7 @@ VR_SwapchainInfos* VR_CreateSwapchains(XrInstance instance, XrSystemId systemId,
 
 	for (uint32_t idx = 0; idx < swapchains->color.imageCount; ++idx)
 	{
-		swapchains->framebuffers[idx] = VR_CreateImageView(swapchains->color.images[idx], swapchains->nativeDepthTexture, viewCount);
+		swapchains->framebuffers[idx] = VR_CreateImageView(swapchains->color.images[idx], swapchains->nativeDepthTexture, viewCount, swapchains->depthAttachment);
 		for (uint32_t view = 0; view < viewCount; ++view)
 		{
 			swapchains->eyeFramebuffers[view][idx] = VR_CreateEyeImageView(swapchains->color.images[idx], view);
@@ -365,7 +384,7 @@ void VR_Swapchains_BindFramebuffers(VR_SwapchainInfos* swapchains, uint32_t swap
 
 	qglBindFramebuffer(GL_DRAW_FRAMEBUFFER, swapchains->framebuffers[swapchainColorIndex]);
 	qglFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, swapchains->color.images[swapchainColorIndex], 0, 0, 2);
-	qglFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, swapchains->nativeDepthTexture, 0, 0, 2);
+	qglFramebufferTextureMultiviewOVR(GL_DRAW_FRAMEBUFFER, swapchains->depthAttachment, swapchains->nativeDepthTexture, 0, 0, 2);
 }
 
 void VR_Swapchains_BlitXRToMainFbo(VR_SwapchainInfos* swapchains, uint32_t swapchainImageIndex, XrDesktopViewConfiguration viewConfig, qboolean useVirtualScreen)
