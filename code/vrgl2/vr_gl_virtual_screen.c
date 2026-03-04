@@ -550,15 +550,22 @@ void VR_VirtualScreen_Draw(XrView* views, uint32_t viewCount, GLuint virtualScre
 	glGetIntegerv(GL_CURRENT_PROGRAM, (GLint*)&previousProgram);
 	glGetIntegerv(GL_TEXTURE_BINDING_2D, (GLint*)&previousTexture);
 
-	const GLboolean blendingEnabled = glIsEnabled(GL_BLEND);
-	if (!blendingEnabled)
+	const GLboolean prevBlend = glIsEnabled(GL_BLEND);
+	const GLboolean prevDepthTest = glIsEnabled(GL_DEPTH_TEST);
+	GLboolean depthMask;
+	qglGetBooleanv(GL_DEPTH_WRITEMASK, &depthMask);
+
+	// Depth test must be disabled: the Q3 renderer leaves it enabled after
+	// scene rendering, and depth buffer values cause virtual screen fragments
+	// to be rejected even after clearing.
+	qglDisable(GL_DEPTH_TEST);
+
+	if (!prevBlend)
 	{
 		qglEnable(GL_BLEND);
 		qglBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	}
 
-	GLboolean depthMask;
-	qglGetBooleanv(GL_DEPTH_WRITEMASK, &depthMask);
 	if (depthMask == GL_TRUE)
 	{
 		qglDepthMask(GL_FALSE);
@@ -635,13 +642,17 @@ void VR_VirtualScreen_Draw(XrView* views, uint32_t viewCount, GLuint virtualScre
 		glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
 	}
 
-	if (!blendingEnabled)
+	if (!prevBlend)
 	{
 		qglDisable(GL_BLEND);
 	}
 	if (depthMask == GL_TRUE)
 	{
 		qglDepthMask(GL_TRUE);
+	}
+	if (prevDepthTest)
+	{
+		qglEnable(GL_DEPTH_TEST);
 	}
 
 	glBindTexture(GL_TEXTURE_2D, previousTexture);
