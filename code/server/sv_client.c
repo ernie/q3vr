@@ -727,12 +727,6 @@ static void SV_SendClientGameState( client_t *client ) {
 	Com_DPrintf( "Going from CS_CONNECTED to CS_PRIMED for %s\n", client->name );
 	client->state = CS_PRIMED;
 
-	// send TV demo download notification if this client was in the previous match
-	if ( client->tvDemoPending && tv.lastRecordedFile[0] ) {
-		SV_AddServerCommand( client, va( "tvdemo \"%s/%s\" \"%s\"", FS_GetCurrentGameDir(), tv.lastRecordedFile, tv.lastRecordedMap ) );
-		client->tvDemoPending = qfalse;
-	}
-
 	client->pureAuthentic = 0;
 	client->gotCP = qfalse;
 
@@ -821,6 +815,14 @@ void SV_ClientEnterWorld( client_t *client, usercmd_t *cmd ) {
 
 	// call the game begin function
 	VM_Call( gvm, GAME_CLIENT_BEGIN, client - svs.clients );
+
+	// send TV demo download notification now that the client is fully active
+	// (sending earlier during gamestate risks losing it if a map download
+	// triggers a reconnect before the client reaches CA_ACTIVE)
+	if ( client->tvDemoPending && tv.lastRecordedFile[0] ) {
+		SV_AddServerCommand( client, va( "tvdemo \"%s/%s\" \"%s\"", FS_GetCurrentGameDir(), tv.lastRecordedFile, tv.lastRecordedMap ) );
+		client->tvDemoPending = qfalse;
+	}
 }
 
 /*
