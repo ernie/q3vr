@@ -87,6 +87,11 @@ void CG_SetInitialSnapshot( snapshot_t *snap ) {
 
 	cg.snap = snap;
 
+	// TV: update clientNum when viewpoint changes
+	if ( cgs.tvPlayback && snap->ps.clientNum != cg.clientNum ) {
+		cg.clientNum = snap->ps.clientNum;
+	}
+
 	BG_PlayerStateToEntityState( &snap->ps, &cg_entities[ snap->ps.clientNum ].currentState, qfalse );
 
 	// sort out solid entities
@@ -151,6 +156,11 @@ static void CG_TransitionSnapshot( void ) {
 	oldFrame = cg.snap;
 	cg.snap = cg.nextSnap;
 
+	// TV: update clientNum when viewpoint changes
+	if ( cgs.tvPlayback && cg.snap->ps.clientNum != cg.clientNum ) {
+		cg.clientNum = cg.snap->ps.clientNum;
+	}
+
 	BG_PlayerStateToEntityState( &cg.snap->ps, &cg_entities[ cg.snap->ps.clientNum ].currentState, qfalse );
 	cg_entities[ cg.snap->ps.clientNum ].interpolate = qfalse;
 
@@ -178,7 +188,7 @@ static void CG_TransitionSnapshot( void ) {
 		// if we are not doing client side movement prediction for any
 		// reason, then the client events and view changes will be issued now
 		if ( cg.demoPlayback || (cg.snap->ps.pm_flags & PMF_FOLLOW)
-			|| cg_nopredict.integer || cg_synchronousClients.integer ) {
+			|| cg_nopredict.integer || cgs.synchronousClients ) {
 			CG_TransitionPlayerState( ps, ops );
 		}
 	}

@@ -1926,7 +1926,7 @@ static void CG_DrawLagometer( void ) {
 
 	trap_R_SetColor( NULL );
 
-	if ( cg_nopredict.integer || cg_synchronousClients.integer ) {
+	if ( cg_nopredict.integer || cgs.synchronousClients ) {
 		CG_DrawBigString( x, y, "snc", 1.0 );
 	}
 

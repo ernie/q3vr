@@ -1183,6 +1183,11 @@ typedef struct {
 	// media
 	cgMedia_t		media;
 
+	qboolean		pmove_fixed;
+	int				pmove_msec;
+
+	qboolean		synchronousClients;
+
 	qboolean		tvPlayback;		// playing back a TV demo (\tv\1 in serverinfo)
 	qboolean		tvScrubActive;		// currently scrubbing the timeline
 	int				tvScrubKey;			// keycode that activated scrub (for phantom key-up filtering)
@@ -1268,7 +1273,6 @@ extern	vmCvar_t		cg_thirdPersonAngle;
 extern	vmCvar_t		cg_thirdPerson;
 extern	vmCvar_t		cg_lagometer;
 extern	vmCvar_t		cg_drawAttacker;
-extern	vmCvar_t		cg_synchronousClients;
 extern	vmCvar_t		cg_teamChatTime;
 extern	vmCvar_t		cg_teamChatHeight;
 extern	vmCvar_t		cg_stats;
@@ -1291,9 +1295,6 @@ extern	vmCvar_t		cg_noVoiceText;
 extern  vmCvar_t		cg_scorePlum;
 extern  vmCvar_t		cg_damagePlums;
 extern	vmCvar_t		cg_smoothClients;
-extern	vmCvar_t		pmove_fixed;
-extern	vmCvar_t		pmove_msec;
-//extern	vmCvar_t		cg_pmove_fixed;
 extern	vmCvar_t		cg_cameraOrbit;
 extern	vmCvar_t		cg_cameraOrbitDelay;
 extern	vmCvar_t		cg_timescaleFadeEnd;
@@ -1659,6 +1660,7 @@ int CG_ActiveVoteTarget( void );	// 0=none, 1=vote, 2=teamvote
 //
 void CG_ExecuteNewServerCommands( int latestSequence );
 void CG_ParseServerinfo( void );
+void CG_ParseSysteminfo( void );
 void CG_SetConfigValues( void );
 void CG_ShaderStateChanged(void);
 #ifdef MISSIONPACK
