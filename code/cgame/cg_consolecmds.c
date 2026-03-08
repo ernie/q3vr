@@ -722,9 +722,8 @@ int CG_ActiveVoteTarget( void ) {
 	return 1;
 }
 
-static void CG_Vote_f( void ) {
-	const char *arg = CG_Argv( 1 );
-	qboolean yes = ( arg[0] == 'y' || arg[0] == 'Y' || arg[0] == '1' );
+void CG_VoteSubmit( qboolean yes ) {
+	const char *arg = yes ? "yes" : "no";
 	int target;
 
 	// TVD offer always takes priority
@@ -745,6 +744,12 @@ static void CG_Vote_f( void ) {
 		// no unvoted dialog — fall through to server
 		trap_SendClientCommand( va( "vote %s", arg ) );
 	}
+}
+
+static void CG_Vote_f( void ) {
+	const char *arg = CG_Argv( 1 );
+	qboolean yes = ( arg[0] == 'y' || arg[0] == 'Y' || arg[0] == '1' );
+	CG_VoteSubmit( yes );
 }
 
 static void CG_TeamVote_f( void ) {

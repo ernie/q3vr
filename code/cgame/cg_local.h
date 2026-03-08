@@ -46,6 +46,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define	DUCK_TIME			100
 #define	PAIN_TWITCH_TIME	200
 #define	WEAPON_SELECT_TIME	1400
+#define	VOTE_HOLD_TIME		1000		// ms to hold A/B before vote registers
+#define	VOTE_HOLD_MIN		500			// minimum hold for early fire near vote expiry
 #define	ITEM_SCALEUP_TIME	1000
 #define	ZOOM_TIME			150
 #define	ITEM_BLOB_TIME		200
@@ -723,6 +725,11 @@ typedef struct {
 	// local vote tracking (0=not voted, 1=yes, -1=no)
 	int				myVote;
 	int				myTeamVote;
+
+	// hold-to-vote tracking
+	int				voteHoldStartTime;	// cg.time when hold began (0 = not holding)
+	int				voteHoldButton;		// 1=yes(A), -1=no(B), 0=none
+	int				voteHoldTarget;		// dialog target when hold began (-1=TVD, 1=vote, 2=teamvote)
 } cg_t;
 
 
@@ -1654,6 +1661,7 @@ qboolean CG_VoteActive( void );
 qboolean CG_TeamVoteActive( void );
 qboolean CG_TVDOfferActive( void );
 int CG_ActiveVoteTarget( void );	// 0=none, 1=vote, 2=teamvote
+void CG_VoteSubmit( qboolean yes );
 
 //
 // cg_servercmds.c

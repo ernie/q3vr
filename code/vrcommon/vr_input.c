@@ -1725,16 +1725,13 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 
 	if (buttons & VR_Button_A)
 	{
+		// Track hold state for cgame vote processing (runs alongside normal actions)
 		if (vr.vote_active)
 		{
-			// Vote/dialog active: A = vote yes
-			if (!IN_InputActivated(&controller->buttons, VR_Button_A))
-			{
-				IN_ActivateInput(&controller->buttons, VR_Button_A);
-				Cbuf_AddText("vote yes\n");
-			}
+			vr.vote_holding = 1;
 		}
-		else if (cl.snap.ps.pm_flags & PMF_FOLLOW)
+
+		if (cl.snap.ps.pm_flags & PMF_FOLLOW)
 		{
 			// Go back to free spectator mode if following player
 			if (!IN_InputActivated(&controller->buttons, VR_Button_A))
@@ -1768,6 +1765,11 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 	}
 	else
 	{
+		if (vr.vote_holding == 1)
+		{
+			vr.vote_holding = 0;
+		}
+
 		if (VR_Gameplay_ShouldRenderInVirtualScreen() || cl.snap.ps.pm_type == PM_INTERMISSION)
 		{
 			// Skip server search in the server menu
@@ -1785,16 +1787,13 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 
 	if (buttons & VR_Button_B)
 	{
+		// Track hold state for cgame vote processing (runs alongside normal actions)
 		if (vr.vote_active)
 		{
-			// Vote/dialog active: B = vote no
-			if (!IN_InputActivated(&controller->buttons, VR_Button_B))
-			{
-				IN_ActivateInput(&controller->buttons, VR_Button_B);
-				Cbuf_AddText("vote no\n");
-			}
+			vr.vote_holding = -1;
 		}
-		else if (!IN_InputActivated(&controller->buttons, VR_Button_B))
+
+		if (!IN_InputActivated(&controller->buttons, VR_Button_B))
 		{
 			// If in any third-person follow mode or playing demo, recenter camera
 			if (((cl.snap.ps.pm_flags & PMF_FOLLOW) || clc.demoplaying) &&
@@ -1808,21 +1807,15 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 				VR_VirtualScreen_ResetPosition();
 			}
 		}
-		if (!vr.vote_active)
-		{
-			IN_HandleActiveInput(&controller->buttons, VR_Button_B, "B", 0, qfalse);
-		}
+		IN_HandleActiveInput(&controller->buttons, VR_Button_B, "B", 0, qfalse);
 	}
 	else
 	{
-		if (!vr.vote_active)
+		if (vr.vote_holding == -1)
 		{
-			IN_HandleInactiveInput(&controller->buttons, VR_Button_B, "B", 0, qfalse);
+			vr.vote_holding = 0;
 		}
-		else
-		{
-			IN_DeactivateInput(&controller->buttons, VR_Button_B);
-		}
+		IN_HandleInactiveInput(&controller->buttons, VR_Button_B, "B", 0, qfalse);
 	}
 
 	if (buttons & VR_Button_X)

@@ -2478,6 +2478,156 @@ static float CG_DrawDialogBox( float boxY, const char *line1, const char *line2,
 
 /*
 =================
+CG_ProcessVoteHold
+
+Reads vr->vote_holding each frame and manages the hold-to-vote timer.
+Fires CG_VoteSubmit when the hold threshold is reached or when a vote
+is about to expire and the player has held long enough to show intent.
+=================
+*/
+/*
+Returns which dialog CG_VoteSubmit would route to:
+  -1 = TVD offer, 1 = vote, 2 = team vote, 0 = none
+*/
+static int CG_ActiveDialogTarget( void ) {
+	if ( CG_TVDOfferActive() )
+		return -1;
+	return CG_ActiveVoteTarget();  // 0, 1, or 2
+}
+
+static int CG_DialogRemaining( int target ) {
+	int cs_offset;
+
+	if ( target == -1 ) {
+		int timeout = (int)( cg_tvdTimeout.value * 1000.0f );
+		return timeout - ( cg.time - cg.tvdOfferTime );
+	}
+	if ( target == 1 )
+		return VOTE_TIME - ( cg.time - cgs.voteTime );
+	if ( target == 2 ) {
+		cs_offset = ( cgs.clientinfo[ cg.clientNum ].team == TEAM_RED ) ? 0 : 1;
+		return VOTE_TIME - ( cg.time - cgs.teamVoteTime[cs_offset] );
+	}
+
+	return INT_MAX;  // no active dialog
+}
+
+static void CG_ResetVoteHold( void ) {
+	cg.voteHoldStartTime = 0;
+	cg.voteHoldButton = 0;
+}
+
+static void CG_ProcessVoteHold( void ) {
+	int holdButton = vr->vote_holding;
+	int elapsed, remain, target;
+
+	target = CG_ActiveDialogTarget();
+
+	// nothing to do if no dialog would accept our input
+	if ( target == 0 ) {
+		CG_ResetVoteHold();
+		return;
+	}
+
+	if ( holdButton != 0 ) {
+		if ( cg.voteHoldButton != holdButton || cg.voteHoldTarget != target ) {
+			// started holding a new button, or target dialog changed — restart
+			cg.voteHoldStartTime = cg.time;
+			cg.voteHoldButton = holdButton;
+			cg.voteHoldTarget = target;
+		}
+
+		elapsed = cg.time - cg.voteHoldStartTime;
+
+		// normal threshold reached
+		if ( elapsed >= VOTE_HOLD_TIME ) {
+			CG_VoteSubmit( cg.voteHoldButton == 1 );
+			CG_ResetVoteHold();
+			return;
+		}
+
+		// early fire: active dialog about to expire and player has held long enough
+		remain = CG_DialogRemaining( target );
+		if ( elapsed >= VOTE_HOLD_MIN && remain <= VOTE_HOLD_MIN ) {
+			CG_VoteSubmit( cg.voteHoldButton == 1 );
+			CG_ResetVoteHold();
+			return;
+		}
+	} else {
+		// released — cancel hold
+		CG_ResetVoteHold();
+	}
+}
+
+
+/*
+=================
+CG_DrawVoteHoldBar
+
+Draws a thin progress bar under the active vote button label
+in the key hints line of a dialog box.
+boxY is the top of the dialog, hasLine3 indicates whether the
+dialog has a third text line (tally).
+=================
+*/
+static void CG_DrawVoteHoldBar( float boxY, qboolean hasLine3 ) {
+	float	textX, lineY, barX, barW, barH, frac;
+	float	yesW, gapW;
+	int		yesLen, noLen;
+	const char *keyYes, *keyNo;
+	vec4_t	bgColor, fillColor;
+
+	if ( cg.voteHoldButton == 0 || cg.voteHoldStartTime == 0 )
+		return;
+
+	frac = (float)( cg.time - cg.voteHoldStartTime ) / VOTE_HOLD_TIME;
+	if ( frac < 0.0f ) frac = 0.0f;
+	if ( frac > 1.0f ) frac = 1.0f;
+
+	keyYes = cg_voteYesKey.string;
+	keyNo = cg_voteNoKey.string;
+	if ( !keyYes[0] || !keyNo[0] )
+		return;
+
+	textX = DIALOG_PAD_X + DIALOG_PAD_X;
+
+	// position hold bar so its bottom edge aligns with the top of the countdown bar
+	barH = 2.0f;
+	{
+		float boxH = hasLine3 ? DIALOG_H4 : DIALOG_H3;
+		lineY = boxY + boxH - DIALOG_BAR_H - barH;
+	}
+
+	// calculate text widths: "A: yes" and "B: no"
+	// format is "%s: yes    %s: no"
+	yesLen = CG_DrawStrlen( keyYes ) + 5;  // "%s: yes" = keyLen + ": yes"
+	noLen = CG_DrawStrlen( keyNo ) + 4;    // "%s: no" = keyLen + ": no"
+	yesW = yesLen * DIALOG_CHARW;
+	gapW = 4 * DIALOG_CHARW;  // "    " gap
+
+	// use the longer of the two label widths so both bars match
+	barW = yesW;
+	if ( noLen * DIALOG_CHARW > barW )
+		barW = noLen * DIALOG_CHARW;
+
+	bgColor[0] = 0.5f; bgColor[1] = 0.5f; bgColor[2] = 0.5f; bgColor[3] = 0.6f;
+
+	if ( cg.voteHoldButton == 1 ) {
+		barX = textX;
+		fillColor[0] = 0.2f; fillColor[1] = 0.9f; fillColor[2] = 0.3f; fillColor[3] = 0.8f;
+	} else {
+		barX = textX + yesW + gapW;
+		fillColor[0] = 0.9f; fillColor[1] = 0.3f; fillColor[2] = 0.2f; fillColor[3] = 0.8f;
+	}
+
+	CG_FillRect( barX, lineY, barW, barH, bgColor );
+	if ( frac > 0.0f )
+		CG_FillRect( barX, lineY, barW * frac, barH, fillColor );
+}
+
+
+/*
+=================
 CG_DrawVote
 =================
 */
@@ -2546,9 +2696,17 @@ static float CG_DrawVote( float y, qboolean highlighted ) {
 	}
 
 	barFg[0] = 0.2f; barFg[1] = 0.6f; barFg[2] = 0.8f; barFg[3] = 0.7f;
-	return CG_DrawDialogBox( y, caller, desc, tally,
-		( highlighted && keyYes[0] && keyNo[0] && !cg.myVote ) ? keys : NULL,
-		frac, barFg, 1.0f, highlighted );
+
+	{
+		float retY = CG_DrawDialogBox( y, caller, desc, tally,
+			( highlighted && keyYes[0] && keyNo[0] && !cg.myVote ) ? keys : NULL,
+			frac, barFg, 1.0f, highlighted );
+
+		if ( highlighted && !cg.myVote )
+			CG_DrawVoteHoldBar( y, qtrue );  // has tally (line3)
+
+		return retY;
+	}
 }
 
 
@@ -2631,9 +2789,17 @@ static float CG_DrawTeamVote( float y, qboolean highlighted ) {
 	}
 
 	barFg[0] = 0.2f; barFg[1] = 0.6f; barFg[2] = 0.8f; barFg[3] = 0.7f;
-	return CG_DrawDialogBox( y, caller, desc, tally,
-		( highlighted && keyYes[0] && keyNo[0] && !cg.myTeamVote ) ? keys : NULL,
-		frac, barFg, 1.0f, highlighted );
+
+	{
+		float retY = CG_DrawDialogBox( y, caller, desc, tally,
+			( highlighted && keyYes[0] && keyNo[0] && !cg.myTeamVote ) ? keys : NULL,
+			frac, barFg, 1.0f, highlighted );
+
+		if ( highlighted && !cg.myTeamVote )
+			CG_DrawVoteHoldBar( y, qtrue );  // has tally (line3)
+
+		return retY;
+	}
 }
 
 
@@ -3072,8 +3238,15 @@ static float CG_DrawTVOffer( float y ) {
 	}
 
 	barFg[0] = 0.8f; barFg[1] = 0.8f; barFg[2] = 0.2f; barFg[3] = 0.7f;
-	return CG_DrawDialogBox( y, "Download last match?", cg.tvdOfferName,
-		NULL, keys, frac, barFg, 1.0f, qfalse );
+
+	{
+		float retY = CG_DrawDialogBox( y, "Download last match?", cg.tvdOfferName,
+			NULL, keys, frac, barFg, 1.0f, qfalse );
+
+		CG_DrawVoteHoldBar( y, qfalse );  // TVD offer has no tally line (no line3)
+
+		return retY;
+	}
 }
 
 
@@ -3115,6 +3288,13 @@ static void CG_DrawTVOverlay( void ) {
 
 	// Check if any yes/no dialog is active for VR button intercept.
 	vr->vote_active = CG_TVDOfferActive() || CG_VoteActive() || CG_TeamVoteActive();
+
+	// Process hold-to-vote timing (must run after vote_active is set)
+	if ( vr->vote_active ) {
+		CG_ProcessVoteHold();
+	} else {
+		CG_ResetVoteHold();
+	}
 }
 
 
