@@ -162,8 +162,6 @@ void VR_DestroyRenderer(VR_Engine* engine)
 
 void VR_ProcessFrame(VR_Engine* engine)
 {
-	VR_UpdatePerFrameState();
-
 	const XrBool32 needsRecenter = VR_ProcessXrEvents(&engine->appState);
 	if (engine->appState.SessionActive == VR_FALSE)
 	{
@@ -253,6 +251,10 @@ void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 	// [Input] poll actions, update controller state, issue action commands
 	IN_VRSyncActions(engine);
 	IN_VRUpdateControllers(engine, lastPredictedDisplayTime);
+
+	// Update zoom level after input processing so weapon_zoomLevel
+	// matches weapon_zoomed (set during IN_VRUpdateControllers)
+	VR_UpdatePerFrameState();
 
 	VR_SwapchainInfos* swapchains = engine->appState.Renderer.Swapchains;
 

@@ -1,0 +1,29 @@
+{
+  "source": "builtin",
+  "applications": [
+    {
+      "app_key": "q3vr.quake3vr",
+      "launch_type": "binary",
+      "binary_path_windows": "q3vr.exe",
+      "arguments": "+seta com_zonemegs 512 +set logfile 1 +set fs_homepath \".\"",
+      "image_path": "q3a_header.jpg",
+      "strings": {
+        "en_us": {
+          "name": "Quake III Arena VR"
+        }
+      }
+    },
+    {
+      "app_key": "q3vr.quake3teamarenavr",
+      "launch_type": "binary",
+      "binary_path_windows": "q3vr.exe",
+      "arguments": "+set fs_game missionpack +seta com_zonemegs 512 +set logfile 1 +set fs_homepath \".\"",
+      "image_path": "q3ta_header.jpg",
+      "strings": {
+        "en_us": {
+          "name": "Quake III: Team Arena VR"
+        }
+      }
+    }
+  ]
+}

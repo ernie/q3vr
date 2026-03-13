@@ -6937,10 +6937,18 @@ void vk_update_mvp( const float *m ) {
 	}
 
 	if ( m ) {
-		// Explicit modelview provided (e.g., for flares)
-		// Build per-eye MVP using the provided modelview
-		for ( int eye = 0; eye < 2; eye++ ) {
-			myGlMultMatrix( m, tr.vrParms.projectionEye[eye], &push_constants[eye * 16] );
+		// Explicit modelview provided (e.g., for shadows, flares)
+		if ( tr.vrParms.valid && (vr.virtual_screen || vr.weapon_zoomed) && !backEnd.projection2D ) {
+			// Mono rendering: use shared symmetric projection for both eyes
+			float mvp[16];
+			myGlMultMatrix( m, tr.vrParms.projection, mvp );
+			Com_Memcpy( &push_constants[0], mvp, sizeof(float) * 16 );
+			Com_Memcpy( &push_constants[16], mvp, sizeof(float) * 16 );
+		} else {
+			// Build per-eye MVP using the provided modelview
+			for ( int eye = 0; eye < 2; eye++ ) {
+				myGlMultMatrix( m, tr.vrParms.projectionEye[eye], &push_constants[eye * 16] );
+			}
 		}
 	} else if ( tr.vrParms.valid && !backEnd.projection2D ) {
 		// VR 3D rendering: Use per-eye view matrices from backend orientation

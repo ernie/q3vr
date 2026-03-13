@@ -78,16 +78,23 @@ void VR_EndFrame(XrSession session, VR_SwapchainInfos* swapchains, XrView* views
 
 	extern vr_clientinfo_t vr;
 
+	// Weapon zoom: cyclopean rendering — both eyes rendered with the same
+	// averaged symmetric projection from center viewpoint.  Tell the
+	// compositor both eyes share the same center pose and averaged FOV
+	// so the identical mono images are reprojected identically.
+	XrPosef centerPose = views[0].pose;
+	if (vr.weapon_zoomed && viewCount > 1)
+	{
+		centerPose.position.x = (views[0].pose.position.x + views[1].pose.position.x) * 0.5f;
+		centerPose.position.y = (views[0].pose.position.y + views[1].pose.position.y) * 0.5f;
+		centerPose.position.z = (views[0].pose.position.z + views[1].pose.position.z) * 0.5f;
+	}
+
 	for (uint32_t view = 0; view < viewCount; view++)
 	{
 		memset(&projection_layer_elements[view], 0, sizeof(XrCompositionLayerProjectionView));
 		projection_layer_elements[view].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
-		projection_layer_elements[view].pose = views[view].pose;
-
-		// Weapon zoom: cyclopean rendering — both eyes rendered with the same
-		// averaged symmetric projection from center viewpoint, so tell the
-		// compositor both eyes share the same (averaged) FOV.  This prevents
-		// the per-eye asymmetry from shifting the identical images apart.
+		projection_layer_elements[view].pose = vr.weapon_zoomed ? centerPose : views[view].pose;
 		projection_layer_elements[view].fov = vr.weapon_zoomed ? fov : views[view].fov;
 
 		memset(&projection_layer_elements[view].subImage, 0, sizeof(XrSwapchainSubImage));

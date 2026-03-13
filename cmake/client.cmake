@@ -186,6 +186,13 @@ if(DEFINED PRIMARY_CLIENT)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/assets/third_party/demo"
         "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/"
+        # Copy SteamVR manifest and artwork download script
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/misc/steamvr/q3vr.vrmanifest"
+        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/misc/steamvr/download-artwork$<IF:$<BOOL:${WIN32}>,.bat,.sh>"
+        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/"
     )
     if(ZIP_EXECUTABLE)
         add_dependencies(${PRIMARY_CLIENT} pakQ3VR)
@@ -207,6 +214,18 @@ install(
     DIRECTORY "${CMAKE_SOURCE_DIR}/assets/third_party/demo/" DESTINATION
     $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
     COMPONENT q3a_demo)
+install(FILES "${CMAKE_SOURCE_DIR}/misc/steamvr/q3vr.vrmanifest" DESTINATION
+    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/,${CMAKE_BINARY_DIR}/$<CONFIG>>
+    COMPONENT game_engine)
+if(WIN32)
+    install(FILES "${CMAKE_SOURCE_DIR}/misc/steamvr/download-artwork.bat" DESTINATION
+        $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/,${CMAKE_BINARY_DIR}/$<CONFIG>>
+        COMPONENT game_engine)
+else()
+    install(PROGRAMS "${CMAKE_SOURCE_DIR}/misc/steamvr/download-artwork.sh" DESTINATION
+        $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/,${CMAKE_BINARY_DIR}/$<CONFIG>>
+        COMPONENT game_engine)
+endif()
 if(WIN32)
     install(FILES "${CMAKE_SOURCE_DIR}/misc/update-trinity.bat" DESTINATION
         $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/,${CMAKE_BINARY_DIR}/$<CONFIG>>
