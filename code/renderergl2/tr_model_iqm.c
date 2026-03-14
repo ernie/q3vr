@@ -1228,8 +1228,9 @@ void R_AddIQMSurfaces( trRefEntity_t *ent ) {
 	void			*drawSurf;
 	int			i, j;
 	qboolean		personalModel;
+	qboolean		shadowOnly = qfalse;
 	int			cull;
-	int			fogNum;
+	int			fogNum = 0;
 	int         cubemapIndex;
 	shader_t		*shader;
 	skin_t			*skin;
@@ -1269,7 +1270,27 @@ void R_AddIQMSurfaces( trRefEntity_t *ent ) {
 	//
 	cull = R_CullIQM ( data, ent );
 	if ( cull == CULL_OUT ) {
-		return;
+		if ( r_shadows->integer != 2
+			|| personalModel
+			|| (ent->e.renderfx & ( RF_NOSHADOW | RF_DEPTHHACK | RF_FIRST_PERSON ))
+			|| !data->bounds ) {
+			return;
+		}
+		// expanded bounds for shadow cull
+		{
+			vec3_t shadowBounds[2];
+			vec_t *oldBounds = data->bounds + 6*ent->e.oldframe;
+			vec_t *newBounds = data->bounds + 6*ent->e.frame;
+			int k;
+			for (k = 0; k < 3; k++) {
+				shadowBounds[0][k] = oldBounds[k] < newBounds[k] ? oldBounds[k] : newBounds[k];
+				shadowBounds[1][k] = oldBounds[k+3] > newBounds[k+3] ? oldBounds[k+3] : newBounds[k+3];
+			}
+			if ( R_CullLocalBoxExpanded( shadowBounds, r_shadowDistance->value ) == CULL_OUT ) {
+				return;
+			}
+		}
+		shadowOnly = qtrue;
 	}
 
 	//
@@ -1282,7 +1303,9 @@ void R_AddIQMSurfaces( trRefEntity_t *ent ) {
 	//
 	// see if we are in a fog volume
 	//
-	fogNum = R_ComputeIQMFogNum( data, ent );
+	if ( !shadowOnly ) {
+		fogNum = R_ComputeIQMFogNum( data, ent );
+	}
 
 	cubemapIndex = R_CubemapForPoint(ent->e.origin);
 
@@ -1331,7 +1354,7 @@ void R_AddIQMSurfaces( trRefEntity_t *ent ) {
 			R_AddDrawSurf( drawSurf, tr.projectionShadowShader, 0, 0, 0, 0 );
 		}
 
-		if( !personalModel ) {
+		if( !personalModel && !shadowOnly ) {
 			R_AddDrawSurf( drawSurf, shader, fogNum, 0, 0, cubemapIndex );
 		}
 

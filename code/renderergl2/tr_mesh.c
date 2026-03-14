@@ -288,9 +288,10 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 	shader_t		*shader;
 	int				cull;
 	int				lod;
-	int				fogNum;
+	int				fogNum = 0;
 	int             cubemapIndex;
 	qboolean		personalModel;
+	qboolean		shadowOnly = qfalse;
 
 	// don't add third_person objects if not in a portal
 	personalModel = (ent->e.renderfx & RF_THIRD_PERSON) && !(tr.viewParms.isPortal 
@@ -331,7 +332,26 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 	//
 	cull = R_CullModel ( model, ent );
 	if ( cull == CULL_OUT ) {
-		return;
+		if ( r_shadows->integer != 2
+			|| personalModel
+			|| (ent->e.renderfx & ( RF_NOSHADOW | RF_DEPTHHACK | RF_FIRST_PERSON )) ) {
+			return;
+		}
+		// expanded bounds for shadow cull
+		{
+			vec3_t bounds[2];
+			mdvFrame_t *oldFrame = model->frames + ent->e.oldframe;
+			mdvFrame_t *newFrame = model->frames + ent->e.frame;
+			int k;
+			for (k = 0; k < 3; k++) {
+				bounds[0][k] = oldFrame->bounds[0][k] < newFrame->bounds[0][k] ? oldFrame->bounds[0][k] : newFrame->bounds[0][k];
+				bounds[1][k] = oldFrame->bounds[1][k] > newFrame->bounds[1][k] ? oldFrame->bounds[1][k] : newFrame->bounds[1][k];
+			}
+			if ( R_CullLocalBoxExpanded( bounds, r_shadowDistance->value ) == CULL_OUT ) {
+				return;
+			}
+		}
+		shadowOnly = qtrue;
 	}
 
 	//
@@ -344,7 +364,9 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 	//
 	// see if we are in a fog volume
 	//
-	fogNum = R_ComputeFogNum( model, ent );
+	if ( !shadowOnly ) {
+		fogNum = R_ComputeFogNum( model, ent );
+	}
 
 	cubemapIndex = R_CubemapForPoint(ent->e.origin);
 
@@ -409,7 +431,7 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 		}
 
 		// don't add third_person objects if not viewing through a portal
-		if ( !personalModel ) {
+		if ( !personalModel && !shadowOnly ) {
 			R_AddDrawSurf( drawSurf, shader, fogNum, qfalse, qfalse, cubemapIndex );
 		}
 
