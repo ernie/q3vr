@@ -217,7 +217,7 @@ static void CG_ParseWarmup( void ) {
 			if ( cg.snap && ( cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR || cg.snap->ps.pm_flags & PMF_FOLLOW ) ) {
 				// force sound playback in CG_WarmupEvents()
 				cg.warmup = cg.time;
-				cg.warmupCount = -2; // special value to silent FIGHT sound for demo playback
+				cg.warmupCount = -2; // special value to silence FIGHT sound
 			}
 			return;
 		}
@@ -267,7 +267,7 @@ void CG_SetConfigValues( void ) {
 		cgs.flagStatus = s[0] - '0';
 	}
 #endif
-	cg.warmup = atoi( CG_ConfigString( CS_WARMUP ) );
+	CG_ParseWarmup();
 }
 
 /*
