@@ -3512,6 +3512,7 @@ void CL_InitRef( void ) {
 	refImport.Hunk_FreeTempMemory = Hunk_FreeTempMemory;
 
 	refImport.CM_ClusterPVS = CM_ClusterPVS;
+	refImport.CM_PointTrace = CM_PointTrace;
 	refImport.CM_DrawDebugSurface = CM_DrawDebugSurface;
 
 	refImport.FS_ReadFile = FS_ReadFile;
