@@ -455,6 +455,10 @@ qboolean Q_IsColorString(const char *p);  // ^[0-9a-zA-Z]
 #define S_COLOR_LIGHT_GREY	"^8"
 #define S_COLOR_MID_GREY	"^9"
 
+#define S_COLOR_DEVEL	S_COLOR_CYAN
+#define S_COLOR_WARNING	S_COLOR_YELLOW
+#define S_COLOR_ERROR	S_COLOR_RED
+
 extern vec4_t	g_color_table[10];
 
 #define	MAKERGB( v, r, g, b ) v[0]=r;v[1]=g;v[2]=b

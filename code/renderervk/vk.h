@@ -811,6 +811,8 @@ typedef struct {
 		VkDeviceSize geometry_size;
 	} defaults;
 
+	char driverNote[200];
+
 	// Q3VR is XR-only: Vulkan instance/device are provided by VR layer
 	qboolean xrMode;
 	VkInstance xrInstance;
