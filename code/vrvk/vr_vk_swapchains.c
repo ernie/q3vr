@@ -41,9 +41,7 @@ static void VR_VK_CreateSwapchain(
 	uint32_t arraySize,
 	VR_VK_SwapchainInfo* info)
 {
-	// Set up swapchain create info
-	// Color swapchains need TRANSFER_SRC_BIT for desktop mirror blitting
-	// and TRANSFER_DST_BIT for copying from vk.processed image
+	// TRANSFER_SRC for virtual screen blit, TRANSFER_DST for runtime compatibility
 	XrSwapchainUsageFlags usage = isColor
 		? (XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT)
 		: (XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);

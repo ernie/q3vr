@@ -394,76 +394,6 @@ static void record_image_layout_transition( VkCommandBuffer command_buffer, VkIm
 	VkImageLayout old_layout, VkImageLayout new_layout, uint32_t src_stage_override, uint32_t dst_stage_override );
 
 
-/*
- * vk_copy_processed_to_xr_swapchain - Copy processed image to XR swapchain
- *
- * After the gamma pass renders to vk.processed, this function copies the
- * result to the XR swapchain. Using vkCmdCopyImage (not blit) since both
- * images have the same format and dimensions.
- *
- * After this function:
- * - vk.processed is in SHADER_READ_ONLY_OPTIMAL (ready for sampling)
- * - XR swapchain is in COLOR_ATTACHMENT_OPTIMAL (ready for OpenXR)
- */
-static void vk_copy_processed_to_xr_swapchain( uint32_t colorIndex )
-{
-	VkImageCopy copyRegion;
-
-	if ( vk.processed.image == VK_NULL_HANDLE || !vk.xr.colorInfo ) {
-		return;
-	}
-
-	// 1. Transition processed: COLOR_ATTACHMENT_OPTIMAL -> TRANSFER_SRC_OPTIMAL
-	record_image_layout_transition( vk.cmd->command_buffer,
-		vk.processed.image, VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0, 0 );
-
-	// 2. Transition XR swapchain: UNDEFINED -> TRANSFER_DST_OPTIMAL
-	record_image_layout_transition( vk.cmd->command_buffer,
-		vk.xr.colorInfo->images[colorIndex], VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, 0 );
-
-	// 3. Copy both stereo layers
-	Com_Memset( &copyRegion, 0, sizeof( copyRegion ) );
-	copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	copyRegion.srcSubresource.mipLevel = 0;
-	copyRegion.srcSubresource.baseArrayLayer = 0;
-	copyRegion.srcSubresource.layerCount = 2;  // Both eyes
-	copyRegion.srcOffset.x = 0;
-	copyRegion.srcOffset.y = 0;
-	copyRegion.srcOffset.z = 0;
-	copyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	copyRegion.dstSubresource.mipLevel = 0;
-	copyRegion.dstSubresource.baseArrayLayer = 0;
-	copyRegion.dstSubresource.layerCount = 2;  // Both eyes
-	copyRegion.dstOffset.x = 0;
-	copyRegion.dstOffset.y = 0;
-	copyRegion.dstOffset.z = 0;
-	copyRegion.extent.width = vk.xr.width;
-	copyRegion.extent.height = vk.xr.height;
-	copyRegion.extent.depth = 1;
-
-	qvkCmdCopyImage( vk.cmd->command_buffer,
-		vk.processed.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		vk.xr.colorInfo->images[colorIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		1, &copyRegion );
-
-	// 4. Transition XR swapchain: TRANSFER_DST_OPTIMAL -> COLOR_ATTACHMENT_OPTIMAL (for OpenXR)
-	record_image_layout_transition( vk.cmd->command_buffer,
-		vk.xr.colorInfo->images[colorIndex], VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0, 0 );
-
-	// 5. Transition processed: TRANSFER_SRC_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL (for sampling by other outputs)
-	record_image_layout_transition( vk.cmd->command_buffer,
-		vk.processed.image, VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
-}
-
-
 static void record_image_layout_transition( VkCommandBuffer command_buffer, VkImage image, VkImageAspectFlags image_aspect_flags,
 	VkImageLayout old_layout, VkImageLayout new_layout, uint32_t src_stage_override, uint32_t dst_stage_override ) {
 	VkImageMemoryBarrier barrier;
@@ -4343,7 +4273,7 @@ void vk_initialize( void )
 		SET_OBJECT_NAME( vk.pipeline_layout_virtual_screen, "pipeline layout - virtual screen", VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT );
 	}
 
-	// Create general-purpose linear sampler early - used by processed image, desktop mirror, virtual screen, etc.
+	// Create general-purpose linear sampler (used by desktop mirror, virtual screen, etc.)
 	{
 		VkSamplerCreateInfo samplerCI;
 
@@ -7877,40 +7807,75 @@ void vk_begin_frame( uint32_t colorIndex )
 	VK_CHECK( qvkBeginCommandBuffer( vk.cmd->command_buffer, &begin_info ) );
 	vk.recordingCommands = qtrue;
 
-	// Transition FBO images to attachment-optimal layouts (fboActive always true in VR)
-	// XR swapchain will be transitioned later when gamma pass outputs to it
-	if ( vk.color_image != VK_NULL_HANDLE ) {
-		record_image_layout_transition( vk.cmd->command_buffer,
-			vk.color_image,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			0, 0 );
-	}
+	// Batch FBO layout transitions into a single pipeline barrier
+	{
+		VkImageMemoryBarrier barriers[3];
+		uint32_t barrierCount = 0;
 
-	if ( vk.depth_image != VK_NULL_HANDLE ) {
-		// For depth/stencil formats, barriers must include both aspects
-		VkImageAspectFlags depthAspects = VK_IMAGE_ASPECT_DEPTH_BIT;
-		if ( vk_format_has_stencil( vk.depth_format ) ) {
-			depthAspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		if ( vk.color_image != VK_NULL_HANDLE ) {
+			barriers[barrierCount].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			barriers[barrierCount].pNext = NULL;
+			barriers[barrierCount].srcAccessMask = VK_ACCESS_NONE;
+			barriers[barrierCount].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			barriers[barrierCount].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			barriers[barrierCount].newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			barriers[barrierCount].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barriers[barrierCount].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barriers[barrierCount].image = vk.color_image;
+			barriers[barrierCount].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			barriers[barrierCount].subresourceRange.baseMipLevel = 0;
+			barriers[barrierCount].subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+			barriers[barrierCount].subresourceRange.baseArrayLayer = 0;
+			barriers[barrierCount].subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+			barrierCount++;
 		}
-		record_image_layout_transition( vk.cmd->command_buffer,
-			vk.depth_image,
-			depthAspects,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-			0, 0 );
-	}
 
-	// MSAA mode: also transition MSAA color image
-	// Quake3e uses shared depth for MSAA, no separate MSAA depth
-	if ( vk.msaaActive && vk.msaa_image != VK_NULL_HANDLE ) {
-		record_image_layout_transition( vk.cmd->command_buffer,
-			vk.msaa_image,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			0, 0 );
+		if ( vk.depth_image != VK_NULL_HANDLE ) {
+			VkImageAspectFlags depthAspects = VK_IMAGE_ASPECT_DEPTH_BIT;
+			if ( vk_format_has_stencil( vk.depth_format ) ) {
+				depthAspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+			}
+			barriers[barrierCount].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			barriers[barrierCount].pNext = NULL;
+			barriers[barrierCount].srcAccessMask = VK_ACCESS_NONE;
+			barriers[barrierCount].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+			barriers[barrierCount].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			barriers[barrierCount].newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			barriers[barrierCount].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barriers[barrierCount].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barriers[barrierCount].image = vk.depth_image;
+			barriers[barrierCount].subresourceRange.aspectMask = depthAspects;
+			barriers[barrierCount].subresourceRange.baseMipLevel = 0;
+			barriers[barrierCount].subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+			barriers[barrierCount].subresourceRange.baseArrayLayer = 0;
+			barriers[barrierCount].subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+			barrierCount++;
+		}
+
+		if ( vk.msaaActive && vk.msaa_image != VK_NULL_HANDLE ) {
+			barriers[barrierCount].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			barriers[barrierCount].pNext = NULL;
+			barriers[barrierCount].srcAccessMask = VK_ACCESS_NONE;
+			barriers[barrierCount].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			barriers[barrierCount].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			barriers[barrierCount].newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			barriers[barrierCount].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barriers[barrierCount].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barriers[barrierCount].image = vk.msaa_image;
+			barriers[barrierCount].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			barriers[barrierCount].subresourceRange.baseMipLevel = 0;
+			barriers[barrierCount].subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+			barriers[barrierCount].subresourceRange.baseArrayLayer = 0;
+			barriers[barrierCount].subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+			barrierCount++;
+		}
+
+		if ( barrierCount > 0 ) {
+			qvkCmdPipelineBarrier( vk.cmd->command_buffer,
+				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+				0, 0, NULL, 0, NULL, barrierCount, barriers );
+		}
 	}
 
 	// Track stats
@@ -7951,6 +7916,8 @@ void vk_end_frame( void )
 	uint32_t colorIndex;
 	float screenMVP[2][16], floorMVP[2][16];
 	qboolean useVirtualScreen = qfalse;
+	qboolean mirrorEnabled;
+	extern cvar_t *vr_desktopMode;
 
 	if ( vk.frame_count == 0 && !vk.recordingCommands )
 		return;
@@ -7964,6 +7931,7 @@ void vk_end_frame( void )
 	}
 
 	colorIndex = vk.xr.colorIndex;
+	mirrorEnabled = ( vr_desktopMode && vr_desktopMode->integer != 0 );
 
 	// Query virtual screen state from VR layer (pull model)
 	if ( ri.VR_GetVirtualScreenState != NULL ) {
@@ -7996,9 +7964,8 @@ void vk_end_frame( void )
 		vk.renderHeight = vk.xr.height;
 		vk.renderScaleX = vk.renderScaleY = 1.0f;
 
-		// Gamma pass outputs to vk.processed (intermediate image)
-		// This ensures all outputs (XR, virtual screen, desktop mirror) get the same gamma-corrected result
-		vk_begin_render_pass( vk.render_pass.gamma, vk.framebuffers.processed,
+		// Gamma pass renders directly to XR swapchain (finalLayout = COLOR_ATTACHMENT_OPTIMAL)
+		vk_begin_render_pass( vk.render_pass.gamma, vk.framebuffers.gamma[colorIndex],
 			qfalse, vk.renderWidth, vk.renderHeight );
 		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 			vk.gamma_pipeline );
@@ -8007,20 +7974,9 @@ void vk_end_frame( void )
 		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
 		vk_end_render_pass();
 
-		// Virtual screen rendering (replaces normal XR output when active)
 		if ( useVirtualScreen ) {
-			// Virtual screen mode: blit processed to virtual screen texture, draw as cylinder
-			// This clears XR swapchain and draws floor + virtual screen
 			vk_render_virtual_screen( screenMVP, floorMVP );
-		} else {
-			// Normal mode: copy processed image to XR swapchain
-			// This also transitions processed to SHADER_READ_ONLY for potential sampling
-			vk_copy_processed_to_xr_swapchain( colorIndex );
 		}
-	} else if ( vk.xr.initialized && useVirtualScreen ) {
-		// r_fbo = 0 case: No FBO, scene rendered directly to XR swapchain
-		// Virtual screen blits from XR swapchain to virtual screen texture, then redraws
-		vk_render_virtual_screen( screenMVP, floorMVP );
 	}
 
 	// Only proceed if we're actually recording commands
@@ -8037,9 +7993,6 @@ void vk_end_frame( void )
 	// If we signal it but desktop mirror doesn't run (disabled, minimized, etc), the semaphore
 	// remains signaled and the next vk_end_frame will cause a double-signal validation error.
 	{
-		extern cvar_t *vr_desktopMode;
-		qboolean mirrorEnabled = ( vr_desktopMode && vr_desktopMode->integer != 0 );
-
 		submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		submit_info.pNext = NULL;
 		submit_info.waitSemaphoreCount = 0;
@@ -8215,10 +8168,6 @@ static void vk_destroy_desktop_mirror_resources( void )
 	if ( vk.desktopMirrorPipeline != VK_NULL_HANDLE ) {
 		qvkDestroyPipeline( vk.device, vk.desktopMirrorPipeline, NULL );
 		vk.desktopMirrorPipeline = VK_NULL_HANDLE;
-	}
-	if ( vk.desktopMirrorVSPipeline != VK_NULL_HANDLE ) {
-		qvkDestroyPipeline( vk.device, vk.desktopMirrorVSPipeline, NULL );
-		vk.desktopMirrorVSPipeline = VK_NULL_HANDLE;
 	}
 	if ( vk.desktopMirrorPipelineLayout != VK_NULL_HANDLE ) {
 		qvkDestroyPipelineLayout( vk.device, vk.desktopMirrorPipelineLayout, NULL );
@@ -8489,13 +8438,8 @@ static qboolean vk_create_desktop_mirror_resources( void )
 	VK_CHECK( qvkCreatePipelineLayout( vk.device, &layoutInfo, NULL, &vk.desktopMirrorPipelineLayout ) );
 	SET_OBJECT_NAME( vk.desktopMirrorPipelineLayout, "Desktop mirror pipeline layout", VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT );
 
-	// 9. Create pipelines with specialization constants for gamma
-	// vk.processed contains sRGB-encoded values (gamma-corrected) stored in UNORM format.
-	// Desktop mirror outputs to sRGB framebuffer which auto-applies linear->sRGB encode.
-	// Two different gamma values are needed:
-	// - Gameplay (vk.processed): gamma=2.2 to convert sRGB->linear before hardware encodes back
-	// - Virtual screen: gamma=1.0 because the blitted texture works correctly as-is
-	specData.gamma = 1.0f;  // Will be overridden per-pipeline below
+	// 9. Create pipeline — sRGB view auto-decodes on read, sRGB framebuffer auto-encodes on write
+	specData.gamma = 1.0f;
 	specData.obScale = 1.0f;
 
 	specEntries[0].constantID = 0;
@@ -8601,17 +8545,8 @@ static qboolean vk_create_desktop_mirror_resources( void )
 	pipelineInfo.renderPass = vk.desktopMirrorRenderPass;
 	pipelineInfo.subpass = 0;
 
-	// Gameplay pipeline: needs gamma=2.2 to counteract sRGB framebuffer encode
-	// because vk.processed contains sRGB values that need to pass through unchanged
-	specData.gamma = 2.2f;
 	VK_CHECK( qvkCreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &pipelineInfo, NULL, &vk.desktopMirrorPipeline ) );
 	SET_OBJECT_NAME( vk.desktopMirrorPipeline, "Desktop mirror pipeline", VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT );
-
-	// 9b. Create virtual screen variant pipeline
-	// Virtual screen texture has already been blitted and works correctly with gamma=1.0
-	specData.gamma = 1.0f;
-	VK_CHECK( qvkCreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &pipelineInfo, NULL, &vk.desktopMirrorVSPipeline ) );
-	SET_OBJECT_NAME( vk.desktopMirrorVSPipeline, "Desktop mirror VS pipeline", VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT );
 
 	// 10. Initialize image layout
 	{
@@ -8633,6 +8568,34 @@ Acquires desktop swapchain image, blits XR content to it, and presents.
 This is called from RE_SwapDesktopWindow in tr_init.c.
 ===============
 */
+/*
+ * Drain the renderingCompleteSem if it was signaled but not consumed.
+ * Vulkan semaphores must be consumed before they can be signaled again,
+ * so we submit an empty command buffer that waits on it to prevent a
+ * double-signal validation error on the next frame.
+ */
+static void vk_drain_rendering_semaphore( void )
+{
+	if ( vk.renderingCompleteSemSignaled ) {
+		VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		VkSubmitInfo submit_info;
+
+		submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submit_info.pNext = NULL;
+		submit_info.waitSemaphoreCount = 1;
+		submit_info.pWaitSemaphores = &vk.renderingCompleteSem;
+		submit_info.pWaitDstStageMask = &waitStage;
+		submit_info.commandBufferCount = 0;
+		submit_info.pCommandBuffers = NULL;
+		submit_info.signalSemaphoreCount = 0;
+		submit_info.pSignalSemaphores = NULL;
+
+		qvkQueueSubmit( vk.queue, 1, &submit_info, VK_NULL_HANDLE );
+		vk.renderingCompleteSemSignaled = qfalse;
+	}
+}
+
+
 void vk_present_desktop_mirror( void )
 {
 	extern cvar_t *vr_desktopMode;
@@ -8672,31 +8635,34 @@ void vk_present_desktop_mirror( void )
 		return;
 	}
 
-	// Wait for previous desktop blit to complete BEFORE acquiring or reusing anything.
-	// This ensures:
-	// 1. The acquire semaphore is no longer pending (previous acquire was waited on by submit)
-	// 2. The command buffer is no longer in flight
-	// 3. The previous blit complete semaphore was consumed by present
-	// The fence is created signaled so the first call passes through.
+	// Wait for previous blit to finish (fence created signaled so first call passes through)
 	qvkWaitForFences( vk.device, 1, &vk.desktopBlitFence, VK_TRUE, UINT64_MAX );
-	qvkResetFences( vk.device, 1, &vk.desktopBlitFence );
 
-	// Acquire desktop swapchain image
-	// Use a semaphore for GPU-side synchronization: the semaphore is signaled when
-	// the presentation engine is done reading the image and we can start writing.
-	result = qvkAcquireNextImageKHR( vk.device, vk.swapchain, UINT64_MAX,
+	// Non-blocking acquire so the VR frame is never stalled by desktop vsync.
+	// If no image is available, we skip — spectator sees the previous frame held.
+	result = qvkAcquireNextImageKHR( vk.device, vk.swapchain, 0,
 		vk.desktopAcquireSem, VK_NULL_HANDLE, &desktopImageIndex );
 
 	if ( result == VK_ERROR_OUT_OF_DATE_KHR ) {
 		// Swapchain needs recreation (window resized, minimized then restored, etc.)
 		vk_recreate_desktop_swapchain();
-		return;  // Try again next frame
+		vk_drain_rendering_semaphore();
+		return;
+	}
+
+	if ( result == VK_NOT_READY || result == VK_TIMEOUT ) {
+		// No desktop swapchain image available — skip this frame's mirror
+		vk_drain_rendering_semaphore();
+		return;
 	}
 
 	if ( result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR ) {
 		ri.Printf( PRINT_WARNING, "vk_present_desktop_mirror: Failed to acquire desktop image: %s\n", vk_result_string( result ) );
+		vk_drain_rendering_semaphore();
 		return;
 	}
+
+	qvkResetFences( vk.device, 1, &vk.desktopBlitFence );
 
 	// Begin command buffer
 	begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -8756,9 +8722,9 @@ void vk_present_desktop_mirror( void )
 		uint32_t colorIndex = vk.xr.colorIndex;
 
 		// Lazy-init desktop mirror resources
-		if ( vk.desktopMirrorVSPipeline == VK_NULL_HANDLE ) {
+		if ( vk.desktopMirrorPipeline == VK_NULL_HANDLE ) {
 			vk_create_desktop_mirror_resources();
-			if ( vk.desktopMirrorVSPipeline == VK_NULL_HANDLE ) {
+			if ( vk.desktopMirrorPipeline == VK_NULL_HANDLE ) {
 				goto finish_desktop_mirror;
 			}
 		}
@@ -8860,8 +8826,7 @@ void vk_present_desktop_mirror( void )
 			qvkCmdBeginRenderPass( vk.desktopBlitCmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE );
 		}
 
-		// Use VS pipeline (gamma=1.0) for VR view - sRGB texture view auto-decodes, sRGB framebuffer auto-encodes
-		qvkCmdBindPipeline( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.desktopMirrorVSPipeline );
+		qvkCmdBindPipeline( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.desktopMirrorPipeline );
 
 		// Set viewport/scissor
 		{
@@ -9002,9 +8967,9 @@ void vk_present_desktop_mirror( void )
 	} else if ( vr.virtual_screen && vk.xr.virtualScreenImage != VK_NULL_HANDLE && menuStyle == 0 ) {
 		// Virtual screen mode with "Desktop view" (menuStyle=0): shader-based rendering with 4:3 aspect ratio
 		// Lazy-init desktop mirror resources (needed for render pass, framebuffers, pipeline)
-		if ( vk.desktopMirrorVSPipeline == VK_NULL_HANDLE ) {
+		if ( vk.desktopMirrorPipeline == VK_NULL_HANDLE ) {
 			vk_create_desktop_mirror_resources();
-			if ( vk.desktopMirrorVSPipeline == VK_NULL_HANDLE ) {
+			if ( vk.desktopMirrorPipeline == VK_NULL_HANDLE ) {
 				goto finish_desktop_mirror;
 			}
 		}
@@ -9045,8 +9010,8 @@ void vk_present_desktop_mirror( void )
 			qvkCmdBeginRenderPass( vk.desktopBlitCmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE );
 		}
 
-		// Bind VS pipeline and virtual screen descriptor
-		qvkCmdBindPipeline( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.desktopMirrorVSPipeline );
+		// Bind pipeline and virtual screen descriptor
+		qvkCmdBindPipeline( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.desktopMirrorPipeline );
 		qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 			vk.desktopMirrorPipelineLayout, 0, 1, &vk.xr.virtualScreenMirrorDescriptor, 0, NULL );
 
@@ -9111,7 +9076,8 @@ void vk_present_desktop_mirror( void )
 		dstLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
 	} else {
-		// Normal mode: shader-based rendering from vk.processed (already gamma-corrected)
+		// Normal mode: sample from XR swapchain (still ours — runs before xrReleaseSwapchainImage)
+		uint32_t xrColorIndex = vk.xr.colorIndex;
 
 		// Lazy-init desktop mirror resources
 		if ( vk.desktopMirrorPipeline == VK_NULL_HANDLE ) {
@@ -9122,15 +9088,18 @@ void vk_present_desktop_mirror( void )
 			}
 		}
 
-		// Check if we have the processed descriptor
-		if ( vk.processed.descriptor == VK_NULL_HANDLE ) {
+		// Check if we have descriptors for this swapchain image
+		if ( xrColorIndex >= MAX_SWAPCHAIN_IMAGES ||
+		     vk.xr.colorArrayDescriptors[xrColorIndex] == VK_NULL_HANDLE ) {
 			goto finish_desktop_mirror;
 		}
 
-		// vk.processed is already in SHADER_READ_ONLY_OPTIMAL after vk_render_virtual_screen
-		// or after vk_copy_processed_to_xr_swapchain transitions it
+		// Transition XR swapchain to SHADER_READ_ONLY for sampling
+		record_image_layout_transition( vk.desktopBlitCmd, vk.xr.colorInfo->images[xrColorIndex],
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
 
-		// Render from vk.processed to desktop swapchain with inverse gamma
 		// Transition desktop swapchain to COLOR_ATTACHMENT_OPTIMAL for rendering
 		record_image_layout_transition( vk.desktopBlitCmd, dstImage,
 			VK_IMAGE_ASPECT_COLOR_BIT,
@@ -9162,10 +9131,9 @@ void vk_present_desktop_mirror( void )
 			qvkCmdBeginRenderPass( vk.desktopBlitCmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE );
 		}
 
-		// Bind pipeline and descriptor (sample from vk.processed)
 		qvkCmdBindPipeline( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.desktopMirrorPipeline );
 		qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-			vk.desktopMirrorPipelineLayout, 0, 1, &vk.processed.descriptor, 0, NULL );
+			vk.desktopMirrorPipelineLayout, 0, 1, &vk.xr.colorArrayDescriptors[xrColorIndex], 0, NULL );
 
 		// Calculate viewport/scissor for the destination
 		{
@@ -9304,6 +9272,12 @@ void vk_present_desktop_mirror( void )
 		qvkCmdEndRenderPass( vk.desktopBlitCmd );
 		// Render pass finalLayout transitions to PRESENT_SRC_KHR
 		dstLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+		// Transition XR swapchain back to COLOR_ATTACHMENT_OPTIMAL for OpenXR
+		record_image_layout_transition( vk.desktopBlitCmd, vk.xr.colorInfo->images[xrColorIndex],
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0, 0 );
 	}
 
 finish_desktop_mirror:
@@ -10476,196 +10450,6 @@ static void vk_destroy_hud_buffer( void )
 
 
 /*
- * vk_destroy_processed_image - Destroy processed image resources
- *
- * The processed image holds post-gamma output and is sampled by all
- * output destinations (XR swapchain, virtual screen, desktop mirror).
- */
-static void vk_destroy_processed_image( void )
-{
-	if ( vk.framebuffers.processed != VK_NULL_HANDLE ) {
-		qvkDestroyFramebuffer( vk.device, vk.framebuffers.processed, NULL );
-		vk.framebuffers.processed = VK_NULL_HANDLE;
-	}
-	if ( vk.processed.view != VK_NULL_HANDLE ) {
-		qvkDestroyImageView( vk.device, vk.processed.view, NULL );
-		vk.processed.view = VK_NULL_HANDLE;
-	}
-	if ( vk.processed.samplerView != VK_NULL_HANDLE ) {
-		qvkDestroyImageView( vk.device, vk.processed.samplerView, NULL );
-		vk.processed.samplerView = VK_NULL_HANDLE;
-	}
-	if ( vk.processed.image != VK_NULL_HANDLE ) {
-		qvkDestroyImage( vk.device, vk.processed.image, NULL );
-		vk.processed.image = VK_NULL_HANDLE;
-	}
-	if ( vk.processed.memory != VK_NULL_HANDLE ) {
-		qvkFreeMemory( vk.device, vk.processed.memory, NULL );
-		vk.processed.memory = VK_NULL_HANDLE;
-	}
-	// Descriptors are freed when pool is reset
-	vk.processed.descriptor = VK_NULL_HANDLE;
-}
-
-
-/*
- * vk_create_processed_image - Create processed image and associated resources
- *
- * The processed image receives gamma pass output and serves as the single
- * source for all display destinations. This ensures consistent color output
- * without double-applying gamma or sRGB conversions.
- *
- * Key design decisions:
- * - Format matches XR swapchain for direct copy compatibility
- * - UNORM views prevent automatic sRGB conversions (we store sRGB-encoded values)
- * - Multiview (2 layers) for stereo rendering
- * - Usage includes TRANSFER_SRC for copy to XR swapchain
- */
-qboolean vk_create_processed_image( void )
-{
-	VkImageCreateInfo imageCI;
-	VkMemoryRequirements memReqs;
-	VkMemoryAllocateInfo allocInfo;
-	VkImageViewCreateInfo viewCI;
-	VkFramebufferCreateInfo fbCI;
-	VkDescriptorSetAllocateInfo descAllocInfo;
-	VkDescriptorImageInfo imageInfo;
-	VkWriteDescriptorSet descriptorWrite;
-	uint32_t memoryType;
-	VkFormat unormFormat;
-
-	// Clean up any existing resources first
-	vk_destroy_processed_image();
-
-	// Need XR dimensions
-	if ( vk.xr.width == 0 || vk.xr.height == 0 ) {
-		ri.Printf( PRINT_WARNING, "vk_create_processed_image: XR dimensions not set\n" );
-		return qfalse;
-	}
-
-	// Need XR swapchain format for compatibility
-	if ( !vk.xr.colorInfo ) {
-		ri.Printf( PRINT_WARNING, "vk_create_processed_image: XR color swapchain not available\n" );
-		return qfalse;
-	}
-
-	// Use same format as XR swapchain for copy compatibility (handles RGB vs BGR)
-	unormFormat = vk_get_unorm_format( vk.xr.colorInfo->format );
-
-	ri.Printf( PRINT_ALL, "Creating processed image (%dx%d, format=0x%x -> UNORM 0x%x)...\n",
-		vk.xr.width, vk.xr.height, vk.xr.colorInfo->format, unormFormat );
-
-	// 1. Create image (2-layer array for stereo multiview)
-	Com_Memset( &imageCI, 0, sizeof( imageCI ) );
-	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	imageCI.imageType = VK_IMAGE_TYPE_2D;
-	imageCI.format = vk.xr.colorInfo->format;  // Match XR swapchain format exactly
-	imageCI.extent.width = vk.xr.width;
-	imageCI.extent.height = vk.xr.height;
-	imageCI.extent.depth = 1;
-	imageCI.mipLevels = 1;
-	imageCI.arrayLayers = 2;  // Stereo multiview
-	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
-	imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
-	imageCI.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |  // Gamma pass renders here
-	                VK_IMAGE_USAGE_SAMPLED_BIT |           // Desktop mirror sample
-	                VK_IMAGE_USAGE_TRANSFER_SRC_BIT;       // Copy to XR swapchain
-	imageCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-	VK_CHECK( qvkCreateImage( vk.device, &imageCI, NULL, &vk.processed.image ) );
-	SET_OBJECT_NAME( vk.processed.image, "Processed image", VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT );
-
-	// 2. Allocate memory
-	qvkGetImageMemoryRequirements( vk.device, vk.processed.image, &memReqs );
-
-	memoryType = find_memory_type(
-		memReqs.memoryTypeBits,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT );
-
-	Com_Memset( &allocInfo, 0, sizeof( allocInfo ) );
-	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	allocInfo.allocationSize = memReqs.size;
-	allocInfo.memoryTypeIndex = memoryType;
-
-	VK_CHECK( qvkAllocateMemory( vk.device, &allocInfo, NULL, &vk.processed.memory ) );
-	VK_CHECK( qvkBindImageMemory( vk.device, vk.processed.image, vk.processed.memory, 0 ) );
-
-	// 3. Create UNORM view for framebuffer attachment
-	// Using UNORM bypasses Vulkan's automatic linear->sRGB conversion on write.
-	// The gamma shader outputs sRGB-encoded values directly.
-	Com_Memset( &viewCI, 0, sizeof( viewCI ) );
-	viewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	viewCI.image = vk.processed.image;
-	viewCI.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-	viewCI.format = unormFormat;
-	viewCI.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-	viewCI.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-	viewCI.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-	viewCI.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-	viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	viewCI.subresourceRange.baseMipLevel = 0;
-	viewCI.subresourceRange.levelCount = 1;
-	viewCI.subresourceRange.baseArrayLayer = 0;
-	viewCI.subresourceRange.layerCount = 2;
-
-	VK_CHECK( qvkCreateImageView( vk.device, &viewCI, NULL, &vk.processed.view ) );
-	SET_OBJECT_NAME( vk.processed.view, "Processed image view (framebuffer)", VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT );
-
-	// 4. Create UNORM view for sampling (same format, prevents sRGB->linear on read)
-	VK_CHECK( qvkCreateImageView( vk.device, &viewCI, NULL, &vk.processed.samplerView ) );
-	SET_OBJECT_NAME( vk.processed.samplerView, "Processed image view (sampler)", VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT );
-
-	// 5. Create framebuffer for gamma pass output
-	// Uses the existing gamma render pass
-	if ( vk.render_pass.gamma == VK_NULL_HANDLE ) {
-		ri.Printf( PRINT_WARNING, "vk_create_processed_image: Gamma render pass not created\n" );
-		return qfalse;
-	}
-
-	Com_Memset( &fbCI, 0, sizeof( fbCI ) );
-	fbCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-	fbCI.renderPass = vk.render_pass.gamma;
-	fbCI.attachmentCount = 1;
-	fbCI.pAttachments = &vk.processed.view;
-	fbCI.width = vk.xr.width;
-	fbCI.height = vk.xr.height;
-	fbCI.layers = 1;  // Multiview handles stereo via view mask
-
-	VK_CHECK( qvkCreateFramebuffer( vk.device, &fbCI, NULL, &vk.framebuffers.processed ) );
-	SET_OBJECT_NAME( vk.framebuffers.processed, "Processed framebuffer", VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
-
-	// 6. Create descriptor set for sampling (uses vk.linearSampler created in vk_initialize)
-	Com_Memset( &descAllocInfo, 0, sizeof( descAllocInfo ) );
-	descAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	descAllocInfo.descriptorPool = vk.descriptor_pool;
-	descAllocInfo.descriptorSetCount = 1;
-	descAllocInfo.pSetLayouts = &vk.set_layout_sampler;
-
-	VK_CHECK( qvkAllocateDescriptorSets( vk.device, &descAllocInfo, &vk.processed.descriptor ) );
-
-	Com_Memset( &imageInfo, 0, sizeof( imageInfo ) );
-	imageInfo.sampler = vk.linearSampler;
-	imageInfo.imageView = vk.processed.samplerView;  // UNORM view for passthrough
-	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-	Com_Memset( &descriptorWrite, 0, sizeof( descriptorWrite ) );
-	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrite.dstSet = vk.processed.descriptor;
-	descriptorWrite.dstBinding = 0;
-	descriptorWrite.dstArrayElement = 0;
-	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	descriptorWrite.descriptorCount = 1;
-	descriptorWrite.pImageInfo = &imageInfo;
-
-	qvkUpdateDescriptorSets( vk.device, 1, &descriptorWrite, 0, NULL );
-
-	ri.Printf( PRINT_ALL, "...processed image created\n" );
-	return qtrue;
-}
-
-
-/*
  * vk_destroy_virtual_screen_buffer - Destroy virtual screen buffer resources
  */
 static void vk_destroy_virtual_screen_buffer( void )
@@ -11639,12 +11423,7 @@ qboolean vk_create_virtual_screen_pipelines( void )
 	// 1. Virtual Screen Pipeline (textured cylinder)
 	// =====================================================================
 	{
-		// Specialization constants for gamma correction
-		// vk.processed already contains gamma-corrected sRGB-encoded values (UNORM format).
-		// Virtual screen samples this (raw sRGB values) and outputs to XR swapchain (sRGB attachment).
-		// The sRGB attachment will apply linear->sRGB conversion on write.
-		// To counteract this and preserve original sRGB values, apply inverse gamma
-		// (1/2.2 ≈ 0.4545) so the hardware sRGB encode cancels out.
+		// Inverse gamma (1/2.2) counteracts the sRGB encode on the output attachment
 		struct {
 			float gamma;
 			float overbright;
@@ -11652,9 +11431,7 @@ qboolean vk_create_virtual_screen_pipelines( void )
 		VkSpecializationMapEntry vs_spec_entries[2];
 		VkSpecializationInfo vs_spec_info;
 
-		// Source (vk.processed) is already gamma-corrected, apply inverse to counteract
-		// hardware sRGB encode on output attachment
-		vs_spec_data.gamma = 1.0f / 2.2f;  // ~0.4545
+		vs_spec_data.gamma = 1.0f / 2.2f;
 		vs_spec_data.overbright = 1.0f;
 
 		vs_spec_entries[0].constantID = 0;
@@ -11732,15 +11509,12 @@ static void vk_render_virtual_screen( float screenMVP[2][16], float floorMVP[2][
 		return;
 	}
 
-	// Note: Gamma pass has already rendered to vk.processed before we get here
-	// vk.processed is in COLOR_ATTACHMENT_OPTIMAL after gamma render pass ends
-
-	// 1. Determine blit source: always from vk.processed (gamma-corrected, sRGB-encoded)
-	if ( vk.processed.image == VK_NULL_HANDLE ) {
-		return;  // Can't proceed without processed image
+	// XR swapchain is in COLOR_ATTACHMENT_OPTIMAL (gamma render pass finalLayout)
+	if ( !xr->colorInfo ) {
+		return;
 	}
-	srcImage = vk.processed.image;
-	srcLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;  // After gamma pass ends
+	srcImage = xr->colorInfo->images[colorIndex];
+	srcLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 	// 2. Transition source to TRANSFER_SRC
 	record_image_layout_transition( vk.cmd->command_buffer,
@@ -11830,10 +11604,8 @@ static void vk_render_virtual_screen( float screenMVP[2][16], float floorMVP[2][
 		xr->virtualScreenImage, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
 
-	// 7. Transition vk.processed to SHADER_READ_ONLY (for desktop mirror sampling)
-	record_image_layout_transition( vk.cmd->command_buffer,
-		srcImage, VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
+	// 7. XR swapchain left in TRANSFER_SRC — virtual screen render pass uses
+	// initialLayout=UNDEFINED and will clear+overwrite entirely
 
 	// 8. Clear XR swapchain and begin render pass for virtual screen drawing
 	// Use virtual screen render pass to draw to XR swapchain with clear
@@ -12382,7 +12154,7 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 	SET_OBJECT_NAME( vk.render_pass.mainResume, "render pass - XR main resume (multiview, recreated)", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
 	ri.Printf( PRINT_ALL, "Recreated mainResume render pass: %p\n", (void*)vk.render_pass.mainResume );
 
-	// Recreate gamma render pass with UNORM format (outputs to vk.processed via UNORM view)
+	// Recreate gamma render pass with UNORM format (outputs to XR swapchain via UNORM view)
 	// The gamma shader outputs sRGB-encoded values directly, so we use UNORM format
 	// to bypass Vulkan's automatic linear-to-sRGB conversion on write.
 	// OpenXR will read the sRGB data correctly because the underlying image is sRGB format.
@@ -12658,7 +12430,7 @@ qboolean vk_init_xr_resources( void )
 		return qfalse;
 	}
 
-	// Create gamma framebuffers (output to vk.processed)
+	// Create gamma framebuffers (output to XR swapchain)
 	// Main FBO, bloom images, and bloom framebuffers are created in vk_create_attachments/vk_create_framebuffers
 	if ( !vk_create_xr_gamma_framebuffers() ) {
 		vk_destroy_xr_framebuffers();
@@ -12715,7 +12487,6 @@ void vk_shutdown_xr_resources( void )
 
 	vk_destroy_virtual_screen_meshes();
 	vk_destroy_virtual_screen_buffer();
-	vk_destroy_processed_image();
 	vk_destroy_hud_buffer();
 	vk_destroy_xr_framebuffers();
 	vk_destroy_xr_native_depth();  // Native depth buffer (replaces XR depth swapchain)

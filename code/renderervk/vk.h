@@ -305,7 +305,6 @@ void vk_begin_main_render_pass( qboolean clear );
 void vk_begin_hud_render_pass( qboolean clear );
 void vk_end_hud_render_pass( void );
 qboolean vk_create_hud_buffer( void );
-qboolean vk_create_processed_image( void );  // Post-gamma output, source for all display destinations
 qboolean vk_create_virtual_screen_buffer( void );  // Virtual screen texture for menu/follow mode
 qboolean vk_create_virtual_screen_meshes( void );  // Cylinder and quad geometry
 qboolean vk_create_virtual_screen_pipelines( void );  // Pipelines for virtual screen rendering
@@ -504,9 +503,7 @@ typedef struct {
 	VkSemaphore renderingCompleteSem;   // Signals when XR rendering is done, waited by desktop blit
 	qboolean renderingCompleteSemSignaled;  // True if renderingCompleteSem was signaled this frame
 
-	// General-purpose sampler for sampling processed images (linear filtering, clamp to edge)
-	// Created early during init, used by desktop mirror, processed image, virtual screen, etc.
-	VkSampler linearSampler;
+	VkSampler linearSampler;  // Linear filtering, clamp to edge
 
 	// Desktop mirror shader-based rendering (gamma-correct path)
 	VkImage desktopMirrorImage;           // Intermediate texture (2-layer for stereo)
@@ -517,7 +514,6 @@ typedef struct {
 	VkFramebuffer *desktopMirrorFramebuffers;  // [swapchain_image_count]
 	VkImageView *desktopMirrorSwapViews;       // [swapchain_image_count] views into desktop swapchain
 	VkPipeline desktopMirrorPipeline;
-	VkPipeline desktopMirrorVSPipeline;        // Virtual screen variant (gamma=1.0)
 	VkPipelineLayout desktopMirrorPipelineLayout;
 
 	VkCommandPool command_pool;
@@ -586,22 +582,11 @@ typedef struct {
 		VkImageView image_view;
 	} capture;
 
-	// Processed image - post-gamma output, source for all display destinations
-	// (XR swapchain, virtual screen, desktop mirror)
-	struct {
-		VkImage image;
-		VkImageView view;           // 2D_ARRAY for framebuffer (UNORM)
-		VkImageView samplerView;    // 2D_ARRAY for sampling (UNORM)
-		VkDescriptorSet descriptor;        // 2D_ARRAY descriptor for desktop mirror
-		VkDeviceMemory memory;
-	} processed;
-
 	struct {
 		VkFramebuffer blur[VK_NUM_BLOOM_PASSES*2];
 		VkFramebuffer bloom_extract;
 		VkFramebuffer post_bloom;   // For post-bloom blend pass (color-only, no depth)
 		VkFramebuffer main;         // FBO mode: single framebuffer for main rendering
-		VkFramebuffer processed;    // Gamma pass -> vk.processed
 		VkFramebuffer gamma[MAX_SWAPCHAIN_IMAGES];
 		VkFramebuffer screenmap;
 	} framebuffers;

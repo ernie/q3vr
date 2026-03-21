@@ -1751,10 +1751,6 @@ void R_InitImages( void ) {
 	// This must happen before CreateExternalShaders() sets up tr.hudShader
 	vk_create_hud_buffer();
 
-	// Create processed image (post-gamma output for all display destinations)
-	// This must be created before virtual screen buffer since virtual screen blits from it
-	vk_create_processed_image();
-
 	// Create virtual screen buffer for menu/follow mode display
 	vk_create_virtual_screen_buffer();
 
