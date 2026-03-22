@@ -1451,7 +1451,7 @@ void R_Register( void )
 	r_lockpvs = ri.Cvar_Get ("r_lockpvs", "0", CVAR_CHEAT);
 	r_noportals = ri.Cvar_Get ("r_noportals", "0", CVAR_CHEAT);
 	r_shadows = ri.Cvar_Get( "cg_shadows", "1", 0 );
-	r_shadowDistance = ri.Cvar_Get( "r_shadowDistance", "512", CVAR_ARCHIVE_ND );
+	r_shadowDistance = ri.Cvar_Get( "r_shadowDistance", "256", CVAR_ARCHIVE_ND );
 	ri.Cvar_SetDescription( r_shadowDistance, "Stencil shadow (cg_shadows 2) extrusion distance" );
 	r_shadowClip = ri.Cvar_Get( "r_shadowClip", "1", CVAR_ARCHIVE_ND );
 	ri.Cvar_SetDescription( r_shadowClip, "Clip stencil shadow volumes against solid surfaces to prevent wall/floor bleed-through" );
