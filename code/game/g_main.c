@@ -104,6 +104,7 @@ vmCvar_t	g_proxMineTimeout;
 #endif
 vmCvar_t	g_rotation;
 vmCvar_t	g_mapname;
+vmCvar_t	g_physics;
 
 static cvarTable_t		gameCvarTable[] = {
 	// don't override the cheat state set by the system
@@ -195,7 +196,9 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_unlagged, "g_unlagged", "1", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse },
 
 	{ &g_rotation, "g_rotation", "0", CVAR_ARCHIVE, 0, qfalse },
-	{ &g_mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM, 0, qfalse }
+	{ &g_mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM, 0, qfalse },
+
+	{ &g_physics, "g_physics", "0", CVAR_SERVERINFO | CVAR_SYSTEMINFO, 0, qfalse }
 
 };
 
@@ -515,6 +518,16 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	srand( randomSeed );
 
 	G_RegisterCvars();
+
+	// apply client's preferred physics mode for local games
+	if ( g_physics.integer == 0 ) {
+		char value[16];
+		trap_Cvar_VariableStringBuffer( "ui_physics", value, sizeof( value ) );
+		if ( value[0] && atoi( value ) != 0 ) {
+			trap_Cvar_Set( "g_physics", value );
+			trap_Cvar_Update( &g_physics );
+		}
+	}
 
 	G_ProcessIPBans();
 

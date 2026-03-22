@@ -143,6 +143,14 @@ typedef enum {
 	WEAPON_FIRING
 } weaponstate_t;
 
+// physics modes for g_physics
+typedef enum {
+	PM_PHYSICS_VQ3,		// 0 - vanilla Quake 3
+	PM_PHYSICS_CPM,		// 1 - CPMA/promode
+	PM_PHYSICS_QL,		// 2 - vanilla Quake Live
+	PM_PHYSICS_QLT		// 3 - Quake Live Turbo
+} pmPhysics_t;
+
 // pmove->pm_flags
 #define	PMF_DUCKED			1
 #define	PMF_JUMP_HELD		2
@@ -189,6 +197,9 @@ typedef struct {
 	int			pmove_fixed;
 	int			pmove_msec;
 
+	// physics mode
+	int			pmove_physics;
+
 	// callbacks to test the world
 	// these will be different functions during game and cgame
 	void		(*trace)( trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask );
@@ -216,7 +227,8 @@ typedef enum {
 	STAT_CLIENTS_READY,				// bit mask of clients wishing to exit the intermission (FIXME: configstring?)
 	STAT_MAX_HEALTH,				// health / armor limit, changeable by handicap
 	STAT_VR_HEAD_PITCH,				// VR head pitch angle (packed as short for demo playback)
-	STAT_VR_HEAD_YAW_OFFSET			// VR head yaw offset from weapon direction (packed as short)
+	STAT_VR_HEAD_YAW_OFFSET,		// VR head yaw offset from weapon direction (packed as short)
+	STAT_JUMPTIME					// CPM double-jump timer (counts down from 400ms)
 } statIndex_t;
 
 

@@ -166,6 +166,7 @@ vmCvar_t	ui_server16;
 
 vmCvar_t	ui_cdkeychecked;
 vmCvar_t	ui_ioq3;
+vmCvar_t	ui_physics;
 
 static cvarTable_t		cvarTable[] = {
 	{ &ui_ffa_fraglimit, "ui_ffa_fraglimit", "20", CVAR_ARCHIVE },
@@ -226,6 +227,7 @@ static cvarTable_t		cvarTable[] = {
 
 	{ &ui_cdkeychecked, "ui_cdkeychecked", "1", CVAR_ROM },
 	{ &ui_ioq3, "ui_ioq3", "1", CVAR_ROM },
+	{ &ui_physics, "ui_physics", "0", CVAR_ARCHIVE },
 	{ NULL, "g_localTeamPref", "", 0 }
 };
 

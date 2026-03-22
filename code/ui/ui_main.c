@@ -150,6 +150,7 @@ vmCvar_t  ui_new;
 vmCvar_t  ui_debug;
 vmCvar_t  ui_initialized;
 vmCvar_t  ui_teamArenaFirstRun;
+vmCvar_t  ui_physics;
 
 void _UI_Init( qboolean );
 void _UI_Shutdown( void );
@@ -748,6 +749,12 @@ void _UI_Refresh( int realtime )
 
 
 	UI_UpdateCvars();
+
+	// sync ui_physics to g_physics for local games
+	if ( ui_physics.modificationCount != uiInfo.lastPhysicsModCount ) {
+		uiInfo.lastPhysicsModCount = ui_physics.modificationCount;
+		trap_Cvar_SetValue( "g_physics", ui_physics.integer );
+	}
 
 	if (Menu_Count() > 0) {
 		// paint all the menus
@@ -6252,6 +6259,7 @@ static cvarTable_t		cvarTable[] = {
 	{ &ui_realWarmUp, "g_warmup", "20", CVAR_ARCHIVE},
 	{ &ui_realCaptureLimit, "capturelimit", "8", CVAR_SERVERINFO | CVAR_ARCHIVE | CVAR_NORESTART},
 	{ &ui_serverStatusTimeOut, "ui_serverStatusTimeOut", "7000", CVAR_ARCHIVE},
+	{ &ui_physics, "ui_physics", "0", CVAR_ARCHIVE },
 
 	{ NULL, "ui_videomode", "", CVAR_ROM },
 	{ NULL, "g_localTeamPref", "", 0 },

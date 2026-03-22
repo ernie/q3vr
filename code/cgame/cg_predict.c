@@ -500,6 +500,7 @@ void CG_PredictPlayerState( void ) {
 
 	cg_pmove.pmove_fixed = cgs.pmove_fixed;
 	cg_pmove.pmove_msec = cgs.pmove_msec;
+	cg_pmove.pmove_physics = cgs.pmove_physics;
 
 	// run cmds
 	moved = qfalse;

@@ -223,23 +223,25 @@ itemDef {
 	itemDef {
       		name options
 		group grpOptions
-      		type ITEM_TYPE_YESNO
-		text "Laser Sight:"
-		cvar "vr_lasersight"
+		text "Physics:"
+		type ITEM_TYPE_MULTI
+		cvar "ui_physics"
+		cvarFloatList { "Vanilla Quake 3" 0 "CPMA" 1 "Quake Live" 2 "Quake Live Turbo" 3 }
 		rect 50 71 200 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 143
       		textaligny 17
-		textscale .25        
+		textscale .25
       		forecolor 1 1 1 1
-      		visible 1 
+      		visible 1
     		}
+
 	itemDef {
       		name options
 		group grpOptions
       		type ITEM_TYPE_YESNO
-		text "Simple Items (World):"
-		cvar "cg_simpleItems"
+		text "Laser Sight:"
+		cvar "vr_lasersight"
 		rect 50 88 200 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 143

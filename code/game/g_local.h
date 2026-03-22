@@ -830,6 +830,7 @@ extern	vmCvar_t	g_proxMineTimeout;
 extern	vmCvar_t	g_localTeamPref;
 extern	vmCvar_t	g_rotation;
 extern	vmCvar_t	g_mapname;
+extern	vmCvar_t	g_physics;
 
 void	trap_Print( const char *text );
 void	trap_Error( const char *text ) Q_NO_RETURN;

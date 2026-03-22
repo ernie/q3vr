@@ -64,6 +64,7 @@ GAME OPTIONS MENU
 #define ID_SHOWINHAND		    141
 #define ID_SHOWCONSOLE			142
 #define ID_BACK					143
+#define ID_PHYSICS				145
 
 #define	NUM_CROSSHAIRS			10
 #define	NUM_GORE    			4
@@ -92,6 +93,7 @@ typedef struct {
 	menulist_s			damageeffect;
 	menuradiobutton_s	showinhand;
 	menuradiobutton_s	showconsole;
+	menulist_s			physics;
 	menubitmap_s		back;
 
 	qhandle_t			crosshairShader[NUM_CROSSHAIRS];
@@ -134,6 +136,15 @@ static const char *s_damageeffect[] =
 	NULL
 };
 
+static const char *physics_names[] =
+{
+	"Vanilla Quake 3",
+	"CPMA",
+	"Quake Live",
+	"Quake Live Turbo",
+	NULL
+};
+
 static int gamecodetoui[] = {4,2,3,0,5,1,6};
 static int uitogamecode[] = {4,6,2,3,1,5,7};
 
@@ -163,6 +174,7 @@ static void Preferences_SetMenuItems( void ) {
 	s_preferences.damageeffect.curvalue		= trap_Cvar_VariableValue( "cg_damageEffect" );
 	s_preferences.showinhand.curvalue		= trap_Cvar_VariableValue( "vr_showItemInHand" ) != 0;
 	s_preferences.showconsole.curvalue		= trap_Cvar_VariableValue( "vr_showConsoleMessages" ) != 0;
+	s_preferences.physics.curvalue			= Com_Clamp( 0, 3, trap_Cvar_VariableValue( "ui_physics" ) );
 }
 
 
@@ -283,6 +295,11 @@ static void Preferences_Event( void* ptr, int notification ) {
 
 	case ID_SHOWCONSOLE:
 		trap_Cvar_SetValue( "vr_showConsoleMessages", s_preferences.showconsole.curvalue);
+		break;
+
+	case ID_PHYSICS:
+		trap_Cvar_SetValue( "ui_physics", s_preferences.physics.curvalue );
+		trap_Cvar_SetValue( "g_physics", s_preferences.physics.curvalue );
 		break;
 
 	case ID_BACK:
@@ -488,6 +505,16 @@ static void Preferences_MenuInit( void ) {
 	s_preferences.crosshaircolor.numitems			= 7;
 
 	y += BIGCHAR_HEIGHT+2;
+	s_preferences.physics.generic.type			= MTYPE_SPINCONTROL;
+	s_preferences.physics.generic.name			= "Physics:";
+	s_preferences.physics.generic.flags			= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_preferences.physics.generic.callback		= Preferences_Event;
+	s_preferences.physics.generic.id			= ID_PHYSICS;
+	s_preferences.physics.generic.x				= PREFERENCES_X_POS;
+	s_preferences.physics.generic.y				= y;
+	s_preferences.physics.itemnames				= physics_names;
+
+	y += BIGCHAR_HEIGHT+2;
 	s_preferences.lasersight.generic.type        = MTYPE_RADIOBUTTON;
 	s_preferences.lasersight.generic.name	      = "Laser Sight:";
 	s_preferences.lasersight.generic.flags	      = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
@@ -619,7 +646,7 @@ static void Preferences_MenuInit( void ) {
 	s_preferences.showconsole.generic.x	          = PREFERENCES_X_POS;
 	s_preferences.showconsole.generic.y	          = y;
 
-	y += BIGCHAR_HEIGHT+16;
+	y += BIGCHAR_HEIGHT+2;
 	s_preferences.gore.generic.type		= MTYPE_SPINCONTROL;
 	s_preferences.gore.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_preferences.gore.generic.x			= PREFERENCES_X_POS - 120;
@@ -658,6 +685,7 @@ static void Preferences_MenuInit( void ) {
 	Menu_AddItem( &s_preferences.menu, &s_preferences.crosshair );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.crosshairsize );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.crosshaircolor );
+	Menu_AddItem( &s_preferences.menu, &s_preferences.physics );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.lasersight );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.simpleitems );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.wallmarks );
