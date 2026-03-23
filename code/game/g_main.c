@@ -198,7 +198,7 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_rotation, "g_rotation", "0", CVAR_ARCHIVE, 0, qfalse },
 	{ &g_mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM, 0, qfalse },
 
-	{ &g_physics, "g_physics", "0", CVAR_SERVERINFO | CVAR_SYSTEMINFO, 0, qfalse }
+	{ &g_physics, "g_physics", "0", CVAR_SERVERINFO | CVAR_SYSTEMINFO, 0, qtrue }
 
 };
 
@@ -486,8 +486,9 @@ void G_UpdateCvars( void ) {
 				cv->modificationCount = cv->vmCvar->modificationCount;
 
 				if ( cv->trackChange ) {
-					trap_SendServerCommand( -1, va("print \"Server: %s changed to %s\n\"", 
+					trap_SendServerCommand( -1, va("print \"Server: %s changed to %s\n\"",
 						cv->cvarName, cv->vmCvar->string ) );
+					G_LogPrintf( "CvarChange: %s\\%s\n", cv->cvarName, cv->vmCvar->string );
 				}
 
 				if (cv->teamShader) {
