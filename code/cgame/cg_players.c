@@ -28,13 +28,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define FB_SKIN "fb"
 
 extern vr_clientinfo_t* vr;
-extern vmCvar_t	cg_firstPersonBodyScale;
-extern vmCvar_t cg_vr_showOffhand;
-extern vmCvar_t cg_enemyModel;
-extern vmCvar_t cg_enemyColors;
-extern vmCvar_t cg_teamModel;
-extern vmCvar_t cg_teamColors;
-extern vmCvar_t cg_deadBodyDarken;
 
 char	*cg_customSoundNames[MAX_CUSTOM_SOUNDS] = {
 	"*death1.wav",

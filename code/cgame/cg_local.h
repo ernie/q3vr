@@ -1212,138 +1212,16 @@ extern	weaponInfo_t	cg_weapons[MAX_WEAPONS];
 extern	itemInfo_t		cg_items[MAX_ITEMS];
 extern	markPoly_t		cg_markPolys[MAX_MARK_POLYS];
 
-extern	vmCvar_t		cg_centertime;
-extern	vmCvar_t		cg_runpitch;
-extern	vmCvar_t		cg_runroll;
-extern	vmCvar_t		cg_bobup;
-extern	vmCvar_t		cg_bobpitch;
-extern	vmCvar_t		cg_bobroll;
-extern	vmCvar_t		cg_weaponbob;
-extern	vmCvar_t		cg_swingSpeed;
-extern	vmCvar_t		cg_shadows;
-extern	vmCvar_t		cg_playerShadow;
-extern	vmCvar_t		cg_gibs;
-extern	vmCvar_t		cg_megagibs;
-extern	vmCvar_t		cg_hitSounds;
-extern	vmCvar_t		cg_drawTimer;
-extern	vmCvar_t		cg_drawFPS;
-extern	vmCvar_t		cg_drawSpeed;
-extern	vmCvar_t		cg_drawSnapshot;
-extern	vmCvar_t		cg_draw3dIcons;
-extern	vmCvar_t		cg_debugWeaponAiming;
-extern	vmCvar_t		cg_weaponSelectorSimple2DIcons;
-extern	vmCvar_t		cg_drawIcons;
-extern	vmCvar_t		cg_drawAmmoWarning;
-extern	vmCvar_t		cg_drawCrosshair;
-extern	vmCvar_t		cg_drawCrosshairNames;
-extern	vmCvar_t		cg_drawRewards;
-extern	vmCvar_t		cg_fragMessage;
-extern	vmCvar_t		cg_drawTeamOverlay;
-extern	vmCvar_t		cg_teamOverlayUserinfo;
-extern	vmCvar_t		cg_drawFFABackground;
-extern	vmCvar_t		cg_crosshairX;
-extern	vmCvar_t		cg_crosshairY;
-extern	vmCvar_t		cg_crosshairSize;
-extern	vmCvar_t		cg_crosshairHealth;
-extern	vmCvar_t		cg_crosshairColor;
+#define EXTERN_CG_CVAR
+	#include "cg_cvar.h"
+#undef EXTERN_CG_CVAR
+
+// declared but not registered in cvarTable (used directly)
+extern	vmCvar_t		cg_gun_frame;
 #if 0
 extern	vmCvar_t		cg_drawStatus;
 extern	vmCvar_t		cg_draw2D;
 #endif
-extern	vmCvar_t		cg_animSpeed;
-extern	vmCvar_t		cg_debugAnim;
-extern	vmCvar_t		cg_debugPosition;
-extern	vmCvar_t		cg_debugEvents;
-extern	vmCvar_t		cg_railTrailTime;
-extern	vmCvar_t		cg_errorDecay;
-extern	vmCvar_t		cg_nopredict;
-extern	vmCvar_t		cg_noPlayerAnims;
-extern	vmCvar_t		cg_showmiss;
-extern	vmCvar_t		cg_footsteps;
-extern	vmCvar_t		cg_addMarks;
-extern	vmCvar_t		cg_brassTime;
-extern	vmCvar_t		cg_gun_frame;
-extern	vmCvar_t		cg_gun_x;
-extern	vmCvar_t		cg_gun_y;
-extern	vmCvar_t		cg_gun_z;
-extern	vmCvar_t		cg_drawGun;
-extern	vmCvar_t		cg_viewsize;
-extern	vmCvar_t		cg_tracerChance;
-extern	vmCvar_t		cg_tracerWidth;
-extern	vmCvar_t		cg_tracerLength;
-extern	vmCvar_t		cg_autoswitch;
-extern	vmCvar_t		cg_ignore;
-extern	vmCvar_t		cg_simpleItems;
-extern	vmCvar_t		cg_fov;
-extern	vmCvar_t		cg_zoomFov;
-extern	vmCvar_t		cg_thirdPersonRange;
-extern	vmCvar_t		cg_thirdPersonAngle;
-extern	vmCvar_t		cg_thirdPerson;
-extern	vmCvar_t		cg_lagometer;
-extern	vmCvar_t		cg_drawAttacker;
-extern	vmCvar_t		cg_teamChatTime;
-extern	vmCvar_t		cg_teamChatHeight;
-extern	vmCvar_t		cg_stats;
-extern	vmCvar_t 		cg_forceModel;
-extern	vmCvar_t 		cg_buildScript;
-extern	vmCvar_t		cg_paused;
-extern	vmCvar_t		cg_blood;
-extern	vmCvar_t		cg_bloodParticles;
-extern	vmCvar_t		cg_damageEffect;
-extern	vmCvar_t		cg_predictItems;
-extern	vmCvar_t		cg_deferPlayers;
-extern	vmCvar_t		cg_followKiller;
-extern	vmCvar_t		cg_smoothFollow;
-extern	vmCvar_t		cg_drawFriend;
-extern	vmCvar_t		cg_teamChatsOnly;
-#ifdef MISSIONPACK
-extern	vmCvar_t		cg_noVoiceChats;
-extern	vmCvar_t		cg_noVoiceText;
-#endif
-extern  vmCvar_t		cg_scorePlum;
-extern  vmCvar_t		cg_damagePlums;
-extern	vmCvar_t		cg_smoothClients;
-extern	vmCvar_t		cg_cameraOrbit;
-extern	vmCvar_t		cg_cameraOrbitDelay;
-extern	vmCvar_t		cg_timescaleFadeEnd;
-extern	vmCvar_t		cg_timescaleFadeSpeed;
-extern	vmCvar_t		cg_timescale;
-extern	vmCvar_t		cg_cameraMode;
-#ifdef MISSIONPACK
-extern  vmCvar_t		cg_smallFont;
-extern  vmCvar_t		cg_bigFont;
-extern	vmCvar_t		cg_noTaunt;
-#endif
-extern	vmCvar_t		cg_noProjectileTrail;
-extern	vmCvar_t		cg_oldRail;
-extern	vmCvar_t		cg_oldRocket;
-extern	vmCvar_t		cg_oldPlasma;
-extern	vmCvar_t		cg_trueLightning;
-#ifdef MISSIONPACK
-extern	vmCvar_t		cg_redTeamName;
-extern	vmCvar_t		cg_blueTeamName;
-extern	vmCvar_t		cg_currentSelectedPlayer;
-extern	vmCvar_t		cg_currentSelectedPlayerName;
-extern	vmCvar_t		cg_singlePlayer;
-extern	vmCvar_t		cg_enableDust;
-extern	vmCvar_t		cg_enableBreath;
-extern	vmCvar_t		cg_singlePlayerActive;
-extern  vmCvar_t		cg_recordSPDemo;
-extern  vmCvar_t		cg_recordSPDemoName;
-extern	vmCvar_t		cg_obeliskRespawnDelay;
-#endif
-extern	vmCvar_t		cg_tvTimeline;
-extern	vmCvar_t		cg_tvTime;
-extern	vmCvar_t		cg_tvDuration;
-extern	vmCvar_t		cg_tvSkip;
-extern	vmCvar_t		cg_downloadName;
-extern	vmCvar_t		cg_downloadSize;
-extern	vmCvar_t		cg_downloadCount;
-extern	vmCvar_t		cg_downloadTime;
-extern	vmCvar_t		cg_tvdTimeout;
-extern	vmCvar_t		cg_tvdOffer;
-extern	vmCvar_t		cg_voteYesKey;
-extern	vmCvar_t		cg_voteNoKey;
 
 void CG_TrailItem( centity_t *cent, qhandle_t hModel, vec3_t offset, float scale );
 

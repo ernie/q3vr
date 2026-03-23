@@ -205,7 +205,7 @@ void CG_Respawn( void ) {
 	cg.weaponSelect = cg.snap->ps.weapon;
 }
 
-extern char *eventnames[];
+extern const char *eventnames[EV_MAX];
 
 /*
 ==============
