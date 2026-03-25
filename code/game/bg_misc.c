@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../qcommon/q_shared.h"
 #include "bg_public.h"
+#include "bg_gameplay.h"
 
 /*QUAKED item_***** ( 0 0 0 ) (-16 -16 -16) (16 16 16) suspended
 DO NOT USE THIS CLASS, IT JUST HOLDS GENERAL INFORMATION.
@@ -916,6 +917,23 @@ Only in One Flag CTF games
 	},
 #endif
 
+	// CPMA green armor (appended at end to preserve vanilla item indices)
+/*QUAKED item_armor_jacket (.3 .3 1) (-16 -16 -16) (16 16 16) suspended
+*/
+	{
+		"item_armor_jacket",
+		"sound/misc/ar2_pkup.wav",
+		{ "models/powerups/armor/armor_grn.md3",
+		0, 0, 0},
+/* icon */		"icons/iconr_green",
+/* pickup */	"Green Armor",
+		25,
+		IT_ARMOR,
+		0,
+/* precache */ "",
+/* sounds */ ""
+	},
+
 	// end of list marker
 	{NULL}
 };
@@ -1036,11 +1054,8 @@ Returns false if the item should not be picked up.
 This needs to be the same for client side prediction and server use.
 ================
 */
-qboolean BG_CanItemBeGrabbed( int gametype, const entityState_t *ent, const playerState_t *ps ) {
+qboolean BG_CanItemBeGrabbed( int gametype, int gameplay, const entityState_t *ent, const playerState_t *ps ) {
 	gitem_t	*item;
-#ifdef MISSIONPACK
-	int		upperBound;
-#endif
 
 	if ( ent->modelindex < 1 || ent->modelindex >= bg_numItems ) {
 		Com_Error( ERR_DROP, "BG_CanItemBeGrabbed: index out of range" );
@@ -1053,7 +1068,7 @@ qboolean BG_CanItemBeGrabbed( int gametype, const entityState_t *ent, const play
 		return qtrue;	// weapons are always picked up
 
 	case IT_AMMO:
-		if ( ps->ammo[ item->giTag ] >= 200 ) {
+		if ( ps->ammo[ item->giTag ] >= GP_GetAmmoMax( GP_GetConfig( gameplay ), item->giTag ) ) {
 			return qfalse;		// can't hold any more
 		}
 		return qtrue;
@@ -1063,24 +1078,8 @@ qboolean BG_CanItemBeGrabbed( int gametype, const entityState_t *ent, const play
 		if( bg_itemlist[ps->stats[STAT_PERSISTANT_POWERUP]].giTag == PW_SCOUT ) {
 			return qfalse;
 		}
-
-		// we also clamp armor to the maxhealth for handicapping
-		if( bg_itemlist[ps->stats[STAT_PERSISTANT_POWERUP]].giTag == PW_GUARD ) {
-			upperBound = ps->stats[STAT_MAX_HEALTH];
-		}
-		else {
-			upperBound = ps->stats[STAT_MAX_HEALTH] * 2;
-		}
-
-		if ( ps->stats[STAT_ARMOR] >= upperBound ) {
-			return qfalse;
-		}
-#else
-		if ( ps->stats[STAT_ARMOR] >= ps->stats[STAT_MAX_HEALTH] * 2 ) {
-			return qfalse;
-		}
 #endif
-		return qtrue;
+		return GP_CanGrabArmor( GP_GetConfig( gameplay ), item, ps );
 
 	case IT_HEALTH:
 		// small and mega healths will go over the max, otherwise

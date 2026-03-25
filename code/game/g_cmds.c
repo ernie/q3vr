@@ -1337,10 +1337,11 @@ void Cmd_CallVote_f( gentity_t *ent ) {
 	} else if ( !Q_stricmp( arg1, "g_unlagged" ) ) {
 	} else if ( !Q_stricmp( arg1, "timelimit" ) ) {
 	} else if ( !Q_stricmp( arg1, "fraglimit" ) ) {
-	} else if ( !Q_stricmp( arg1, "g_physics" ) ) {
+	} else if ( !Q_stricmp( arg1, "g_movement" ) ) {
+	} else if ( !Q_stricmp( arg1, "g_gameplay" ) ) {
 	} else {
 		trap_SendServerCommand( ent-g_entities, "print \"Invalid vote string.\n\"" );
-		trap_SendServerCommand( ent-g_entities, "print \"Vote commands are: map_restart, nextmap, map <mapname>, g_gametype <n>, kick <player>, clientkick <clientnum>, g_doWarmup, g_unlagged <0|1>, timelimit <time>, fraglimit <frags>, g_physics <n|vq3|cpm|ql|qlt>.\n\"" );
+		trap_SendServerCommand( ent-g_entities, "print \"Vote commands are: map_restart, nextmap, map <mapname>, g_gametype <n>, kick <player>, clientkick <clientnum>, g_doWarmup, g_unlagged <0|1>, timelimit <time>, fraglimit <frags>, g_movement <n|vq3|cpm|ql|qlt>, g_gameplay <n|vq3|cpm|ql>.\n\"" );
 		return;
 	}
 
@@ -1402,24 +1403,32 @@ void Cmd_CallVote_f( gentity_t *ent ) {
 
 		Com_sprintf( level.voteString, sizeof( level.voteString ), "clientkick %d", i );
 		Com_sprintf( level.voteDisplayString, sizeof( level.voteDisplayString ), "kick %s", level.clients[i].pers.netname );
-	} else if ( !Q_stricmp( arg1, "g_physics" ) ) {
-		// accept both numeric (0-3) and string aliases
-		if ( !Q_stricmp( arg2, "vq3" ) ) {
-			i = PM_PHYSICS_VQ3;
-		} else if ( !Q_stricmp( arg2, "cpm" ) ) {
-			i = PM_PHYSICS_CPM;
-		} else if ( !Q_stricmp( arg2, "ql" ) ) {
-			i = PM_PHYSICS_QL;
-		} else if ( !Q_stricmp( arg2, "qlt" ) ) {
-			i = PM_PHYSICS_QLT;
-		} else {
+	} else if ( !Q_stricmp( arg1, "g_movement" ) ) {
+		if ( !Q_stricmp( arg2, "vq3" ) || !Q_stricmp( arg2, "q3" ) ) i = PM_MOVEMENT_VQ3;
+		else if ( !Q_stricmp( arg2, "cpm" ) || !Q_stricmp( arg2, "cpma" ) ) i = PM_MOVEMENT_CPM;
+		else if ( !Q_stricmp( arg2, "ql" ) ) i = PM_MOVEMENT_QL;
+		else if ( !Q_stricmp( arg2, "qlt" ) ) i = PM_MOVEMENT_QLT;
+		else {
 			i = atoi( arg2 );
+			if ( i < PM_MOVEMENT_VQ3 || i > PM_MOVEMENT_QLT ) {
+				trap_SendServerCommand( ent-g_entities, va( "print \"Invalid movement mode: %s.\n\"", arg2 ) );
+				return;
+			}
 		}
-		if ( i < PM_PHYSICS_VQ3 || i > PM_PHYSICS_QLT ) {
-			trap_SendServerCommand( ent-g_entities, "print \"Invalid physics mode. Use 0-3 or vq3/cpm/ql/qlt.\n\"" );
-			return;
+		Com_sprintf( level.voteString, sizeof( level.voteString ), "g_movement %d", i );
+		Com_sprintf( level.voteDisplayString, sizeof( level.voteDisplayString ), "%s", level.voteString );
+	} else if ( !Q_stricmp( arg1, "g_gameplay" ) ) {
+		if ( !Q_stricmp( arg2, "vq3" ) || !Q_stricmp( arg2, "q3" ) ) i = GP_VQ3;
+		else if ( !Q_stricmp( arg2, "cpm" ) || !Q_stricmp( arg2, "cpma" ) ) i = GP_CPM;
+		else if ( !Q_stricmp( arg2, "ql" ) ) i = GP_QL;
+		else {
+			i = atoi( arg2 );
+			if ( i < GP_VQ3 || i > GP_QL ) {
+				trap_SendServerCommand( ent-g_entities, va( "print \"Invalid combat balance: %s.\n\"", arg2 ) );
+				return;
+			}
 		}
-		Com_sprintf( level.voteString, sizeof( level.voteString ), "g_physics %d", i );
+		Com_sprintf( level.voteString, sizeof( level.voteString ), "g_gameplay %d", i );
 		Com_sprintf( level.voteDisplayString, sizeof( level.voteDisplayString ), "%s", level.voteString );
 	} else {
 		Com_sprintf( level.voteString, sizeof( level.voteString ), "%s \"%s\"", arg1, arg2 );

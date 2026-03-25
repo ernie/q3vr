@@ -373,13 +373,23 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	G_RegisterCvars();
 
-	// apply client's preferred physics mode for local games
-	if ( g_physics.integer == 0 ) {
+	// apply client's preferred movement mode for local games
+	if ( g_movement.integer == 0 ) {
 		char value[16];
-		trap_Cvar_VariableStringBuffer( "ui_physics", value, sizeof( value ) );
+		trap_Cvar_VariableStringBuffer( "ui_movement", value, sizeof( value ) );
 		if ( value[0] && atoi( value ) != 0 ) {
-			trap_Cvar_Set( "g_physics", value );
-			trap_Cvar_Update( &g_physics );
+			trap_Cvar_Set( "g_movement", value );
+			trap_Cvar_Update( &g_movement );
+		}
+	}
+
+	// apply client's preferred combat balance for local games
+	if ( g_gameplay.integer == 0 ) {
+		char value[16];
+		trap_Cvar_VariableStringBuffer( "ui_gameplay", value, sizeof( value ) );
+		if ( value[0] && atoi( value ) != 0 ) {
+			trap_Cvar_Set( "g_gameplay", value );
+			trap_Cvar_Update( &g_gameplay );
 		}
 	}
 
@@ -1862,10 +1872,10 @@ CheckCvars
 ==================
 */
 void CheckCvars( void ) {
-	static int lastMod = -1;
+	static int lastPasswordMod = -1;
 
-	if ( g_password.modificationCount != lastMod ) {
-		lastMod = g_password.modificationCount;
+	if ( lastPasswordMod != g_password.modificationCount ) {
+		lastPasswordMod = g_password.modificationCount;
 		if ( *g_password.string && Q_stricmp( g_password.string, "none" ) ) {
 			trap_Cvar_Set( "g_needpass", "1" );
 		} else {

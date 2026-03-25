@@ -64,7 +64,8 @@ GAME OPTIONS MENU
 #define ID_SHOWINHAND		    141
 #define ID_SHOWCONSOLE			142
 #define ID_BACK					143
-#define ID_PHYSICS				145
+#define ID_MOVEMENT				145
+#define ID_COMBATBALANCE		146
 
 #define	NUM_CROSSHAIRS			10
 #define	NUM_GORE    			4
@@ -93,7 +94,8 @@ typedef struct {
 	menulist_s			damageeffect;
 	menuradiobutton_s	showinhand;
 	menuradiobutton_s	showconsole;
-	menulist_s			physics;
+	menulist_s			movement;
+	menulist_s			gameplay;
 	menubitmap_s		back;
 
 	qhandle_t			crosshairShader[NUM_CROSSHAIRS];
@@ -136,12 +138,20 @@ static const char *s_damageeffect[] =
 	NULL
 };
 
-static const char *physics_names[] =
+static const char *movement_names[] =
 {
 	"Vanilla Quake 3",
 	"CPMA",
 	"Quake Live",
 	"Quake Live Turbo",
+	NULL
+};
+
+static const char *gameplay_names[] =
+{
+	"Vanilla Quake 3",
+	"CPMA",
+	"Quake Live",
 	NULL
 };
 
@@ -174,7 +184,8 @@ static void Preferences_SetMenuItems( void ) {
 	s_preferences.damageeffect.curvalue		= trap_Cvar_VariableValue( "cg_damageEffect" );
 	s_preferences.showinhand.curvalue		= trap_Cvar_VariableValue( "vr_showItemInHand" ) != 0;
 	s_preferences.showconsole.curvalue		= trap_Cvar_VariableValue( "vr_showConsoleMessages" ) != 0;
-	s_preferences.physics.curvalue			= Com_Clamp( 0, 3, trap_Cvar_VariableValue( "ui_physics" ) );
+	s_preferences.movement.curvalue			= Com_Clamp( 0, 3, trap_Cvar_VariableValue( "ui_movement" ) );
+	s_preferences.gameplay.curvalue			= Com_Clamp( 0, 2, trap_Cvar_VariableValue( "ui_gameplay" ) );
 }
 
 
@@ -297,9 +308,14 @@ static void Preferences_Event( void* ptr, int notification ) {
 		trap_Cvar_SetValue( "vr_showConsoleMessages", s_preferences.showconsole.curvalue);
 		break;
 
-	case ID_PHYSICS:
-		trap_Cvar_SetValue( "ui_physics", s_preferences.physics.curvalue );
-		trap_Cvar_SetValue( "g_physics", s_preferences.physics.curvalue );
+	case ID_MOVEMENT:
+		trap_Cvar_SetValue( "ui_movement", s_preferences.movement.curvalue );
+		trap_Cvar_SetValue( "g_movement", s_preferences.movement.curvalue );
+		break;
+
+	case ID_COMBATBALANCE:
+		trap_Cvar_SetValue( "ui_gameplay", s_preferences.gameplay.curvalue );
+		trap_Cvar_SetValue( "g_gameplay", s_preferences.gameplay.curvalue );
 		break;
 
 	case ID_BACK:
@@ -463,7 +479,7 @@ static void Preferences_MenuInit( void ) {
 	s_preferences.framer.width  	   = 256;
 	s_preferences.framer.height  	   = 334;
 
-	y = 80;
+	y = 72;
 	s_preferences.crosshair.generic.type		= MTYPE_SPINCONTROL;
 	s_preferences.crosshair.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT|QMF_NODEFAULTINIT|QMF_OWNERDRAW;
 	s_preferences.crosshair.generic.x			= PREFERENCES_X_POS;
@@ -505,14 +521,24 @@ static void Preferences_MenuInit( void ) {
 	s_preferences.crosshaircolor.numitems			= 7;
 
 	y += BIGCHAR_HEIGHT+2;
-	s_preferences.physics.generic.type			= MTYPE_SPINCONTROL;
-	s_preferences.physics.generic.name			= "Physics:";
-	s_preferences.physics.generic.flags			= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
-	s_preferences.physics.generic.callback		= Preferences_Event;
-	s_preferences.physics.generic.id			= ID_PHYSICS;
-	s_preferences.physics.generic.x				= PREFERENCES_X_POS;
-	s_preferences.physics.generic.y				= y;
-	s_preferences.physics.itemnames				= physics_names;
+	s_preferences.movement.generic.type          = MTYPE_SPINCONTROL;
+	s_preferences.movement.generic.name          = "Movement:";
+	s_preferences.movement.generic.flags         = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_preferences.movement.generic.callback      = Preferences_Event;
+	s_preferences.movement.generic.id            = ID_MOVEMENT;
+	s_preferences.movement.generic.x             = PREFERENCES_X_POS;
+	s_preferences.movement.generic.y             = y;
+	s_preferences.movement.itemnames             = movement_names;
+
+	y += BIGCHAR_HEIGHT+2;
+	s_preferences.gameplay.generic.type          = MTYPE_SPINCONTROL;
+	s_preferences.gameplay.generic.name          = "Gameplay:";
+	s_preferences.gameplay.generic.flags         = QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_preferences.gameplay.generic.callback      = Preferences_Event;
+	s_preferences.gameplay.generic.id            = ID_COMBATBALANCE;
+	s_preferences.gameplay.generic.x             = PREFERENCES_X_POS;
+	s_preferences.gameplay.generic.y             = y;
+	s_preferences.gameplay.itemnames             = gameplay_names;
 
 	y += BIGCHAR_HEIGHT+2;
 	s_preferences.lasersight.generic.type        = MTYPE_RADIOBUTTON;
@@ -685,7 +711,8 @@ static void Preferences_MenuInit( void ) {
 	Menu_AddItem( &s_preferences.menu, &s_preferences.crosshair );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.crosshairsize );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.crosshaircolor );
-	Menu_AddItem( &s_preferences.menu, &s_preferences.physics );
+	Menu_AddItem( &s_preferences.menu, &s_preferences.movement );
+	Menu_AddItem( &s_preferences.menu, &s_preferences.gameplay );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.lasersight );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.simpleitems );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.wallmarks );
