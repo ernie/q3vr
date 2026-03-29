@@ -1036,6 +1036,20 @@ void ClientBegin( int clientNum ) {
 			trap_SendServerCommand( -1, va("print \"%s" S_COLOR_WHITE " entered the game\n\"", client->pers.netname) );
 		}
 	}
+	// Trinity handshake: generate nonce, challenge sent from G_RunFrame
+	// Skip if already verified (persists across map changes) or if bot
+	if ( g_trinityHandshake.integer && !client->pers.trinityVerified && !( ent->r.svFlags & SVF_BOT ) ) {
+		int j;
+		int hs_seed = trap_Milliseconds() ^ ( clientNum * 65537 );
+
+		for ( j = 0; j < 31; j++ ) {
+			Q_rand( &hs_seed );
+			client->pers.handshakeNonce[j] = "0123456789abcdef"[((unsigned)hs_seed >> 28) & 0xf];
+		}
+		client->pers.handshakeNonce[31] = '\0';
+		client->pers.handshakeTime = -(level.time + 1);  // negative = not yet sent (avoid 0)
+	}
+
 	G_LogPrintf( "ClientBegin: %i\n", clientNum );
 
 	// count current clients and rank for scoreboard

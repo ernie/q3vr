@@ -250,6 +250,11 @@ typedef struct {
 	int			teamVoteCount;		// to prevent people from constantly calling votes
 	qboolean	teamInfo;			// send team overlay updates?
 	qboolean	damagePlums;		// do we want to display damage numbers?
+
+	// Trinity handshake
+	char		handshakeNonce[32];
+	int			handshakeTime;
+	qboolean	trinityVerified;
 } clientPersistant_t;
 
 // unlagged

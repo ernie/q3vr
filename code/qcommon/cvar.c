@@ -943,6 +943,11 @@ void Cvar_WriteVariables(fileHandle_t f)
 			continue;
 
 		if( var->flags & CVAR_ARCHIVE ) {
+			// skip writing if NODEFAULT and value matches default
+			if ( (var->flags & CVAR_NODEFAULT) && var->latchedString == NULL
+					&& strcmp( var->string, var->resetString ) == 0 ) {
+				continue;
+			}
 			// write the latched value, even if it hasn't taken effect yet
 			if ( var->latchedString ) {
 				if( strlen( var->name ) + strlen( var->latchedString ) + 10 > sizeof( buffer ) ) {

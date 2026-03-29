@@ -515,6 +515,24 @@ itemDef {
 
 
 itemDef {
+	name loginbtn
+	ownerdraw UI_TRINITYLOGIN
+	type ITEM_TYPE_OWNERDRAW
+	style 0
+	textstyle 6
+	rect 500 8 130 20
+	textalign ITEM_ALIGN_RIGHT
+	textalignx 130
+	textaligny 16
+	textscale .28
+	forecolor 1 1 1 1
+	visible 1
+	action { play "sound/misc/kcaction.wav" ;
+	close main ;
+	open login_menu }
+}
+
+itemDef {
       	name copyright
       	text "Quake III: Team Arena Copyright 2000 Id Software, Inc. All rights reserved"
       	style 0

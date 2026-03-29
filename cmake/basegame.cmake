@@ -17,8 +17,11 @@ else()
 		list(APPEND VERSION_DEFINITIONS Q3VR_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 endif()
 
+list(APPEND VERSION_DEFINITIONS Q3VR_VERSION="${Q3VR_VERSION_STRING}")
+
 set(CGAME_SOURCES
     ${SOURCE_DIR}/cgame/cg_main.c
+    ${SOURCE_DIR}/game/bg_hash.c
     ${SOURCE_DIR}/game/bg_misc.c
     ${SOURCE_DIR}/game/bg_gameplay.c
     ${SOURCE_DIR}/game/bg_pmove.c
@@ -49,6 +52,7 @@ set(CGAME_QVM_SOURCES ${SOURCE_DIR}/cgame/cg_syscalls.asm)
 
 set(GAME_SOURCES
     ${SOURCE_DIR}/game/g_main.c
+    ${SOURCE_DIR}/game/bg_hash.c
     ${SOURCE_DIR}/game/ai_chat.c
     ${SOURCE_DIR}/game/ai_cmd.c
     ${SOURCE_DIR}/game/ai_dmnet.c
@@ -108,6 +112,7 @@ set(UI_SOURCES
     ${SOURCE_DIR}/q3_ui/ui_gameinfo.c
     ${SOURCE_DIR}/q3_ui/ui_ingame.c
     ${SOURCE_DIR}/q3_ui/ui_loadconfig.c
+    ${SOURCE_DIR}/q3_ui/ui_login.c
     ${SOURCE_DIR}/q3_ui/ui_menu.c
     ${SOURCE_DIR}/q3_ui/ui_mfield.c
     ${SOURCE_DIR}/q3_ui/ui_mods.c

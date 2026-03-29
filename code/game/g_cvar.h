@@ -104,4 +104,6 @@ G_CVAR( g_mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM, 0, qfalse, qfalse 
 G_CVAR( g_movement, "g_movement", "0", CVAR_SERVERINFO | CVAR_SYSTEMINFO | CVAR_LATCH, 0, qfalse, qfalse )
 G_CVAR( g_gameplay, "g_gameplay", "0", CVAR_SERVERINFO | CVAR_SYSTEMINFO | CVAR_LATCH, 0, qfalse, qfalse )
 
+G_CVAR( g_trinityHandshake, "g_trinityHandshake", "0", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse, qfalse )
+
 #undef G_CVAR

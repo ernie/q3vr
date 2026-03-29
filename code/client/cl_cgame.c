@@ -354,6 +354,13 @@ rescan:
 		return qtrue;
 	}
 
+	if ( !strcmp( cmd, "trinity_auth_fail" ) ) {
+		// Clear protected auth cvars at engine level (DLLs cannot set CVAR_PROTECTED)
+		Cvar_Set( "cl_trinityToken", "" );
+		Cvar_Set( "cl_trinityUser", "" );
+		return qtrue;  // pass through to cgame for user-visible message
+	}
+
 	if ( !strcmp( cmd, "map_restart" ) ) {
 		// clear notify lines and outgoing commands before passing
 		// the restart to the cgame

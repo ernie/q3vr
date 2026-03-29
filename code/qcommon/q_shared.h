@@ -996,7 +996,8 @@ default values.
 #define CVAR_VM_CREATED		0x1000	// cvar was created exclusively in one of the VMs.
 #define CVAR_PROTECTED		0x2000	// prevent modifying this var from VMs or the server
 #define CVAR_DEVELOPER		0x4000	// developer cvar (hidden from normal users)
-#define CVAR_ARCHIVE_ND		CVAR_ARCHIVE	// same as CVAR_ARCHIVE (no-default distinction not used)
+#define CVAR_NODEFAULT		0x8000	// do not write to config if matching with default value
+#define CVAR_ARCHIVE_ND		(CVAR_ARCHIVE | CVAR_NODEFAULT)	// archived, but not written if value equals default
 // These flags are only returned by the Cvar_Flags() function
 #define CVAR_MODIFIED		0x40000000	// Cvar was modified
 #define CVAR_NONEXISTENT	0x80000000	// Cvar doesn't exist.

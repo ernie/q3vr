@@ -63,6 +63,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define WINDOW_POPUP					0x00200000	// popup
 #define WINDOW_BACKCOLORSET		0x00400000	// backcolor was explicitly set 
 #define WINDOW_TIMEDVISIBLE		0x00800000	// visibility timing ( NOT implemented )
+#define WINDOW_PASSWORD				0x01000000	// mask editfield contents with *
 
 
 // CGAME cursor type bits
@@ -434,6 +435,7 @@ int Display_CursorType(int x, int y);
 qboolean Display_KeyBindPending( void );
 void Menus_OpenByName(const char *p);
 menuDef_t *Menus_FindByName(const char *p);
+void Menu_ShowItemByName(menuDef_t *menu, const char *p, qboolean bShow);
 void Menus_ShowByName(const char *p);
 void Menus_CloseByName(const char *p);
 void Display_HandleKey(int key, qboolean down, int x, int y);

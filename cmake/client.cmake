@@ -23,6 +23,7 @@ set(CLIENT_SOURCES
     ${SOURCE_DIR}/client/cl_scrn.c
     ${SOURCE_DIR}/client/cl_ui.c
     ${SOURCE_DIR}/client/cl_avi.c
+    ${SOURCE_DIR}/client/cl_trinity.c
     ${SOURCE_DIR}/client/cl_tv.c
     ${SOURCE_DIR}/client/libmumblelink.c
     ${SOURCE_DIR}/client/snd_altivec.c
@@ -58,6 +59,8 @@ if (PROJECT_VERSION_PATCH STREQUAL "")
 else()
     list(APPEND CLIENT_DEFINITIONS Q3VR_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 endif()
+
+list(APPEND CLIENT_DEFINITIONS Q3VR_VERSION="${Q3VR_VERSION_STRING}")
 
 list(APPEND CLIENT_DEFINITIONS BOTLIB)
 

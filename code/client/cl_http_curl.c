@@ -71,6 +71,9 @@ CURLMsg *(*qcurl_multi_info_read)(CURLM *multi_handle,
                                                 int *msgs_in_queue);
 const char *(*qcurl_multi_strerror)(CURLMcode);
 
+struct curl_slist *(*qcurl_slist_append)(struct curl_slist *list, const char *data);
+void (*qcurl_slist_free_all)(struct curl_slist *list);
+
 static void *cURLLib = NULL;
 static qboolean cURLSymbolLoadFailed = qfalse;
 
@@ -93,6 +96,8 @@ static qboolean cURLSymbolLoadFailed = qfalse;
 #define qcurl_multi_cleanup curl_multi_cleanup
 #define qcurl_multi_info_read curl_multi_info_read
 #define qcurl_multi_strerror curl_multi_strerror
+#define qcurl_slist_append curl_slist_append
+#define qcurl_slist_free_all curl_slist_free_all
 
 #endif /* USE_CURL_DLOPEN */
 
@@ -174,6 +179,9 @@ qboolean CL_HTTP_Init(void)
 	qcurl_multi_cleanup = GPA("curl_multi_cleanup");
 	qcurl_multi_info_read = GPA("curl_multi_info_read");
 	qcurl_multi_strerror = GPA("curl_multi_strerror");
+
+	qcurl_slist_append = GPA("curl_slist_append");
+	qcurl_slist_free_all = GPA("curl_slist_free_all");
 
 	if(cURLSymbolLoadFailed)
 	{
@@ -303,6 +311,9 @@ void CL_HTTP_Shutdown( void )
 	qcurl_multi_cleanup = NULL;
 	qcurl_multi_info_read = NULL;
 	qcurl_multi_strerror = NULL;
+
+	qcurl_slist_append = NULL;
+	qcurl_slist_free_all = NULL;
 #endif
 }
 

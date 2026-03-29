@@ -2794,6 +2794,7 @@ void Com_Init( char *commandLine ) {
 
 	s = va("%s %s %s", Q3_VERSION, PLATFORM_STRING, PRODUCT_DATE );
 	com_version = Cvar_Get ("version", s, CVAR_ROM | CVAR_SERVERINFO );
+	Cvar_Get( "com_engine", va( "q3vr/%s", Q3VR_VERSION ), CVAR_ROM );
 	com_gamename = Cvar_Get("com_gamename", GAMENAME_FOR_MASTER, CVAR_SERVERINFO | CVAR_INIT);
 	com_protocol = Cvar_Get("com_protocol", va("%i", PROTOCOL_VERSION), CVAR_SERVERINFO | CVAR_INIT);
 #ifdef LEGACY_PROTOCOL

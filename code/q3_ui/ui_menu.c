@@ -40,6 +40,7 @@ MAIN MENU
 #define ID_TEAMARENA		15
 #define ID_MODS					16
 #define ID_EXIT					17
+#define ID_ACCOUNT				18
 
 #define MAIN_BANNER_MODEL				"models/mapobjects/banner/banner5.md3"
 #define MAIN_MENU_VERTICAL_SPACING		34
@@ -56,6 +57,7 @@ typedef struct {
 	menutext_s		teamArena;
 	menutext_s		mods;
 	menutext_s		exit;
+	menutext_s		account;
 
 	qhandle_t		bannerModel;
 } mainmenu_t;
@@ -73,6 +75,36 @@ typedef struct {
 } errorMessage_t;
 
 static errorMessage_t s_errorMessage;
+
+/*
+=================
+Main_DrawLoginButton
+
+Draws the Account button using the small bitmap font.
+=================
+*/
+static void Main_DrawLoginButton( void *self ) {
+	menutext_s	*t = (menutext_s *)self;
+	char		trinityUser[64];
+	const char	*label;
+	int			style;
+	int			w;
+
+	style = UI_RIGHT | UI_SMALLFONT;
+	if ( t->generic.flags & QMF_PULSEIFFOCUS && Menu_ItemAtCursor( t->generic.parent ) == t ) {
+		style |= UI_PULSE;
+	}
+
+	trap_Cvar_VariableStringBuffer( "cl_trinityUser", trinityUser, sizeof( trinityUser ) );
+	label = trinityUser[0] ? trinityUser : t->string;
+
+	UI_DrawString( t->generic.x, t->generic.y, label, style,
+		( t->generic.flags & QMF_GRAYED ) ? text_color_disabled : t->color );
+
+	// Update hit rect to match current label width
+	w = strlen( label ) * SMALLCHAR_WIDTH;
+	t->generic.left = t->generic.x - w;
+}
 
 /*
 =================
@@ -137,6 +169,10 @@ void Main_MenuEvent (void* ptr, int event) {
 		trap_Cmd_ExecuteText( EXEC_APPEND, "vid_restart;" );
 		break;
 
+	case ID_ACCOUNT:
+		UI_LoginMenu();
+		break;
+
 	case ID_EXIT:
 		UI_ConfirmMenu( "EXIT GAME?", 0, MainMenu_ExitAction );
 		break;
@@ -167,7 +203,7 @@ static void MainMenu_LoadTrinityVersion( void ) {
 	trinityVersionLoaded = qtrue;
 	trinityVersion[0] = '\0';
 
-	len = trap_FS_FOpenFile( "trinity-version.txt", &f, FS_READ );
+	len = trap_FS_FOpenFile( "trinity.ver", &f, FS_READ );
 	if ( f == FS_INVALID_HANDLE ) {
 		return;
 	}
@@ -494,7 +530,27 @@ void UI_MainMenu( void ) {
 	if ( !uis.demoversion ) {
 		Menu_AddItem( &s_main.menu,	&s_main.mods );
 	}
-	Menu_AddItem( &s_main.menu,	&s_main.exit );             
+	Menu_AddItem( &s_main.menu,	&s_main.exit );
+
+	// Account button — right-aligned, small bitmap font
+	s_main.account.generic.type			= MTYPE_PTEXT;
+	s_main.account.generic.flags		= QMF_RIGHT_JUSTIFY|QMF_PULSEIFFOCUS;
+	s_main.account.generic.x			= 610;
+	s_main.account.generic.y			= 134;
+	s_main.account.generic.id			= ID_ACCOUNT;
+	s_main.account.generic.callback		= Main_MenuEvent;
+	s_main.account.generic.ownerdraw	= Main_DrawLoginButton;
+	s_main.account.string				= "Account";
+	s_main.account.color				= color_white;
+	s_main.account.style				= UI_RIGHT|UI_SMALLFONT;
+	Menu_AddItem( &s_main.menu, &s_main.account );
+	{
+		int w = strlen( s_main.account.string ) * SMALLCHAR_WIDTH;
+		s_main.account.generic.left   = s_main.account.generic.x - w;
+		s_main.account.generic.right  = s_main.account.generic.x;
+		s_main.account.generic.top    = s_main.account.generic.y;
+		s_main.account.generic.bottom = s_main.account.generic.y + SMALLCHAR_HEIGHT;
+	}
 
 	trap_Key_SetCatcher( KEYCATCH_UI );
 	uis.menusp = 0;
