@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "client.h"
 #include "cl_trinity.h"
+#include "../qcommon/autoupdate.h"
 #include <limits.h>
 
 #include "../sys/sys_local.h"
@@ -3192,6 +3193,7 @@ void CL_Frame ( int msec ) {
 	CL_HTTP_PerformInMemoryDownload();
 	CL_TV_DownloadFrame();
 	CL_TrinityPerformLogin();
+	Update_Frame();
 #endif
 
 	if ( cls.cddialog ) {
@@ -3982,6 +3984,7 @@ void CL_Init( void ) {
 
 	CL_TV_Init();
 	CL_TrinityInit();
+	Update_Init();
 
 	// cgame might not be initialized before menu is used
 	Cvar_Get ("cg_viewsize", "100", CVAR_ARCHIVE );
@@ -4069,6 +4072,8 @@ void CL_Shutdown(char *finalmsg, qboolean disconnect, qboolean quit)
 #ifdef USE_HTTP
 	CL_HTTP_Shutdown();
 #endif
+
+	Update_Shutdown();
 
 	Cmd_RemoveCommand ("cmd");
 	Cmd_RemoveCommand ("configstrings");

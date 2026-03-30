@@ -876,6 +876,8 @@ int main( int argc, char **argv )
 
 	VR_Engine* engine = VR_Init( );
 
+	Sys_ApplyPendingUpdate();
+
 	CON_Init( );
 	Com_Init( commandLine );
 	NET_Init( );

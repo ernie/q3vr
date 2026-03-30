@@ -10,6 +10,7 @@
 #endif
 #endif
 
+#define JSON_IMPLEMENTATION
 #include "../qcommon/json.h"
 
 cvar_t *cl_trinityToken;

@@ -145,10 +145,9 @@ jobs:
 
       - name: Create archives
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          7z a -r q3vr-${VERSION}-windows-msvc.zip    ./windows-msvc/*
-          7z a -r q3vr-${VERSION}-windows-mingw.zip   ./windows-mingw/*
-          7z a -r q3vr-${VERSION}-linux.zip            ./linux/*
+          7z a -r q3vr-windows-msvc-x86_64.zip    ./windows-msvc/*
+          7z a -r q3vr-windows-mingw-x86_64.zip   ./windows-mingw/*
+          7z a -r q3vr-linux-x86_64.zip            ./linux/*
 
       - name: Create release
         uses: softprops/action-gh-release@v2

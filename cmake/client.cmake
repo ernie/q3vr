@@ -25,6 +25,7 @@ set(CLIENT_SOURCES
     ${SOURCE_DIR}/client/cl_avi.c
     ${SOURCE_DIR}/client/cl_trinity.c
     ${SOURCE_DIR}/client/cl_tv.c
+    ${SOURCE_DIR}/qcommon/autoupdate.c
     ${SOURCE_DIR}/client/libmumblelink.c
     ${SOURCE_DIR}/client/snd_altivec.c
     ${SOURCE_DIR}/client/snd_adpcm.c

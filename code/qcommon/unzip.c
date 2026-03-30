@@ -59,7 +59,7 @@ woven in by Terry Thorsen 1/2003.
 
 
 #ifndef UNZ_BUFSIZE
-#define UNZ_BUFSIZE (16384)
+#define UNZ_BUFSIZE (65536)
 #endif
 
 #ifndef UNZ_MAXFILENAMEINZIP

@@ -1,48 +1,21 @@
-/*
-===========================================================================
-Copyright (C) 1999-2005 Id Software, Inc.
-
-This file is part of Quake III Arena source code.
-
-Quake III Arena source code is free software; you can redistribute it
-and/or modify it under the terms of the GNU General Public License as
-published by the Free Software Foundation; either version 2 of the License,
-or (at your option) any later version.
-
-Quake III Arena source code is distributed in the hope that it will be
-useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with Quake III Arena source code; if not, write to the Free Software
-Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-===========================================================================
-*/
-//
-/*
-=======================================================================
-
-UPDATE MENU
-
-=======================================================================
-*/
-
+// ui_update.c -- engine self-update menu
 
 #include "ui_local.h"
 
 #define ART_BACK0		"menu/art/back_0"
-#define ART_BACK1		"menu/art/back_1"	
+#define ART_BACK1		"menu/art/back_1"
 #define ART_FRAMEL		"menu/art/frame2_l"
 #define ART_FRAMER		"menu/art/frame1_r"
 
-#define VR_X_POS		330
+#define ID_DOWNLOAD		10
+#define ID_CANCEL		11
+#define ID_RESTART		12
+#define ID_BACK			20
 
-#define ID_VER_CURRENT	10
-#define ID_VER_NEW			11
-#define ID_VISIT				12
-#define ID_BACK					20
-
+#define PROGRESS_X		160
+#define PROGRESS_Y		278
+#define PROGRESS_W		320
+#define PROGRESS_H		16
 
 typedef struct {
 	menuframework_s	menu;
@@ -51,37 +24,153 @@ typedef struct {
 	menubitmap_s	framel;
 	menubitmap_s	framer;
 
-	menutext_s		descriptiont;
-	menutext_s		descriptionb;
-	menulist_s	current;
-	menulist_s	new;
-	menutext_s		visit;
-	menulist_s		visit_manual;
+	menutext_s		currentLabel;
+	menutext_s		currentValue;
+	menutext_s		newLabel;
+	menutext_s		newValue;
+	menutext_s		sizeLabel;
+	menutext_s		statusText;
+
+	menutext_s		download;
+	menutext_s		cancel;
+	menutext_s		restart;
 
 	menubitmap_s	back;
 } updateMenuInfo_t;
 
-static updateMenuInfo_t	updateMenuInfo;
+static updateMenuInfo_t	s_update;
+
+static char	currentVerBuf[64];
+static char	newVerBuf[64];
+static char	sizeBuf[64];
+static char	statusBuf[128];
+static int	lastBuiltState = -1;
 
 
 /*
-===============
-UI_UpdateMenu_Event
-===============
+=================
+UpdateMenu_GetState
+=================
 */
-static void UI_UpdateMenu_Event( void *ptr, int event ) {
-	if( event != QM_ACTIVATED ) {
+static int UpdateMenu_GetState( void ) {
+	return (int)trap_Cvar_VariableValue( "update_state" );
+}
+
+
+/*
+=================
+UpdateMenu_RefreshStatus
+=================
+*/
+static void UpdateMenu_RefreshStatus( void ) {
+	int state = UpdateMenu_GetState();
+	int progress;
+
+	trap_Cvar_VariableStringBuffer( "update_current", currentVerBuf, sizeof( currentVerBuf ) );
+	trap_Cvar_VariableStringBuffer( "update_version", newVerBuf, sizeof( newVerBuf ) );
+
+	{
+		int bytes = (int)trap_Cvar_VariableValue( "update_size" );
+		if ( bytes >= 1024 * 1024 )
+			Com_sprintf( sizeBuf, sizeof( sizeBuf ), "%i.%iMB",
+				bytes / (1024*1024), (bytes / (1024*1024/10)) % 10 );
+		else if ( bytes > 0 )
+			Com_sprintf( sizeBuf, sizeof( sizeBuf ), "%iKB", bytes / 1024 );
+		else
+			Q_strncpyz( sizeBuf, "", sizeof( sizeBuf ) );
+	}
+
+	switch ( state ) {
+	case 0: // IDLE
+		Q_strncpyz( statusBuf, "Up to date", sizeof( statusBuf ) );
+		break;
+	case 1: // CHECKING
+		Q_strncpyz( statusBuf, "Checking for updates...", sizeof( statusBuf ) );
+		break;
+	case 2: // AVAILABLE
+		Q_strncpyz( statusBuf, "Update available", sizeof( statusBuf ) );
+		break;
+	case 3: // DOWNLOADING
+		progress = (int)trap_Cvar_VariableValue( "update_progress" );
+		Com_sprintf( statusBuf, sizeof( statusBuf ), "Downloading... %i%%", progress );
+		break;
+	case 4: // EXTRACTING
+		Q_strncpyz( statusBuf, "Extracting...", sizeof( statusBuf ) );
+		break;
+	case 5: // STAGED
+		Q_strncpyz( statusBuf, "Update ready! Restart to apply.", sizeof( statusBuf ) );
+		break;
+	case 6: // ERROR
+		trap_Cvar_VariableStringBuffer( "update_error", statusBuf, sizeof( statusBuf ) );
+		break;
+	}
+
+}
+
+
+/*
+=================
+UpdateMenu_Draw
+=================
+*/
+static void UpdateMenu_Draw( void ) {
+	int state;
+	vec4_t barBg = { 0.2f, 0.2f, 0.2f, 0.8f };
+	vec4_t barFg = { 0.0f, 0.6f, 0.0f, 0.9f };
+	vec4_t barBorder = { 0.5f, 0.5f, 0.5f, 1.0f };
+
+	state = UpdateMenu_GetState();
+
+	// rebuild menu when state changes so buttons become clickable
+	if ( state != lastBuiltState ) {
+		UI_PopMenu();
+		UI_UpdateMenu();
 		return;
 	}
 
-	switch( ((menucommon_s*)ptr)->id ) {
-	case ID_VISIT:
-#if defined(_WIN32)
-    const char command[] = "start https://ripper37.github.io/q3vr/";
-    system(command);
-		trap_Cmd_ExecuteText( EXEC_APPEND, "quit\n" );
-#endif
-		UI_PopMenu();
+	UpdateMenu_RefreshStatus();
+
+	Menu_Draw( &s_update.menu );
+
+	// draw progress bar during download
+	state = UpdateMenu_GetState();
+	if ( state == 3 ) {
+		int progress = (int)trap_Cvar_VariableValue( "update_progress" );
+		float fillW;
+
+		if ( progress < 0 ) progress = 0;
+		if ( progress > 100 ) progress = 100;
+		fillW = ( PROGRESS_W * progress ) / 100.0f;
+
+		// background
+		UI_FillRect( PROGRESS_X, PROGRESS_Y, PROGRESS_W, PROGRESS_H, barBg );
+		// fill
+		if ( fillW > 0 )
+			UI_FillRect( PROGRESS_X, PROGRESS_Y, fillW, PROGRESS_H, barFg );
+		// border
+		UI_DrawRect( PROGRESS_X, PROGRESS_Y, PROGRESS_W, PROGRESS_H, barBorder );
+	}
+}
+
+
+/*
+=================
+UI_UpdateMenu_Event
+=================
+*/
+static void UI_UpdateMenu_Event( void *ptr, int event ) {
+	if ( event != QM_ACTIVATED )
+		return;
+
+	switch ( ((menucommon_s *)ptr)->id ) {
+	case ID_DOWNLOAD:
+		trap_Cmd_ExecuteText( EXEC_APPEND, "updatedownload\n" );
+		break;
+	case ID_CANCEL:
+		trap_Cmd_ExecuteText( EXEC_APPEND, "updatecancel\n" );
+		break;
+	case ID_RESTART:
+		trap_Cmd_ExecuteText( EXEC_NOW, "updaterestart\n" );
 		break;
 	case ID_BACK:
 		UI_PopMenu();
@@ -91,139 +180,167 @@ static void UI_UpdateMenu_Event( void *ptr, int event ) {
 
 
 /*
-===============
+=================
 UI_UpdateMenu_Init
-===============
+=================
 */
 static void UI_UpdateMenu_Init( void ) {
-	int				y;
+	int y;
+	int style = UI_CENTER | UI_DROPSHADOW;
 
 	UI_UpdateMenu_Cache();
 
-	memset( &updateMenuInfo, 0, sizeof(updateMenuInfo) );
-	updateMenuInfo.menu.wrapAround = qtrue;
-	updateMenuInfo.menu.fullscreen = qtrue;
+	lastBuiltState = UpdateMenu_GetState();
 
-	updateMenuInfo.banner.generic.type				= MTYPE_BTEXT;
-	updateMenuInfo.banner.generic.x					= 320;
-	updateMenuInfo.banner.generic.y					= 16;
-	updateMenuInfo.banner.string						= "UPDATE";
-	updateMenuInfo.banner.color						= color_white;
-	updateMenuInfo.banner.style						= UI_CENTER;
+	memset( &s_update, 0, sizeof( s_update ) );
+	s_update.menu.wrapAround = qtrue;
+	s_update.menu.fullscreen = qtrue;
+	s_update.menu.draw = UpdateMenu_Draw;
 
-	updateMenuInfo.framel.generic.type				= MTYPE_BITMAP;
-	updateMenuInfo.framel.generic.name				= ART_FRAMEL;
-	updateMenuInfo.framel.generic.flags				= QMF_INACTIVE;
-	updateMenuInfo.framel.generic.x					= 0;
-	updateMenuInfo.framel.generic.y					= 78;
-	updateMenuInfo.framel.width  					= 256;
-	updateMenuInfo.framel.height  					= 329;
+	// banner
+	s_update.banner.generic.type	= MTYPE_BTEXT;
+	s_update.banner.generic.x		= 320;
+	s_update.banner.generic.y		= 16;
+	s_update.banner.string			= "ENGINE UPDATE";
+	s_update.banner.color			= color_white;
+	s_update.banner.style			= UI_CENTER;
 
-	updateMenuInfo.framer.generic.type				= MTYPE_BITMAP;
-	updateMenuInfo.framer.generic.name				= ART_FRAMER;
-	updateMenuInfo.framer.generic.flags				= QMF_INACTIVE;
-	updateMenuInfo.framer.generic.x					= 376;
-	updateMenuInfo.framer.generic.y					= 76;
-	updateMenuInfo.framer.width  					= 256;
-	updateMenuInfo.framer.height  					= 334;
+	// frames
+	s_update.framel.generic.type	= MTYPE_BITMAP;
+	s_update.framel.generic.name	= ART_FRAMEL;
+	s_update.framel.generic.flags	= QMF_INACTIVE;
+	s_update.framel.generic.x		= 0;
+	s_update.framel.generic.y		= 78;
+	s_update.framel.width			= 256;
+	s_update.framel.height			= 329;
 
-	updateMenuInfo.descriptiont.generic.type				= MTYPE_TEXT;
-	updateMenuInfo.descriptiont.generic.x					= 320;
-	updateMenuInfo.descriptiont.generic.y					= 150;
-	updateMenuInfo.descriptiont.string						= "New version of the game";
-	updateMenuInfo.descriptiont.color						= color_white;
-	updateMenuInfo.descriptiont.style						= UI_CENTER;
+	s_update.framer.generic.type	= MTYPE_BITMAP;
+	s_update.framer.generic.name	= ART_FRAMER;
+	s_update.framer.generic.flags	= QMF_INACTIVE;
+	s_update.framer.generic.x		= 376;
+	s_update.framer.generic.y		= 76;
+	s_update.framer.width			= 256;
+	s_update.framer.height			= 334;
 
-	updateMenuInfo.descriptionb.generic.type				= MTYPE_TEXT;
-	updateMenuInfo.descriptionb.generic.x					= 320;
-	updateMenuInfo.descriptionb.generic.y					= 150 + BIGCHAR_HEIGHT+6;
-	updateMenuInfo.descriptionb.string						= "is available";
-	updateMenuInfo.descriptionb.color						= color_white;
-	updateMenuInfo.descriptionb.style						= UI_CENTER;
+	// version info
+	y = 180;
 
-	y = 200;
+	s_update.currentLabel.generic.type	= MTYPE_TEXT;
+	s_update.currentLabel.generic.x		= 240;
+	s_update.currentLabel.generic.y		= y;
+	s_update.currentLabel.string		= "Current:";
+	s_update.currentLabel.color			= color_white;
+	s_update.currentLabel.style			= UI_RIGHT | UI_SMALLFONT;
 
-	static char current_version_buffer[20] = { 0 };
-	static char latest_version_buffer[20] = { 0 };
-	Com_sprintf(current_version_buffer, 20, "%d.%d.%d",
-			Q3VR_VERSION_MAJOR,
-			Q3VR_VERSION_MINOR,
-			Q3VR_VERSION_PATCH);
-	Com_sprintf(latest_version_buffer, 20, "%d.%d.%d",
-			(int)trap_Cvar_VariableValue("q3vr_update_version_major"),
-			(int)trap_Cvar_VariableValue("q3vr_update_version_minor"),
-			(int)trap_Cvar_VariableValue("q3vr_update_version_patch"));
+	s_update.currentValue.generic.type	= MTYPE_TEXT;
+	s_update.currentValue.generic.x		= 250;
+	s_update.currentValue.generic.y		= y;
+	s_update.currentValue.string		= currentVerBuf;
+	s_update.currentValue.color			= color_white;
+	s_update.currentValue.style			= UI_LEFT | UI_SMALLFONT;
 
-	static const char* current_version[] = { current_version_buffer, NULL };
-	static const char* new_version[] = { latest_version_buffer, NULL };
+	y += SMALLCHAR_HEIGHT + 4;
 
-	y += BIGCHAR_HEIGHT+2;
-	updateMenuInfo.current.generic.type		= MTYPE_SPINCONTROL;
-	updateMenuInfo.current.generic.name		= "Current:";
-	updateMenuInfo.current.generic.flags		= QMF_INACTIVE;
-	updateMenuInfo.current.generic.callback	= UI_UpdateMenu_Event;
-	updateMenuInfo.current.generic.id			= ID_VER_CURRENT;
-	updateMenuInfo.current.generic.x			= VR_X_POS;
-	updateMenuInfo.current.generic.y			= y;
-	updateMenuInfo.current.itemnames			= current_version;
-	updateMenuInfo.current.numitems				= 1;
+	s_update.newLabel.generic.type		= MTYPE_TEXT;
+	s_update.newLabel.generic.x			= 240;
+	s_update.newLabel.generic.y			= y;
+	s_update.newLabel.string			= "Available:";
+	s_update.newLabel.color				= color_white;
+	s_update.newLabel.style				= UI_RIGHT | UI_SMALLFONT;
 
-	y += BIGCHAR_HEIGHT+2;
-	updateMenuInfo.new.generic.type		= MTYPE_SPINCONTROL;
-	updateMenuInfo.new.generic.name		= "Latest:";
-	updateMenuInfo.new.generic.flags		= QMF_INACTIVE;
-	updateMenuInfo.new.generic.callback	= UI_UpdateMenu_Event;
-	updateMenuInfo.new.generic.id			= ID_VER_NEW;
-	updateMenuInfo.new.generic.x			= VR_X_POS;
-	updateMenuInfo.new.generic.y			= y;
-	updateMenuInfo.new.itemnames			= new_version;
-	updateMenuInfo.new.numitems				= 1;
+	s_update.newValue.generic.type		= MTYPE_TEXT;
+	s_update.newValue.generic.x			= 250;
+	s_update.newValue.generic.y			= y;
+	s_update.newValue.string			= newVerBuf;
+	s_update.newValue.color				= color_yellow;
+	s_update.newValue.style				= UI_LEFT | UI_SMALLFONT;
 
-	updateMenuInfo.visit.generic.type			= MTYPE_PTEXT;
-	updateMenuInfo.visit.generic.flags		= QMF_CENTER_JUSTIFY|QMF_PULSEIFFOCUS;
-	updateMenuInfo.visit.generic.x				= 320;
-	updateMenuInfo.visit.generic.y				= 310;
-	updateMenuInfo.visit.generic.id				= ID_VISIT;
-	updateMenuInfo.visit.generic.callback	= UI_UpdateMenu_Event;
-	updateMenuInfo.visit.string						= "Visit Home Page";
-	updateMenuInfo.visit.color						= color_red;
-	updateMenuInfo.visit.style						= UI_CENTER;
+	y += SMALLCHAR_HEIGHT + 2;
 
-	static const char* homePageUrl[] = { "https://ripper37.github.io/q3vr", NULL };
-	updateMenuInfo.visit_manual.generic.type		= MTYPE_SPINCONTROL;
-	updateMenuInfo.visit_manual.generic.name		= "Visit";
-	updateMenuInfo.visit_manual.generic.flags		= QMF_INACTIVE;
-	updateMenuInfo.visit_manual.generic.callback	= UI_UpdateMenu_Event;
-	updateMenuInfo.visit_manual.generic.id			= ID_VER_NEW;
-	updateMenuInfo.visit_manual.generic.x			= VR_X_POS - 110;
-	updateMenuInfo.visit_manual.generic.y			= 310;
-	updateMenuInfo.visit_manual.itemnames			= homePageUrl;
-	updateMenuInfo.visit_manual.numitems				= 1;
+	s_update.sizeLabel.generic.type		= MTYPE_TEXT;
+	s_update.sizeLabel.generic.x		= 320;
+	s_update.sizeLabel.generic.y		= y;
+	s_update.sizeLabel.string			= sizeBuf;
+	s_update.sizeLabel.color			= color_white;
+	s_update.sizeLabel.style			= UI_CENTER | UI_SMALLFONT;
 
-	updateMenuInfo.back.generic.type					= MTYPE_BITMAP;
-	updateMenuInfo.back.generic.name					= ART_BACK0;
-	updateMenuInfo.back.generic.flags				= QMF_LEFT_JUSTIFY|QMF_PULSEIFFOCUS;
-	updateMenuInfo.back.generic.id					= ID_BACK;
-	updateMenuInfo.back.generic.callback				= UI_UpdateMenu_Event;
-	updateMenuInfo.back.generic.x					= 0;
-	updateMenuInfo.back.generic.y					= 480-64;
-	updateMenuInfo.back.width						= 128;
-	updateMenuInfo.back.height						= 64;
-	updateMenuInfo.back.focuspic						= ART_BACK1;
+	y += SMALLCHAR_HEIGHT + 20;
 
-	Menu_AddItem( &updateMenuInfo.menu, &updateMenuInfo.banner );
-	Menu_AddItem( &updateMenuInfo.menu, &updateMenuInfo.framel );
-	Menu_AddItem( &updateMenuInfo.menu, &updateMenuInfo.framer );
-	Menu_AddItem( &updateMenuInfo.menu, &updateMenuInfo.descriptiont );
-	Menu_AddItem( &updateMenuInfo.menu, &updateMenuInfo.descriptionb );
-	Menu_AddItem( &updateMenuInfo.menu, &updateMenuInfo.current );
-	Menu_AddItem( &updateMenuInfo.menu, &updateMenuInfo.new );
-#if defined(_WIN32)
-	Menu_AddItem( &updateMenuInfo.menu, &updateMenuInfo.visit );
-#else
-	Menu_AddItem( &updateMenuInfo.menu, &updateMenuInfo.visit_manual );
-#endif
-	Menu_AddItem( &updateMenuInfo.menu, &updateMenuInfo.back );
+	// status text
+	s_update.statusText.generic.type	= MTYPE_TEXT;
+	s_update.statusText.generic.x		= 320;
+	s_update.statusText.generic.y		= y;
+	s_update.statusText.string			= statusBuf;
+	s_update.statusText.color			= color_white;
+	s_update.statusText.style			= UI_CENTER | UI_SMALLFONT;
+
+	// action buttons — progress bar is at 278, 16px tall, so buttons at 302
+	y = 302;
+
+	s_update.download.generic.type		= MTYPE_PTEXT;
+	s_update.download.generic.flags		= QMF_CENTER_JUSTIFY | QMF_PULSEIFFOCUS;
+	s_update.download.generic.x			= 320;
+	s_update.download.generic.y			= y;
+	s_update.download.generic.id		= ID_DOWNLOAD;
+	s_update.download.generic.callback	= UI_UpdateMenu_Event;
+	s_update.download.string			= "DOWNLOAD";
+	s_update.download.color				= color_red;
+	s_update.download.style				= style;
+
+	s_update.cancel.generic.type		= MTYPE_PTEXT;
+	s_update.cancel.generic.flags		= QMF_CENTER_JUSTIFY | QMF_PULSEIFFOCUS;
+	s_update.cancel.generic.x			= 320;
+	s_update.cancel.generic.y			= y;
+	s_update.cancel.generic.id			= ID_CANCEL;
+	s_update.cancel.generic.callback	= UI_UpdateMenu_Event;
+	s_update.cancel.string				= "CANCEL";
+	s_update.cancel.color				= color_red;
+	s_update.cancel.style				= style;
+
+	s_update.restart.generic.type		= MTYPE_PTEXT;
+	s_update.restart.generic.flags		= QMF_CENTER_JUSTIFY | QMF_PULSEIFFOCUS;
+	s_update.restart.generic.x			= 320;
+	s_update.restart.generic.y			= y;
+	s_update.restart.generic.id			= ID_RESTART;
+	s_update.restart.generic.callback	= UI_UpdateMenu_Event;
+	s_update.restart.string				= "RESTART NOW";
+	s_update.restart.color				= color_red;
+	s_update.restart.style				= style;
+
+	// back button
+	s_update.back.generic.type			= MTYPE_BITMAP;
+	s_update.back.generic.name			= ART_BACK0;
+	s_update.back.generic.flags			= QMF_LEFT_JUSTIFY | QMF_PULSEIFFOCUS;
+	s_update.back.generic.id			= ID_BACK;
+	s_update.back.generic.callback		= UI_UpdateMenu_Event;
+	s_update.back.generic.x			= 0;
+	s_update.back.generic.y			= 480 - 64;
+	s_update.back.width					= 128;
+	s_update.back.height				= 64;
+	s_update.back.focuspic				= ART_BACK1;
+
+	Menu_AddItem( &s_update.menu, &s_update.banner );
+	Menu_AddItem( &s_update.menu, &s_update.framel );
+	Menu_AddItem( &s_update.menu, &s_update.framer );
+	Menu_AddItem( &s_update.menu, &s_update.currentLabel );
+	Menu_AddItem( &s_update.menu, &s_update.currentValue );
+	Menu_AddItem( &s_update.menu, &s_update.newLabel );
+	Menu_AddItem( &s_update.menu, &s_update.newValue );
+	Menu_AddItem( &s_update.menu, &s_update.sizeLabel );
+	Menu_AddItem( &s_update.menu, &s_update.statusText );
+
+	// only add the action button relevant to the current state
+	if ( lastBuiltState == 2 ) {
+		Menu_AddItem( &s_update.menu, &s_update.download );
+	} else if ( lastBuiltState == 3 ) {
+		Menu_AddItem( &s_update.menu, &s_update.cancel );
+	} else if ( lastBuiltState == 5 ) {
+		Menu_AddItem( &s_update.menu, &s_update.restart );
+	}
+
+	Menu_AddItem( &s_update.menu, &s_update.back );
+
+	UpdateMenu_RefreshStatus();
 }
 
 
@@ -241,11 +358,11 @@ void UI_UpdateMenu_Cache( void ) {
 
 
 /*
-===============
+=================
 UI_UpdateMenu
-===============
+=================
 */
 void UI_UpdateMenu( void ) {
 	UI_UpdateMenu_Init();
-	UI_PushMenu( &updateMenuInfo.menu );
+	UI_PushMenu( &s_update.menu );
 }

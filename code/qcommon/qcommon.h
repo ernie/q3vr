@@ -1090,6 +1090,8 @@ char	*Sys_GetCurrentUser( void );
 
 void	QDECL Sys_Error( const char *error, ...) Q_NO_RETURN Q_PRINTF_FUNC(1, 2);
 void	Sys_Quit (void) Q_NO_RETURN;
+void	Sys_ApplyPendingUpdate( void );
+void	Sys_RestartProcess( void ) Q_NO_RETURN;
 char	*Sys_GetClipboardData( void );	// note that this isn't journaled...
 
 void	Sys_Print( const char *msg );
