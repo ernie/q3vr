@@ -418,6 +418,11 @@ static void CG_OffsetVRThirdPersonView( void ) {
 	{
 		scale *= SPECTATOR2_WORLDSCALE_MULTIPLIER;
 
+		// Start grace period on first frame of death cam
+		if (CG_IsDeathCam() && cg.deathCamTime == -1) {
+			cg.deathCamTime = cg.time;
+		}
+
 		// Handle camera recentering when B button is pressed or followed player changes
 		if (vr->recenter_follow_camera && CG_IsThirdPersonFollowMode(VRFM_THIRDPERSON_2))
 		{
@@ -452,7 +457,7 @@ static void CG_OffsetVRThirdPersonView( void ) {
 			vr->recenter_follow_camera = qfalse;
 		}
 
-		if (!vr->virtual_screen)
+		if (!vr->virtual_screen && (!CG_IsDeathCam() || cg.time - cg.deathCamTime >= 500))
 		{
 			//Move camera if the user is pushing thumbstick
 			vec3_t angles, forward, right, up;

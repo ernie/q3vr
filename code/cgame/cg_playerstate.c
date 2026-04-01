@@ -203,6 +203,9 @@ void CG_Respawn( void ) {
 
 	// select the weapon the server says we are using
 	cg.weaponSelect = cg.snap->ps.weapon;
+
+	// reset death cam grace period
+	cg.deathCamTime = -1;
 }
 
 extern const char *eventnames[EV_MAX];

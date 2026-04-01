@@ -563,6 +563,9 @@ typedef struct {
 	qboolean	smoothFollow_initialized;       // set once camera state has been seeded
 	int			followLastClientNum;            // detect followed-player changes
 
+	// death cam grace period
+	int			deathCamTime;                   // cg.time when death cam activated, -1 = inactive
+
 	// VR first-person head view smoothing
 	float		vrViewPitch;
 	float		vrViewYaw;

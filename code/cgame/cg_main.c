@@ -1774,6 +1774,7 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 	memset( cg_weapons, 0, sizeof(cg_weapons) );
 	memset( cg_items, 0, sizeof(cg_items) );
 
+	cg.deathCamTime = -1;
 	cgs.voteCaller = -1;
 	cgs.teamVoteCaller[0] = cgs.teamVoteCaller[1] = -1;
 
