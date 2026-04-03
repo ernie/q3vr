@@ -197,6 +197,15 @@ if(DEFINED PRIMARY_CLIENT)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/misc/steamvr/download-artwork$<IF:$<BOOL:${WIN32}>,.bat,.sh>"
         "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/"
+        # Copy license files
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/licenses/"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/THIRDPARTY.md"
+        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/licenses/"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/code/thirdparty/openal-soft-1.25.1/COPYING"
+        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/licenses/COPYING.openal-soft"
     )
     if(ZIP_EXECUTABLE)
         add_dependencies(${PRIMARY_CLIENT} pakQ3VR)
