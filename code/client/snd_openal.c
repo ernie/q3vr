@@ -2657,16 +2657,10 @@ qboolean S_AL_Init( soundInterface_t *si )
 #endif
 	else
 	{
-#ifdef __APPLE__
-		// !!! FIXME: Apple has a 1.1-compliant OpenAL, which includes
-		// !!! FIXME:  capture support, but they don't list it in the
-		// !!! FIXME:  extension string. We need to check the version string,
-		// !!! FIXME:  then the extension string, but that's too much trouble,
-		// !!! FIXME:  so we'll just check the function pointer for now.
+		// Check function pointer directly — alcIsExtensionPresent(NULL, ...)
+		// returns false on some OpenAL implementations even when the
+		// extension is available (observed with OpenAL Soft on Windows).
 		if (qalcCaptureOpenDevice == NULL)
-#else
-		if (!qalcIsExtensionPresent(NULL, "ALC_EXT_capture"))
-#endif
 		{
 			Com_Printf("No ALC_EXT_capture support, can't record audio.\n");
 		}
