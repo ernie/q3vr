@@ -655,13 +655,91 @@ void CL_ParseDownload ( msg_t *msg ) {
 }
 
 #ifdef USE_VOIP
+
+/*
+===============
+CL_InitVoip
+
+Create Opus encoder + MAX_CLIENTS decoders.
+Safe to call multiple times — returns immediately if already initialized.
+===============
+*/
+void CL_InitVoip( void )
+{
+	int i;
+	int error;
+
+	if ( clc.voipCodecInitialized )
+		return;
+
+	clc.opusEncoder = opus_encoder_create( 48000, 1, OPUS_APPLICATION_VOIP, &error );
+
+	if ( error ) {
+		Com_DPrintf( "VoIP: Error opus_encoder_create %d\n", error );
+		return;
+	}
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		clc.opusDecoder[i] = opus_decoder_create( 48000, 1, &error );
+		if ( error ) {
+			int j;
+			Com_DPrintf( "VoIP: Error opus_decoder_create(%d) %d\n", i, error );
+			for ( j = 0; j < i; j++ ) {
+				opus_decoder_destroy( clc.opusDecoder[j] );
+				clc.opusDecoder[j] = NULL;
+			}
+			opus_encoder_destroy( clc.opusEncoder );
+			clc.opusEncoder = NULL;
+			return;
+		}
+		clc.voipIgnore[i] = qfalse;
+		clc.voipGain[i] = 1.0f;
+	}
+	clc.voipCodecInitialized = qtrue;
+	clc.voipMuteAll = qfalse;
+	Cmd_AddCommand( "voip", CL_Voip_f );
+	Cvar_Set( "cl_voipSendTarget", "spatial" );
+	Com_Memset( clc.voipTargets, ~0, sizeof( clc.voipTargets ) );
+}
+
+
+/*
+===============
+CL_ShutdownVoip
+
+Destroy encoder/decoders and clean up VoIP state.
+===============
+*/
+void CL_ShutdownVoip( void )
+{
+	if ( cl_voipSend->integer ) {
+		int tmp = cl_voipUseVAD->integer;
+		cl_voipUseVAD->integer = 0;
+		clc.voipOutgoingDataSize = 0;
+		Cvar_Set( "cl_voipSend", "0" );
+		CL_CaptureVoip();
+		cl_voipUseVAD->integer = tmp;
+	}
+
+	if ( clc.voipCodecInitialized ) {
+		int i;
+		opus_encoder_destroy( clc.opusEncoder );
+		for ( i = 0; i < MAX_CLIENTS; i++ ) {
+			opus_decoder_destroy( clc.opusDecoder[i] );
+		}
+		clc.voipCodecInitialized = qfalse;
+	}
+	Cmd_RemoveCommand( "voip" );
+}
+
+
 static
 qboolean CL_ShouldIgnoreVoipSender(int sender)
 {
 	if (!cl_voip->integer)
 		return qtrue;  // VoIP is disabled.
-	else if ((sender == clc.clientNum) && (!clc.demoplaying))
-		return qtrue;  // ignore own voice (unless playing back a demo).
+	else if ((sender == clc.clientNum) && (!clc.demoplaying) && (!tvPlay.active))
+		return qtrue;  // ignore own voice (unless playing back a demo or TVD).
 	else if (clc.voipMuteAll)
 		return qtrue;  // all channels are muted with extreme prejudice.
 	else if (clc.voipIgnore[sender])
@@ -682,16 +760,18 @@ Play raw data
 
 static void CL_PlayVoip(int sender, int samplecnt, const byte *data, int flags)
 {
+	float vol = cl_voipVolume->value;
+
 	if(flags & VOIP_DIRECT)
 	{
 		S_RawSamples(sender + 1, samplecnt, 48000, 2, 1,
-	             data, clc.voipGain[sender], -1);
+	             data, clc.voipGain[sender] * vol, -1);
 	}
 
 	if(flags & VOIP_SPATIAL)
 	{
 		S_RawSamples(sender + MAX_CLIENTS + 1, samplecnt, 48000, 2, 1,
-	             data, 1.0f, sender);
+	             data, vol, sender);
 	}
 }
 
@@ -702,7 +782,6 @@ CL_ParseVoip
 A VoIP message has been received from the server
 =====================
 */
-static
 void CL_ParseVoip ( msg_t *msg, qboolean ignoreData ) {
 	static short decoded[VOIP_MAX_PACKET_SAMPLES*4]; // !!! FIXME: don't hard code
 

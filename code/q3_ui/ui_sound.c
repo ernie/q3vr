@@ -49,6 +49,7 @@ SOUND OPTIONS MENU
 //#define ID_A3D				18
 #define ID_BACK				19
 #define ID_APPLY			20
+#define ID_VOIPVOLUME		21
 
 #define DEFAULT_SDL_SND_SPEED 22050
 
@@ -77,6 +78,7 @@ typedef struct {
 
 	menuslider_s		sfxvolume;
 	menuslider_s		musicvolume;
+	menuslider_s		voipvolume;
 	menulist_s  		soundSystem;
 	menulist_s			quality;
 //	menuradiobutton_s	a3d;
@@ -86,6 +88,7 @@ typedef struct {
 
 	float				sfxvolume_original;
 	float				musicvolume_original;
+	float				voipvolume_original;
 	int					soundSystem_original;
 	int					quality_original;
 } soundOptionsInfo_t;
@@ -138,12 +141,18 @@ static void UI_SoundOptionsMenu_Event( void* ptr, int event ) {
 		UI_PopMenu();
 		break;
 
+	case ID_VOIPVOLUME:
+		break;
+
 	case ID_APPLY:
 		trap_Cvar_SetValue( "s_volume", soundOptionsInfo.sfxvolume.curvalue / 10 );
 		soundOptionsInfo.sfxvolume_original = soundOptionsInfo.sfxvolume.curvalue;
 
 		trap_Cvar_SetValue( "s_musicvolume", soundOptionsInfo.musicvolume.curvalue / 10 );
 		soundOptionsInfo.musicvolume_original = soundOptionsInfo.musicvolume.curvalue;
+
+		trap_Cvar_SetValue( "cl_voipVolume", soundOptionsInfo.voipvolume.curvalue / 5 );
+		soundOptionsInfo.voipvolume_original = soundOptionsInfo.voipvolume.curvalue;
 
 		// Check if something changed that requires the sound system to be restarted.
 		if (soundOptionsInfo.quality_original != soundOptionsInfo.quality.curvalue
@@ -212,6 +221,10 @@ static void SoundOptions_UpdateMenuItems( void )
 		soundOptionsInfo.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
 	if ( soundOptionsInfo.quality_original != soundOptionsInfo.quality.curvalue )
+	{
+		soundOptionsInfo.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
+	}
+	if ( soundOptionsInfo.voipvolume_original != soundOptionsInfo.voipvolume.curvalue )
 	{
 		soundOptionsInfo.apply.generic.flags &= ~(QMF_HIDDEN|QMF_INACTIVE);
 	}
@@ -335,6 +348,17 @@ static void UI_SoundOptionsMenu_Init( void ) {
 	soundOptionsInfo.musicvolume.maxvalue			= 7;
 
 	y += BIGCHAR_HEIGHT+2;
+	soundOptionsInfo.voipvolume.generic.type			= MTYPE_SLIDER;
+	soundOptionsInfo.voipvolume.generic.name			= "VOIP Volume:";
+	soundOptionsInfo.voipvolume.generic.flags			= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	soundOptionsInfo.voipvolume.generic.callback		= UI_SoundOptionsMenu_Event;
+	soundOptionsInfo.voipvolume.generic.id				= ID_VOIPVOLUME;
+	soundOptionsInfo.voipvolume.generic.x				= 400;
+	soundOptionsInfo.voipvolume.generic.y				= y;
+	soundOptionsInfo.voipvolume.minvalue				= 0;
+	soundOptionsInfo.voipvolume.maxvalue				= 10;
+
+	y += BIGCHAR_HEIGHT+2;
 	soundOptionsInfo.soundSystem.generic.type		= MTYPE_SPINCONTROL;
 	soundOptionsInfo.soundSystem.generic.name		= "Sound System:";
 	soundOptionsInfo.soundSystem.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
@@ -397,6 +421,7 @@ static void UI_SoundOptionsMenu_Init( void ) {
 	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.network );
 	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.sfxvolume );
 	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.musicvolume );
+	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.voipvolume );
 	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.soundSystem );
 	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.quality );
 //	Menu_AddItem( &soundOptionsInfo.menu, ( void * ) &soundOptionsInfo.a3d );
@@ -405,6 +430,7 @@ static void UI_SoundOptionsMenu_Init( void ) {
 
 	soundOptionsInfo.sfxvolume.curvalue = soundOptionsInfo.sfxvolume_original = trap_Cvar_VariableValue( "s_volume" ) * 10;
 	soundOptionsInfo.musicvolume.curvalue = soundOptionsInfo.musicvolume_original = trap_Cvar_VariableValue( "s_musicvolume" ) * 10;
+	soundOptionsInfo.voipvolume.curvalue = soundOptionsInfo.voipvolume_original = trap_Cvar_VariableValue( "cl_voipVolume" ) * 5;
 
 	if (trap_Cvar_VariableValue( "s_useOpenAL" ))
 		soundOptionsInfo.soundSystem_original = UISND_OPENAL;

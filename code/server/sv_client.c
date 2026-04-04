@@ -1851,10 +1851,30 @@ void SV_UserVoip(client_t *cl, msg_t *msg, qboolean ignoreData)
 	if (ignoreData || SV_ShouldIgnoreVoipSender(cl))
 		return;   // Blacklisted, disabled, etc.
 
-	// !!! FIXME: see if we read past end of msg...
-
-	// !!! FIXME: reject if not opus data.
-	// !!! FIXME: decide if this is bogus data?
+	// Capture for TVD recording (before per-client routing)
+	if ( tv.recording && tv.voipCount < MAX_TV_VOIP_PACKETS
+		&& tv.voipBufUsed + packetsize <= (int)sizeof( tv.voipBuf ) ) {
+		tvVoipPacket_t *tvp = &tv.voipPackets[tv.voipCount];
+		tvp->sender = sender;
+		tvp->generation = generation;
+		tvp->sequence = sequence;
+		tvp->frames = frames;
+		// Set VOIP_DIRECT if there are any targeted recipients,
+		// since the server routing loop would set it per-client
+		tvp->flags = flags;
+		for ( i = 0; i < (int)sizeof( recips ); i++ ) {
+			if ( recips[i] ) {
+				tvp->flags |= VOIP_DIRECT;
+				break;
+			}
+		}
+		Com_Memcpy( tvp->recips, recips, sizeof( tvp->recips ) );
+		tvp->offset = tv.voipBufUsed;
+		tvp->len = packetsize;
+		Com_Memcpy( tv.voipBuf + tv.voipBufUsed, encoded, packetsize );
+		tv.voipBufUsed += packetsize;
+		tv.voipCount++;
+	}
 
 	// decide who needs this VoIP packet sent to them...
 	for (i = 0, client = svs.clients; i < sv_maxclients->integer ; i++, client++) {

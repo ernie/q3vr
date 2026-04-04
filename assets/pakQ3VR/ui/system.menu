@@ -490,17 +490,32 @@ itemDef {
 	itemDef {
       		name other
 		group grpSystem
-      		type ITEM_TYPE_MULTI
-		text "Sound Quality:"
-		cvar "s_khz"
-		cvarFloatList { "22 khz (high)" 22 "11 khz (low)" 11 }
+      		type ITEM_TYPE_SLIDER
+		text "VOIP Volume:"
+		cvarfloat "cl_voipVolume" 0.2 0 2
 		rect 99 146 256 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 128
       		textaligny 20
-		textscale .333        
+		textscale .333
       		forecolor 1 1 1 1
-      		visible 0 
+      		visible 0
+    		}
+
+	itemDef {
+      		name other
+		group grpSystem
+      		type ITEM_TYPE_MULTI
+		text "Sound Quality:"
+		cvar "s_khz"
+		cvarFloatList { "22 khz (high)" 22 "11 khz (low)" 11 }
+		rect 99 173 256 20
+      		textalign ITEM_ALIGN_RIGHT
+      		textalignx 128
+      		textaligny 20
+		textscale .333
+      		forecolor 1 1 1 1
+      		visible 0
     		}
 
 	itemDef {
@@ -509,13 +524,13 @@ itemDef {
       		type ITEM_TYPE_YESNO
 		text "Doppler Sound:"
 		cvar "s_doppler"
-		rect 99 173 256 20
+		rect 99 200 256 20
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 128
       		textaligny 20
-		textscale .333        
+		textscale .333
       		forecolor 1 1 1 1
-      		visible 0 
+      		visible 0
     		}
 
 
@@ -525,7 +540,7 @@ itemDef {
 	group grpSystem
       	style 1
 	text "Network"
-	rect 163 217 128 20
+	rect 163 234 128 20
       	textalign 1
       	textalignx 64 
       	textaligny 20
