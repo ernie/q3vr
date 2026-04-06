@@ -332,6 +332,7 @@ typedef struct {
 	byte voipOutgoingGeneration;
 	byte voipOutgoingData[1024];
 	float voipPower;
+	int voipLastSelfSendTime;
 #endif
 
 #ifdef LEGACY_PROTOCOL
@@ -519,6 +520,10 @@ extern	cvar_t	*cl_voipCaptureMult;
 extern	cvar_t	*cl_voipShowMeter;
 extern	cvar_t	*cl_voipVolume;
 extern	cvar_t	*cl_voip;
+extern	cvar_t	*cl_voipVADMuted;
+
+// ms; drives both the HUD "talking" icon decay and the VAD hang-over window
+#define VOIP_TALKING_TIMEOUT		500
 
 // 20ms at 48k
 #define VOIP_MAX_FRAME_SAMPLES		( 20 * 48 )

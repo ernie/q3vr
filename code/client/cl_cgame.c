@@ -481,13 +481,20 @@ and writes the value into the provided buffer.
 qboolean CL_GetValue( char *value, int valueSize, const char *key ) {
 	if ( !Q_stricmp( key, "voip_talking" ) ) {
 		byte mask[(MAX_CLIENTS + 7) / 8];
+		int self = clc.clientNum;
 		int i;
 		Com_Memset( mask, 0, sizeof( mask ) );
 		for ( i = 0; i < MAX_CLIENTS; i++ ) {
 			if ( clc.voipLastPacketTime[i] &&
-			     ( cls.realtime - clc.voipLastPacketTime[i] ) < 500 ) {
+			     ( cls.realtime - clc.voipLastPacketTime[i] ) < VOIP_TALKING_TIMEOUT ) {
 				mask[i / 8] |= 1 << (i & 7);
 			}
+		}
+		// Self bit: voipLastPacketTime only tracks incoming packets.
+		if ( self >= 0 && self < MAX_CLIENTS
+			&& clc.voipLastSelfSendTime > 0
+			&& cls.realtime - clc.voipLastSelfSendTime < VOIP_TALKING_TIMEOUT ) {
+			mask[self / 8] |= 1 << (self % 8);
 		}
 		CL_BuildVoipHexMask( mask, sizeof( mask ), value, valueSize );
 		return qtrue;

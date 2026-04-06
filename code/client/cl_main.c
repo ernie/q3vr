@@ -75,6 +75,7 @@ cvar_t	*cl_voipMuteSpatial;
 cvar_t	*cl_voipMuteDirect;
 cvar_t	*cl_voipMuteTeam;
 cvar_t	*cl_voipMuteAll;
+cvar_t	*cl_voipVADMuted;
 #endif
 
 #ifdef USE_RENDERER_DLOPEN
@@ -620,14 +621,40 @@ void CL_CaptureVoip(void)
 			clc.voipPower = (voipPower / (32768.0f * 32768.0f *
 			                 ((float) (actualSamples ? actualSamples : 1)))) * 100.0f;
 
-			if ((useVad) && (clc.voipPower < cl_voipVADThreshold->value)) {
-				CL_VoipNewGeneration();  // no "talk" for at least 1/4 second.
-			} else {
-				clc.voipOutgoingDataSize = bytes;
-				clc.voipOutgoingDataFrames = voipFrames;
+			{
+				qboolean discard = qfalse;
+				qboolean hangover = qfalse;
 
-				Com_DPrintf("VoIP: Send %d frames, %d bytes, %f power\n",
-				            voipFrames, bytes, clc.voipPower);
+				if ( useVad ) {
+					if ( cl_voipVADMuted->integer ) {
+						discard = qtrue;
+					} else if ( clc.voipPower < cl_voipVADThreshold->value ) {
+						// Below threshold — bridge brief dips so the wire
+						// behavior matches the HUD icon's decay window.
+						if ( clc.voipLastSelfSendTime > 0
+							&& cls.realtime - clc.voipLastSelfSendTime < VOIP_TALKING_TIMEOUT ) {
+							hangover = qtrue;
+						} else {
+							discard = qtrue;
+						}
+					}
+				}
+
+				if ( discard ) {
+					CL_VoipNewGeneration();  // no "talk" for at least 1/4 second.
+				} else {
+					clc.voipOutgoingDataSize = bytes;
+					clc.voipOutgoingDataFrames = voipFrames;
+					// Only advance the timestamp on frames that genuinely cross
+					// the threshold; hang-over frames ride the existing window
+					// so sustained silence still terminates the stream.
+					if ( !hangover ) {
+						clc.voipLastSelfSendTime = cls.realtime;
+					}
+
+					Com_DPrintf("VoIP: Send %d frames, %d bytes, %f power%s\n",
+					            voipFrames, bytes, clc.voipPower,
+					            hangover ? " (hangover)" : "");
 
 				#if 0
 				static FILE *encio = NULL;
@@ -637,6 +664,7 @@ void CL_CaptureVoip(void)
 				if (decio == NULL) decio = fopen("voip-outgoing-decoded.bin", "wb");
 				if (decio != NULL) { fwrite(sampbuffer, voipFrames * VOIP_MAX_FRAME_SAMPLES * 2, 1, decio); fflush(decio); }
 				#endif
+				}
 			}
 		}
 	}
@@ -4019,7 +4047,7 @@ void CL_Init( void ) {
 	cl_voipGainDuringCapture = Cvar_Get ("cl_voipGainDuringCapture", "1.0", CVAR_ARCHIVE);
 	cl_voipCaptureMult = Cvar_Get ("cl_voipCaptureMult", "2.0", CVAR_ARCHIVE);
 	cl_voipUseVAD = Cvar_Get ("cl_voipUseVAD", "0", CVAR_ARCHIVE);
-	cl_voipVADThreshold = Cvar_Get ("cl_voipVADThreshold", "0.25", CVAR_ARCHIVE);
+	cl_voipVADThreshold = Cvar_Get ("cl_voipVADThreshold", "0.1", CVAR_ARCHIVE);
 	cl_voipShowMeter = Cvar_Get ("cl_voipShowMeter", "1", CVAR_ARCHIVE);
 	cl_voipVolume = Cvar_Get ("cl_voipVolume", "1.0", CVAR_ARCHIVE);
 	Cvar_CheckRange( cl_voipVolume, 0.0f, 2.0f, qfalse );
@@ -4033,6 +4061,8 @@ void CL_Init( void ) {
 	cl_voipMuteDirect = Cvar_Get( "cl_voipMuteDirect", "0", CVAR_ARCHIVE_ND );
 	cl_voipMuteTeam = Cvar_Get( "cl_voipMuteTeam", "0", CVAR_ARCHIVE_ND );
 	cl_voipMuteAll = Cvar_Get( "cl_voipMuteAll", "0", CVAR_ARCHIVE_ND );
+	cl_voipVADMuted = Cvar_Get( "cl_voipVADMuted", "0", CVAR_ARCHIVE_ND );
+	Cvar_SetDescription( cl_voipVADMuted, "When set, VAD-captured audio frames are discarded. Inert in PTT mode." );
 #endif
 
 #ifdef USE_HTTP
