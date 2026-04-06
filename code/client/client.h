@@ -316,6 +316,9 @@ typedef struct {
 	float voipGain[MAX_CLIENTS];
 	qboolean voipIgnore[MAX_CLIENTS];
 	qboolean voipMuteAll;
+	int voipLastPacketTime[MAX_CLIENTS];	// cls.realtime of last packet from sender
+	int voipLastChannel[MAX_CLIENTS];		// channel flags of last packet from sender
+	int svVoipVersion;						// server's advertised VOIP version
 
 	// outgoing data...
 	// if voipTargets[i / 8] & (1 << (i % 8)),

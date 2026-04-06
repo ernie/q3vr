@@ -365,6 +365,14 @@ void CL_SystemInfoChanged( void ) {
 	}
 #endif
 
+	// check serverinfo for voip version
+#ifdef USE_VOIP
+	{
+		const char *serverInfo = cl.gameState.stringData + cl.gameState.stringOffsets[ CS_SERVERINFO ];
+		clc.svVoipVersion = atoi( Info_ValueForKey( serverInfo, "sv_voipVersion" ) );
+	}
+#endif
+
 	// don't set any vars when playing a demo
 	if ( clc.demoplaying ) {
 		return;
@@ -761,8 +769,21 @@ Play raw data
 static void CL_PlayVoip(int sender, int samplecnt, const byte *data, int flags)
 {
 	float vol = cl_voipVolume->value;
+	extern cvar_t *cl_voipMuteSpatial;
+	extern cvar_t *cl_voipMuteDirect;
+	extern cvar_t *cl_voipMuteTeam;
+	extern cvar_t *cl_voipMuteAll;
 
-	if(flags & VOIP_DIRECT)
+	// Filter out muted channels
+	if ( cl_voipMuteSpatial->integer ) flags &= ~VOIP_SPATIAL;
+	if ( cl_voipMuteDirect->integer )  flags &= ~VOIP_DIRECT;
+	if ( cl_voipMuteTeam->integer )    flags &= ~VOIP_TEAM;
+	if ( cl_voipMuteAll->integer )     flags &= ~VOIP_ALL;
+
+	// Play as non-spatialized (direct) audio if any non-spatial flag is set.
+	// VOIP_DIRECT, VOIP_TEAM, and VOIP_ALL all play the same way — the
+	// distinction is routing metadata, not a playback mode.
+	if(flags & ( VOIP_DIRECT | VOIP_TEAM | VOIP_ALL ))
 	{
 		S_RawSamples(sender + 1, samplecnt, 48000, 2, 1,
 	             data, clc.voipGain[sender] * vol, -1);
@@ -790,7 +811,8 @@ void CL_ParseVoip ( msg_t *msg, qboolean ignoreData ) {
 	const int sequence = MSG_ReadLong(msg);
 	const int frames = MSG_ReadByte(msg);
 	const int packetsize = MSG_ReadShort(msg);
-	const int flags = MSG_ReadBits(msg, VOIP_FLAGCNT);
+	const int flagBits = ( clc.svVoipVersion >= 2 ) ? VOIP_FLAGCNT : VOIP_FLAGCNT_V1;
+	const int flags = MSG_ReadBits(msg, flagBits);
 	unsigned char encoded[4000];
 	int	numSamples;
 	int seqdiff;
@@ -838,6 +860,9 @@ void CL_ParseVoip ( msg_t *msg, qboolean ignoreData ) {
 
 	Com_DPrintf("VoIP: packet accepted!\n");
 
+	clc.voipLastPacketTime[sender] = cls.realtime;
+	clc.voipLastChannel[sender] = flags & ( VOIP_TEAM | VOIP_ALL | VOIP_SPATIAL | VOIP_DIRECT );
+
 	seqdiff = sequence - clc.voipIncomingSequence[sender];
 
 	// This is a new "generation" ... a new recording started, reset the bits.
@@ -866,7 +891,8 @@ void CL_ParseVoip ( msg_t *msg, qboolean ignoreData ) {
 		            seqdiff, sender);
 		// tell opus that we're missing frames...
 		for (i = 0; i < seqdiff; i++) {
-			assert((written + VOIP_MAX_PACKET_SAMPLES) * 2 < sizeof (decoded));
+			if ( (written + VOIP_MAX_PACKET_SAMPLES) * 2 >= (int) sizeof (decoded) )
+				break;
 			numSamples = opus_decode(clc.opusDecoder[sender], NULL, 0, decoded + written, VOIP_MAX_PACKET_SAMPLES, 0);
 			if ( numSamples <= 0 ) {
 				Com_DPrintf("VoIP: Error decoding frame %d from client #%d\n", i, sender);

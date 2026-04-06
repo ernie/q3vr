@@ -553,7 +553,18 @@ static void SV_WriteVoipToClient(client_t *cl, msg_t *msg)
 		        	MSG_WriteLong(msg, packet->sequence);
 		        	MSG_WriteByte(msg, packet->frames);
         			MSG_WriteShort(msg, packet->len);
-        			MSG_WriteBits(msg, packet->flags, VOIP_FLAGCNT);
+				if ( cl->voipVersion >= 2 ) {
+					// v2 clients handle channel flags (VOIP_ALL, VOIP_TEAM)
+					// natively, so don't send the server-added VOIP_DIRECT.
+					int wflags = packet->flags & ~VOIP_DIRECT;
+					// For targeted packets (no channel flag), set VOIP_DIRECT
+					// so the client knows to play it.
+					if ( !( wflags & ( VOIP_SPATIAL | VOIP_TEAM | VOIP_ALL ) ) )
+						wflags |= VOIP_DIRECT;
+					MSG_WriteBits( msg, wflags, VOIP_FLAGCNT );
+				} else {
+					MSG_WriteBits( msg, packet->flags & 0x03, VOIP_FLAGCNT_V1 );
+				}
 	        		MSG_WriteData(msg, packet->data, packet->len);
                         }
 

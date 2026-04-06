@@ -191,6 +191,7 @@ typedef struct client_s {
 	voipServerPacket_t *voipPacket[VOIP_QUEUE_LENGTH];
 	int queuedVoipPackets;
 	int queuedVoipIndex;
+	int voipVersion;	// client's advertised VOIP protocol version
 #endif
 
 	int				oldServerTime;

@@ -1060,13 +1060,16 @@ VoIP
 ==============================================================
 */
 
-// if you change the count of flags be sure to also change VOIP_FLAGNUM
+// if you change the count of flags be sure to also change VOIP_FLAGCNT
 #define VOIP_SPATIAL		0x01		// spatialized voip message
 #define VOIP_DIRECT		0x02		// non-spatialized voip message
+#define VOIP_TEAM		0x04		// team channel (server routes to teammates)
+#define VOIP_ALL		0x08		// global channel (broadcast to all)
 
 // number of flags voip knows. You will have to bump protocol version number if you
 // change this.
-#define VOIP_FLAGCNT		2
+#define VOIP_FLAGCNT		4		// flag width (v2+)
+#define VOIP_FLAGCNT_V1		2		// legacy flag width (v0/v1)
 
 /*
 ==============================================================

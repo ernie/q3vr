@@ -447,6 +447,88 @@ static int	FloatAsInt( float f ) {
 	return fi.i;
 }
 
+#ifdef USE_VOIP
+/*
+====================
+CL_BuildVoipHexMask
+
+Convert a per-client byte bitmask to a lowercase hex string.
+Each byte becomes two hex characters; output is zero-terminated.
+====================
+*/
+static void CL_BuildVoipHexMask( const byte *mask, int maskBytes, char *out, int outSize ) {
+	static const char hex[] = "0123456789abcdef";
+	int i;
+	int outIdx = 0;
+	for ( i = 0; i < maskBytes && outIdx + 2 < outSize; i++ ) {
+		out[outIdx++] = hex[(mask[i] >> 4) & 0xF];
+		out[outIdx++] = hex[mask[i] & 0xF];
+	}
+	if ( outIdx < outSize )
+		out[outIdx] = '\0';
+	else if ( outSize > 0 )
+		out[outSize - 1] = '\0';
+}
+
+/*
+====================
+CL_GetValue
+
+Query engine-side values from cgame. Returns qtrue if key is recognized
+and writes the value into the provided buffer.
+====================
+*/
+qboolean CL_GetValue( char *value, int valueSize, const char *key ) {
+	if ( !Q_stricmp( key, "voip_talking" ) ) {
+		byte mask[(MAX_CLIENTS + 7) / 8];
+		int i;
+		Com_Memset( mask, 0, sizeof( mask ) );
+		for ( i = 0; i < MAX_CLIENTS; i++ ) {
+			if ( clc.voipLastPacketTime[i] &&
+			     ( cls.realtime - clc.voipLastPacketTime[i] ) < 500 ) {
+				mask[i / 8] |= 1 << (i & 7);
+			}
+		}
+		CL_BuildVoipHexMask( mask, sizeof( mask ), value, valueSize );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "voip_muted" ) ) {
+		byte mask[(MAX_CLIENTS + 7) / 8];
+		int i;
+		Com_Memset( mask, 0, sizeof( mask ) );
+		for ( i = 0; i < MAX_CLIENTS; i++ ) {
+			if ( clc.voipIgnore[i] ) {
+				mask[i / 8] |= 1 << (i & 7);
+			}
+		}
+		CL_BuildVoipHexMask( mask, sizeof( mask ), value, valueSize );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "voip_version" ) ) {
+		int v = clc.svVoipVersion;
+		if ( v > 2 ) v = 2;
+		Com_sprintf( value, valueSize, "%d", v );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "voip_channels" ) ) {
+		static const char hex[] = "0123456789abcdef";
+		int i;
+		int outIdx = 0;
+		for ( i = 0; i < MAX_CLIENTS && outIdx + 2 < valueSize; i++ ) {
+			byte b = (byte)( clc.voipLastChannel[i] & 0xFF );
+			value[outIdx++] = hex[(b >> 4) & 0xF];
+			value[outIdx++] = hex[b & 0xF];
+		}
+		if ( outIdx < valueSize )
+			value[outIdx] = '\0';
+		else if ( valueSize > 0 )
+			value[valueSize - 1] = '\0';
+		return qtrue;
+	}
+	return qfalse;
+}
+#endif
+
 /*
 ====================
 CL_CgameSystemCalls
@@ -756,6 +838,12 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_FINISHBLOOM:
 		re.FinishBloom();
 		return 0;
+	case CG_GETVALUE:
+#ifdef USE_VOIP
+		return CL_GetValue( VMA(1), args[2], VMA(3) );
+#else
+		return qfalse;
+#endif
 
 	default:
 	        assert(0);

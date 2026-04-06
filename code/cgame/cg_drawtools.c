@@ -989,6 +989,40 @@ float *CG_FadeColor( int startMsec, int totalMsec ) {
 
 /*
 ================
+CG_FadeColorTime
+
+Like CG_FadeColor but with an explicit fade duration instead of FADE_TIME.
+totalMsec is the full display duration; the last fadeMsec of it is the fade.
+================
+*/
+float *CG_FadeColorTime( int startMsec, int totalMsec, int fadeMsec ) {
+	static vec4_t		color;
+	int			t;
+
+	if ( startMsec == 0 ) {
+		return NULL;
+	}
+
+	t = cg.time - startMsec;
+
+	if ( t >= totalMsec ) {
+		return NULL;
+	}
+
+	// fade out
+	if ( fadeMsec > 0 && totalMsec - t < fadeMsec ) {
+		color[3] = ( totalMsec - t ) * 1.0 / fadeMsec;
+	} else {
+		color[3] = 1.0;
+	}
+	color[0] = color[1] = color[2] = 1;
+
+	return color;
+}
+
+
+/*
+================
 CG_TeamColor
 ================
 */

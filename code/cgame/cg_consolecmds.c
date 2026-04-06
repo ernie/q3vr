@@ -764,6 +764,149 @@ static void CG_TeamVote_f( void ) {
 }
 
 
+/*
+=================
+CG_VoipToggle_f
+
+Toggle VOIP recording on/off
+=================
+*/
+static void CG_VoipToggle_f( void ) {
+	char value[4];
+
+	trap_Cvar_VariableStringBuffer( "cl_voipSend", value, sizeof( value ) );
+	if ( atoi( value ) ) {
+		trap_Cvar_Set( "cl_voipSend", "0" );
+	} else {
+		trap_Cvar_Set( "cl_voipSend", "1" );
+	}
+}
+
+
+/*
+=================
+CG_VoipSetTarget
+
+Set VOIP target to a specific channel, respecting team eligibility.
+Returns qtrue if target was set.
+=================
+*/
+static qboolean CG_VoipSetTarget( const char *channel ) {
+	team_t myTeam = cgs.clientinfo[cg.clientNum].team;
+
+	if ( !Q_stricmp( channel, "team" ) ) {
+		if ( myTeam == TEAM_FREE ) {
+			CG_Printf( "Not in a team mode.\n" );
+			return qfalse;
+		}
+		trap_Cvar_Set( "cl_voipSendTarget", "team" );
+		return qtrue;
+	}
+
+	if ( !Q_stricmp( channel, "all" ) ) {
+		trap_Cvar_Set( "cl_voipSendTarget", "all" );
+		return qtrue;
+	}
+
+	if ( !Q_stricmp( channel, "spatial" ) ) {
+		trap_Cvar_Set( "cl_voipSendTarget", "spatial" );
+		return qtrue;
+	}
+
+	return qfalse;
+}
+
+
+/*
+=================
+CG_VoipTarget_f
+
+Cycle VOIP target (no args) or set explicitly: voiptarget [spatial|team|all]
+Cycle order: spatial -> team (if applicable) -> all -> spatial
+=================
+*/
+static void CG_VoipTarget_f( void ) {
+	char target[256];
+	team_t myTeam;
+	qboolean hasTeam;
+
+	// explicit argument
+	if ( trap_Argc() > 1 ) {
+		char arg[64];
+		trap_Argv( 1, arg, sizeof( arg ) );
+		if ( !CG_VoipSetTarget( arg ) ) {
+			CG_Printf( "Usage: voiptarget [spatial|team|all]\n" );
+		}
+		return;
+	}
+
+	myTeam = cgs.clientinfo[cg.clientNum].team;
+	hasTeam = ( myTeam != TEAM_FREE && myTeam != TEAM_SPECTATOR );
+
+	// spectators are locked to team (other spectators)
+	if ( myTeam == TEAM_SPECTATOR ) {
+		CG_VoipSetTarget( "team" );
+		return;
+	}
+
+	trap_Cvar_VariableStringBuffer( "cl_voipSendTarget", target, sizeof( target ) );
+
+	if ( !Q_stricmp( target, "spatial" ) ) {
+		if ( hasTeam && cgs.gametype >= GT_TEAM ) {
+			CG_VoipSetTarget( "team" );
+		} else {
+			CG_VoipSetTarget( "all" );
+		}
+	} else if ( !Q_stricmp( target, "all" ) ) {
+		CG_VoipSetTarget( "spatial" );
+	} else {
+		// numeric (team or direct) or unknown -> all
+		CG_VoipSetTarget( "all" );
+	}
+}
+
+
+/*
+=================
+CG_BuildTeamVoipTarget
+
+Build a comma-separated list of teammate client IDs
+=================
+*/
+qboolean CG_BuildTeamVoipTarget( char *buf, int bufSize ) {
+	team_t myTeam;
+	int i, len;
+
+	myTeam = cgs.clientinfo[cg.clientNum].team;
+	if ( myTeam == TEAM_FREE ) {
+		return qfalse;
+	}
+
+	buf[0] = '\0';
+	len = 0;
+
+	for ( i = 0; i < cgs.maxclients; i++ ) {
+		if ( !cgs.clientinfo[i].infoValid ) {
+			continue;
+		}
+		if ( cgs.clientinfo[i].team != myTeam ) {
+			continue;
+		}
+		if ( len > 0 ) {
+			Com_sprintf( buf + len, bufSize - len, "," );
+			len += 1;
+		}
+		len += Com_sprintf( buf + len, bufSize - len, "%i", i );
+		if ( len >= bufSize - 4 ) {
+			break;
+		}
+	}
+
+	return len > 0;
+}
+
+
+
 typedef struct {
 	char	*cmd;
 	void	(*function)(void);
@@ -837,7 +980,9 @@ static consoleCommand_t	commands[] = {
 	{ "callvote", CG_CallVote_f },
 	{ "vote", CG_Vote_f },
 	{ "callteamvote", CG_CallTeamVote_f },
-	{ "teamvote", CG_TeamVote_f }
+	{ "teamvote", CG_TeamVote_f },
+	{ "voiptoggle", CG_VoipToggle_f },
+	{ "voiptarget", CG_VoipTarget_f }
 };
 
 

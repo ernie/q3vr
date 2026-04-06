@@ -71,6 +71,10 @@ cvar_t	*cl_voipShowMeter;
 cvar_t	*cl_voipVolume;
 cvar_t	*cl_voipProtocol;
 cvar_t	*cl_voip;
+cvar_t	*cl_voipMuteSpatial;
+cvar_t	*cl_voipMuteDirect;
+cvar_t	*cl_voipMuteTeam;
+cvar_t	*cl_voipMuteAll;
 #endif
 
 #ifdef USE_RENDERER_DLOPEN
@@ -356,7 +360,7 @@ void CL_VoipParseTargets(void)
 	int val;
 
 	Com_Memset(clc.voipTargets, 0, sizeof(clc.voipTargets));
-	clc.voipFlags &= ~VOIP_SPATIAL;
+	clc.voipFlags = 0;
 
 	while(target)
 	{
@@ -365,7 +369,7 @@ void CL_VoipParseTargets(void)
 
 		if(!*target)
 			break;
-		
+
 		if(isdigit(*target))
 		{
 			val = strtol(target, &end, 10);
@@ -375,8 +379,10 @@ void CL_VoipParseTargets(void)
 		{
 			if(!Q_stricmpn(target, "all", 3))
 			{
+				clc.voipFlags |= VOIP_ALL;
 				Com_Memset(clc.voipTargets, ~0, sizeof(clc.voipTargets));
-				return;
+				target += 3;
+				continue;
 			}
 			if(!Q_stricmpn(target, "spatial", 7))
 			{
@@ -386,7 +392,30 @@ void CL_VoipParseTargets(void)
 			}
 			else
 			{
-				if(!Q_stricmpn(target, "attacker", 8))
+				if(!Q_stricmpn(target, "team", 4))
+				{
+					clc.voipFlags |= VOIP_TEAM;
+					// fallback: populate recips bitmask for old servers
+					if ( VM_Call( cgvm, CG_VOIP_TEAM ) == 0 ) {
+						char teamIds[256];
+						const char *p;
+						char *e;
+						Cvar_VariableStringBuffer( "cl_voipTeamTargets", teamIds, sizeof( teamIds ) );
+						p = teamIds;
+						while ( *p ) {
+							while ( *p == ',' || *p == ' ' ) p++;
+							if ( !*p ) break;
+							val = strtol( p, &e, 10 );
+							p = e;
+							if ( val >= 0 && val < MAX_CLIENTS ) {
+								clc.voipTargets[val / 8] |= 1 << (val % 8);
+							}
+						}
+					}
+					target += 4;
+					continue;
+				}
+				else if(!Q_stricmpn(target, "attacker", 8))
 				{
 					val = VM_Call(cgvm, CG_LAST_ATTACKER);
 					target += 8;
@@ -419,6 +448,7 @@ void CL_VoipParseTargets(void)
 		}
 
 		clc.voipTargets[val / 8] |= 1 << (val % 8);
+		clc.voipFlags |= VOIP_DIRECT;
 	}
 }
 
@@ -506,7 +536,22 @@ void CL_CaptureVoip(void)
 
 	if (initialFrame) {
 		S_MasterGain(Com_Clamp(0.0f, 1.0f, cl_voipGainDuringCapture->value));
+
 		S_StartCapture();
+
+		// Drain stale samples that arrived between stop and start
+		{
+			int stale = S_AvailableCaptureSamples();
+			if ( stale > 0 ) {
+				static int16_t devnull[VOIP_MAX_PACKET_SAMPLES];
+				while ( stale > 0 ) {
+					int chunk = (stale > VOIP_MAX_PACKET_SAMPLES) ? VOIP_MAX_PACKET_SAMPLES : stale;
+					S_Capture( chunk, (byte *) devnull );
+					stale -= chunk;
+				}
+			}
+		}
+
 		CL_VoipNewGeneration();
 		CL_VoipParseTargets();
 	}
@@ -516,30 +561,47 @@ void CL_CaptureVoip(void)
 		const int packetSamples = (finalFrame) ? VOIP_MAX_FRAME_SAMPLES : VOIP_MAX_PACKET_SAMPLES;
 
 		// enough data buffered in audio hardware to process yet?
-		if (samples >= packetSamples) {
+		// On finalFrame, accept any samples > 0 and zero-pad to frame boundary
+		if (samples >= packetSamples || (finalFrame && samples > 0)) {
 			// audio capture is always MONO16.
 			static int16_t sampbuffer[VOIP_MAX_PACKET_SAMPLES];
 			float voipPower = 0.0f;
 			int voipFrames;
 			int i, bytes;
+			int actualSamples;
 
 			if (samples > VOIP_MAX_PACKET_SAMPLES)
 				samples = VOIP_MAX_PACKET_SAMPLES;
 
-			// !!! FIXME: maybe separate recording from encoding, so voipPower
-			// !!! FIXME:  updates faster than 4Hz?
+			// Capture the real samples first, then handle rounding
+			actualSamples = samples;
 
-			samples -= samples % VOIP_MAX_FRAME_SAMPLES;
-			if (samples != 120 && samples != 240 && samples != 480 && samples != 960 && samples != 1920 && samples != 2880 ) {
-				Com_Printf("Voip: bad number of samples %d\n", samples);
+			if ( finalFrame ) {
+				// Round UP to next frame boundary so we don't lose the tail
+				samples = ((samples + VOIP_MAX_FRAME_SAMPLES - 1) / VOIP_MAX_FRAME_SAMPLES) * VOIP_MAX_FRAME_SAMPLES;
+				if ( samples > VOIP_MAX_PACKET_SAMPLES )
+					samples = VOIP_MAX_PACKET_SAMPLES;
+			} else {
+				// Normal path: round down to frame boundary
+				samples -= samples % VOIP_MAX_FRAME_SAMPLES;
+				actualSamples = samples;  // only capture the rounded amount
+			}
+
+			if ( samples <= 0 ) {
+				Com_DPrintf( "VoIP: no complete frames to encode\n" );
 				return;
 			}
 			voipFrames = samples / VOIP_MAX_FRAME_SAMPLES;
 
-			S_Capture(samples, (byte *) sampbuffer);  // grab from audio card.
+			S_Capture(actualSamples, (byte *) sampbuffer);  // grab from audio card.
+
+			// Zero-pad any remainder on the final frame
+			if ( actualSamples < samples ) {
+				Com_Memset( sampbuffer + actualSamples, 0, (samples - actualSamples) * sizeof( int16_t ) );
+			}
 
 			// check the "power" of this packet...
-			for (i = 0; i < samples; i++) {
+			for (i = 0; i < actualSamples; i++) {
 				const float flsamp = (float) sampbuffer[i];
 				const float s = fabs(flsamp);
 				voipPower += s * s;
@@ -556,7 +618,7 @@ void CL_CaptureVoip(void)
 			}
 
 			clc.voipPower = (voipPower / (32768.0f * 32768.0f *
-			                 ((float) samples))) * 100.0f;
+			                 ((float) (actualSamples ? actualSamples : 1)))) * 100.0f;
 
 			if ((useVad) && (clc.voipPower < cl_voipVADThreshold->value)) {
 				CL_VoipNewGeneration();  // no "talk" for at least 1/4 second.
@@ -583,6 +645,21 @@ void CL_CaptureVoip(void)
 	//  any previously-buffered data. Pause the capture device, etc.
 	if (finalFrame) {
 		S_StopCapture();
+
+		// Drain any remaining samples so they don't leak into the next
+		// generation — alcCaptureStop does not discard buffered data.
+		{
+			int remaining = S_AvailableCaptureSamples();
+			if ( remaining > 0 ) {
+				static int16_t devnull[VOIP_MAX_PACKET_SAMPLES];
+				while ( remaining > 0 ) {
+					int chunk = (remaining > VOIP_MAX_PACKET_SAMPLES) ? VOIP_MAX_PACKET_SAMPLES : remaining;
+					S_Capture( chunk, (byte *) devnull );
+					remaining -= chunk;
+				}
+			}
+		}
+
 		S_MasterGain(1.0f);
 		clc.voipPower = 0.0f;  // force this value so it doesn't linger.
 	}
@@ -3951,6 +4028,11 @@ void CL_Init( void ) {
 	cl_voip = Cvar_Get ("cl_voip", "1", CVAR_ARCHIVE);
 	Cvar_CheckRange( cl_voip, 0, 1, qtrue );
 	cl_voipProtocol = Cvar_Get ("cl_voipProtocol", cl_voip->integer ? "opus" : "", CVAR_USERINFO | CVAR_ROM);
+	Cvar_Get( "cl_voipVersion", "2", CVAR_USERINFO | CVAR_ROM );
+	cl_voipMuteSpatial = Cvar_Get( "cl_voipMuteSpatial", "0", CVAR_ARCHIVE_ND );
+	cl_voipMuteDirect = Cvar_Get( "cl_voipMuteDirect", "0", CVAR_ARCHIVE_ND );
+	cl_voipMuteTeam = Cvar_Get( "cl_voipMuteTeam", "0", CVAR_ARCHIVE_ND );
+	cl_voipMuteAll = Cvar_Get( "cl_voipMuteAll", "0", CVAR_ARCHIVE_ND );
 #endif
 
 #ifdef USE_HTTP

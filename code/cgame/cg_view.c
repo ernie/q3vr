@@ -1532,6 +1532,10 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	// update cvars
 	CG_UpdateCvars();
 
+	// update VOIP state
+	CG_UpdateVoipTalkingState();
+	CG_UpdateVoipChannelState();
+
 	//HACK!! - should change this to a renderer function call
 	//Indicate to renderer whether we are in deathcam mode, We don't want sky in death cam mode
 	trap_Cvar_Set( "vr_thirdPersonSpectator", (CG_IsDeathCam() ||

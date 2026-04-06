@@ -1464,8 +1464,11 @@ void S_AL_SrcUpdate( void )
 			continue;
 
 		// Update source parameters
+		// Stream sources (VOIP, cinematics) manage their own gain
+		// via the volume parameter in S_AL_RawSamples.
 		if((s_alGain->modified) || (s_volume->modified))
-			curSource->curGain = s_alGain->value * s_volume->value;
+			if(!curSource->isStream)
+				curSource->curGain = s_alGain->value * s_volume->value;
 		if((s_alRolloff->modified) && (!curSource->local))
 			qalSourcef(curSource->alSource, AL_ROLLOFF_FACTOR, s_alRolloff->value);
 		if(s_alMinDistance->modified)
@@ -1792,6 +1795,19 @@ void S_AL_RawSamples(int stream, int samples, int rate, int width, int channels,
 		}
 	}
 
+	// Unqueue any processed buffers before reusing them.
+	// Without this, the ring index can wrap to a buffer that's still queued
+	// on the source (ref > 0), causing alBufferData to silently fail and
+	// alSourceQueueBuffers to re-queue stale audio data.
+	{
+		ALint processed = 0;
+		qalGetSourcei(streamSources[stream], AL_BUFFERS_PROCESSED, &processed);
+		while ( processed-- ) {
+			ALuint buf;
+			qalSourceUnqueueBuffers(streamSources[stream], 1, &buf);
+		}
+	}
+
 	qalGetSourcei(streamSources[stream], AL_BUFFERS_QUEUED, &numBuffers);
 
 	if (numBuffers == MAX_STREAM_BUFFERS)
@@ -1833,13 +1849,11 @@ void S_AL_RawSamples(int stream, int samples, int rate, int width, int channels,
 
 	if(entityNum < 0)
 	{
-        	// Volume
-        	S_AL_Gain (streamSources[stream], volume * s_volume->value * s_alGain->value);
-        }
+		S_AL_Gain (streamSources[stream], volume * s_alGain->value);
+	}
 	else
 	{
-		// Update curGain so S_AL_ScaleGain picks up volume changes
-		srcList[streamSourceHandles[stream]].curGain = volume * s_alGain->value * s_volume->value;
+		srcList[streamSourceHandles[stream]].curGain = volume * s_alGain->value;
 	}
 
 	// Start stream
