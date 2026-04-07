@@ -347,16 +347,13 @@ void VR_Renderer_EndFrame(VR_Engine* engine)
 	// Blit XR content to desktop window BEFORE releasing swapchains.
 	re.SwapDesktopWindow();
 
-	// Release swapchains
 	VR_VK_Swapchains_Release(swapchains);
 
-	// Submit layers to OpenXR
 	VR_EndFrame(
 		engine->appState.Session,
 		swapchains,
 		views,
 		viewCount,
-		fov,
 		engine->appState.CurrentSpace,
 		engine->appState.ViewSpace,
 		lastPredictedDisplayTime);

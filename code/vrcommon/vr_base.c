@@ -23,26 +23,55 @@ vr_clientinfo_t vr;
 qboolean vr_initialized = qfalse;
 qboolean vr_shutdown = qfalse;
 
-// Extension list is built dynamically to use the appropriate graphics API extension
-#ifdef USE_VULKAN_API
-// Vulkan builds need format list extension for proper sRGB/UNORM swapchain handling
-static const char* requiredExtensionNames[4];
-static const uint32_t numRequiredExtensions = 4;
-#else
-static const char* requiredExtensionNames[3];
-static const uint32_t numRequiredExtensions = 3;
-#endif
+// Required extensions first, optional extensions only if the runtime advertises them.
+#define MAX_REQUIRED_EXTENSIONS 8
+static const char* requiredExtensionNames[MAX_REQUIRED_EXTENSIONS];
+static uint32_t numRequiredExtensions = 0;
+
+static VR_Bool VR_HasInstanceExtension(const char* name)
+{
+	uint32_t count = 0;
+	if (xrEnumerateInstanceExtensionProperties(NULL, 0, &count, NULL) != XR_SUCCESS || count == 0) {
+		return VR_FALSE;
+	}
+
+	XrExtensionProperties* props = (XrExtensionProperties*)malloc(sizeof(XrExtensionProperties) * count);
+	if (!props) {
+		return VR_FALSE;
+	}
+	for (uint32_t i = 0; i < count; ++i) {
+		props[i].type = XR_TYPE_EXTENSION_PROPERTIES;
+		props[i].next = NULL;
+	}
+
+	VR_Bool found = VR_FALSE;
+	if (xrEnumerateInstanceExtensionProperties(NULL, count, &count, props) == XR_SUCCESS) {
+		for (uint32_t i = 0; i < count; ++i) {
+			if (strcmp(props[i].extensionName, name) == 0) {
+				found = VR_TRUE;
+				break;
+			}
+		}
+	}
+
+	free(props);
+	return found;
+}
 
 static void VR_BuildExtensionList(void)
 {
-	// Graphics API extension is provided by vrgl2 or vrvk depending on build
-	requiredExtensionNames[0] = VR_Graphics_GetExtensionName();
-	requiredExtensionNames[1] = XR_EXT_DEBUG_UTILS_EXTENSION_NAME;
-	requiredExtensionNames[2] = XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME;
-#ifdef USE_VULKAN_API
-	// XR_KHR_vulkan_swapchain_format_list allows specifying which formats will be used
-	// for image views, helping the runtime avoid adding unnecessary usage flags like STORAGE_BIT
-	requiredExtensionNames[3] = "XR_KHR_vulkan_swapchain_format_list";
+	numRequiredExtensions = 0;
+
+	requiredExtensionNames[numRequiredExtensions++] = VR_Graphics_GetExtensionName();
+	requiredExtensionNames[numRequiredExtensions++] = XR_EXT_DEBUG_UTILS_EXTENSION_NAME;
+	requiredExtensionNames[numRequiredExtensions++] = XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME;
+#ifdef USE_VULKAN
+	// Quest supports format_list, SteamVR does not — only enable if advertised.
+	if (numRequiredExtensions < MAX_REQUIRED_EXTENSIONS &&
+		VR_HasInstanceExtension("XR_KHR_vulkan_swapchain_format_list"))
+	{
+		requiredExtensionNames[numRequiredExtensions++] = "XR_KHR_vulkan_swapchain_format_list";
+	}
 #endif
 }
 

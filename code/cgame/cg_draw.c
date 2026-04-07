@@ -3949,29 +3949,23 @@ static void CG_DrawWeapReticle( void )
 	float X_WIDTH = 640;
 	float Y_HEIGHT = 480;
 
-	// OpenXR has asymmetric FOV, so get the actual optical center
-	float centerX, centerY;
-	CG_GetProjectionCenter(&centerX, &centerY);
-
-	// Get the Y offset: projection center is above geometric center (lower Y value),
-	// so we need a negative offset to shift elements UP toward the projection center
-	float reticleYOffset = centerY - 240.0f;  // negative when proj center is above geometric center
+	// Geometric center — cyclopean scope renders to the geometric framebuffer center.
+	float centerX = 320.0f;
+	float centerY = 240.0f;
 
 	float x = (X_WIDTH * indentX);
-	float y = (Y_HEIGHT * indentY) + reticleYOffset;
+	float y = (Y_HEIGHT * indentY);
 	float w = (X_WIDTH * (1-(2*indentX))) / 2.0f;
 	float h = (Y_HEIGHT * (1-(2*indentY))) / 2;
 
 	CG_AdjustFrom640( &x, &y, &w, &h );
 
-	// sides - widen by asymmetry offset (scaled 2x for IPD compensation) to prevent world showing through
-	float asymmetryExtra = CG_GetMaxAsymmetryPixels() * 2.0f;
-	float sideWidth = (X_WIDTH * indentX) + asymmetryExtra;
-	CG_FillRect( -asymmetryExtra, 0, sideWidth, Y_HEIGHT, black );
-	CG_FillRect( X_WIDTH * (1 - indentX), 0, sideWidth, Y_HEIGHT, black );
+	// sides - black mask outside the scope circle
+	CG_FillRect( 0, 0, X_WIDTH * indentX, Y_HEIGHT, black );
+	CG_FillRect( X_WIDTH * (1 - indentX), 0, X_WIDTH * indentX, Y_HEIGHT, black );
 	// top/bottom
-	CG_FillRect( X_WIDTH * indentX, 0, X_WIDTH * (1-2*indentX), (Y_HEIGHT * indentY) + reticleYOffset, black );
-	CG_FillRect( X_WIDTH * indentX, Y_HEIGHT * (1-indentY) + reticleYOffset, X_WIDTH * (1-2*indentX), (Y_HEIGHT * indentY), black );
+	CG_FillRect( X_WIDTH * indentX, 0, X_WIDTH * (1-2*indentX), Y_HEIGHT * indentY, black );
+	CG_FillRect( X_WIDTH * indentX, Y_HEIGHT * (1-indentY), X_WIDTH * (1-2*indentX), Y_HEIGHT * indentY, black );
 
 	{
 		// center
@@ -3989,8 +3983,8 @@ static void CG_DrawWeapReticle( void )
 		// Scope edges
 		float leftEdge = X_WIDTH * indentX;
 		float rightEdge = X_WIDTH * (1.0f - indentX);
-		float topEdge = Y_HEIGHT * indentY + reticleYOffset;
-		float bottomEdge = Y_HEIGHT * (1.0f - indentY) + reticleYOffset;
+		float topEdge = Y_HEIGHT * indentY;
+		float bottomEdge = Y_HEIGHT * (1.0f - indentY);
 
 		CG_FillRect( leftEdge, centerY - hairThick/2.66f, hairLength, hairThick * 0.75f, light_color );                 // left
 		CG_FillRect( rightEdge - hairLength, centerY - hairThick/2.66f, hairLength, hairThick * 0.75f, light_color );   // right

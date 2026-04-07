@@ -6884,9 +6884,14 @@ void vk_update_mvp( const float *m ) {
 	if ( m ) {
 		// Explicit modelview provided (e.g., for shadows, flares)
 		if ( tr.vrParms.valid && (vr.virtual_screen || vr.weapon_zoomed) && !backEnd.projection2D ) {
-			// Mono rendering: use shared symmetric projection for both eyes
+			// Cyclopean: zero the asymmetric optical-axis offset so content lands
+			// on the geometric framebuffer center for the head-locked quad layer.
 			float mvp[16];
-			myGlMultMatrix( m, tr.vrParms.projection, mvp );
+			float proj[16];
+			Com_Memcpy( proj, tr.vrParms.projection, sizeof(proj) );
+			proj[8] = 0.0f;
+			proj[9] = 0.0f;
+			myGlMultMatrix( m, proj, mvp );
 			Com_Memcpy( &push_constants[0], mvp, sizeof(float) * 16 );
 			Com_Memcpy( &push_constants[16], mvp, sizeof(float) * 16 );
 		} else {
@@ -6916,13 +6921,18 @@ void vk_update_mvp( const float *m ) {
 			// Portal/mirror view: use mirror projections with oblique near-plane clipping
 			// Must check BEFORE virtual_screen so portals/mirrors render correctly
 			if ( vr.virtual_screen || vr.weapon_zoomed ) {
-				// Virtual screen / weapon zoom renders mono - use mono modelview with oblique projection.
-				// backEnd.viewParms.projectionMatrix already has oblique clipping from R_SetupProjectionZ.
-				// Apply the same non-square framebuffer correction as the normal virtual_screen path.
+				// Cyclopean portal/mirror with oblique near-plane clipping. Aspect-correct,
+				// then zero the asymmetric offset so content lands on the geometric center.
 				float mvp[16];
 				float proj[16];
 				Com_Memcpy( proj, backEnd.viewParms.projectionMatrix, sizeof(proj) );
-				proj[5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
+				if ( vr.weapon_zoomed ) {
+					proj[5] *= (float)glConfig.vidWidth / (float)glConfig.vidHeight;
+				} else {
+					proj[5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
+				}
+				proj[8] = 0.0f;
+				proj[9] = 0.0f;
 				myGlMultMatrix( vk_world.modelview_transform, proj, mvp );
 				Com_Memcpy( &push_constants[0], mvp, sizeof(float) * 16 );
 				Com_Memcpy( &push_constants[16], mvp, sizeof(float) * 16 );
@@ -6932,32 +6942,33 @@ void vk_update_mvp( const float *m ) {
 				myGlMultMatrix( backEnd.or.eyeViewMatrix[1], tr.vrParms.mirrorProjectionEye[1], &push_constants[16] );
 			}
 		} else if ( vr.virtual_screen || vr.weapon_zoomed ) {
-			// Virtual screen / weapon zoom: cyclopean mono rendering
+			// Cyclopean mono rendering for virtual screen and weapon scope.
 			float mvp[16];
 			float proj[16];
 			Com_Memcpy( proj, tr.vrParms.projection, sizeof(proj) );
 
 			if ( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) {
-				// UI model scenes (player preview, 3D logo, etc.): build projection
-				// from the refdef's FOV so the UI code's framing is respected.
-				// Keep Z components from VR projection (reversed depth, Vulkan conventions).
-				//
-				// The virtual screen does a 4:3 center crop of the roughly-square
-				// framebuffer, but the UI code computed FOV for the full framebuffer.
-				// Scale the projection wider by the crop factor so models are framed
-				// correctly within the visible 4:3 region.
+				// UI model scenes: respect the refdef FOV, scaled by the virtual
+				// screen's 4:3 crop factor so models are framed correctly.
 				float cropHeight = (float)(glConfig.vidWidth * 3) / 4.0f;
 				float cropFactor = (float)glConfig.vidHeight / cropHeight;
 
 				proj[0] = (1.0f / tan( DEG2RAD( backEnd.viewParms.fovX ) * 0.5f )) / cropFactor;
 				proj[5] = (-1.0f / tan( DEG2RAD( backEnd.viewParms.fovY ) * 0.5f )) / cropFactor;
-				proj[8] = 0.0f;  // Symmetric FOV (no asymmetric offset)
+				proj[8] = 0.0f;
 				proj[9] = 0.0f;
 			} else {
-				// The virtual screen chain (4:3 crop → blit → 4:3 mesh) handles most
-				// aspect correction, but a slight residual remains when the framebuffer
-				// isn't exactly square. Compensate for the non-square framebuffer.
-				proj[5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
+				// Aspect-correct for the non-square framebuffer. Weapon scope renders
+				// to a head-locked quad sized to the texture aspect, so it needs the
+				// inverse correction relative to the virtual screen's 4:3 crop chain.
+				if ( vr.weapon_zoomed ) {
+					proj[5] *= (float)glConfig.vidWidth / (float)glConfig.vidHeight;
+				} else {
+					proj[5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
+				}
+				// Center on geometric framebuffer center for the cyclopean / quad path.
+				proj[8] = 0.0f;
+				proj[9] = 0.0f;
 			}
 
 			myGlMultMatrix( vk_world.modelview_transform, proj, mvp );

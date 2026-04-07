@@ -771,10 +771,6 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 		case CA_ACTIVE:
 			// always supply STEREO_CENTER as vieworg offset is now done by the engine.
 			CL_CGameRendering(stereoFrame);
-			SCR_DrawDemoRecording();
-#ifdef USE_VOIP
-			SCR_DrawVoipMeter();
-#endif
 			break;
 		}
 	}

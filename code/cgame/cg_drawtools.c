@@ -99,15 +99,7 @@ void CG_AdjustFrom640( float *x, float *y, float *w, float *h )
 		// This maps input y=0 to output y=0, and input y=480 to output y=640
 		*y = (*y / 480.0f) * 640.0f;
 
-		// Calculate optical centering offset (asymmetric FOV compensation)
-		float opticalOffset = 0.0f;
-		float tanUp = tanf(vr->fov_angle_up);
-		float tanDown = tanf(vr->fov_angle_down);
-		float tanHeight = tanUp - tanDown;
-		if (fabsf(tanHeight) > 0.001f) {
-			float m9 = (tanUp + tanDown) / tanHeight;
-			opticalOffset = 320.0f * m9 * screenYScale;  // 320 = center of 640
-		}
+		// Cyclopean scope renders to the geometric framebuffer center; HUD too.
 
 		*x *= screenXScale;
 		*y *= screenYScale;
@@ -115,7 +107,7 @@ void CG_AdjustFrom640( float *x, float *y, float *w, float *h )
 		*h *= screenYScale;
 
 		*x += (effectiveWidth - (640 * screenXScale)) / 2.0f;
-		*y += (effectiveHeight - (640 * screenYScale)) / 2.0f + opticalOffset;
+		*y += (effectiveHeight - (640 * screenYScale)) / 2.0f;
 	}
 	else if (!cg.drawingHUD)
 	{

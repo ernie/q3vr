@@ -72,35 +72,56 @@ XrViewState VR_LocateViews(XrSession session, XrTime predictedDisplayTime, XrSpa
 	return viewState;
 }
 
-void VR_EndFrame(XrSession session, VR_SwapchainInfos* swapchains, XrView* views, uint32_t viewCount, XrFovf fov, XrSpace worldSpace, XrSpace viewSpace, XrTime predictedDisplayTime)
+void VR_EndFrame(XrSession session, VR_SwapchainInfos* swapchains, XrView* views, uint32_t viewCount, XrSpace worldSpace, XrSpace viewSpace, XrTime predictedDisplayTime)
 {
-	XrCompositionLayerProjectionView projection_layer_elements[2] = {};
-
 	extern vr_clientinfo_t vr;
 
-	// Weapon zoom: cyclopean rendering — both eyes rendered with the same
-	// averaged symmetric projection from center viewpoint.  Tell the
-	// compositor both eyes share the same center pose and averaged FOV
-	// so the identical mono images are reprojected identically.
-	XrPosef centerPose = views[0].pose;
-	if (vr.weapon_zoomed && viewCount > 1)
+	// Scoped: submit only a head-locked quad sampling the cyclopean texture.
+	// Quad layers carry a single pose (no per-view geometry for SteamVR to
+	// override per-eye) so the crosshair lands on the same world ray for both
+	// eyes even when system overlays force the compositor into reprojection.
+	if (vr.weapon_zoomed)
 	{
-		centerPose.position.x = (views[0].pose.position.x + views[1].pose.position.x) * 0.5f;
-		centerPose.position.y = (views[0].pose.position.y + views[1].pose.position.y) * 0.5f;
-		centerPose.position.z = (views[0].pose.position.z + views[1].pose.position.z) * 0.5f;
+		XrCompositionLayerQuad quad_layer = {};
+		quad_layer.type = XR_TYPE_COMPOSITION_LAYER_QUAD;
+		quad_layer.layerFlags = XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
+		quad_layer.space = viewSpace;
+		quad_layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+
+		quad_layer.subImage.swapchain = swapchains->color.swapchain;
+		quad_layer.subImage.imageRect.extent.width = swapchains->color.width;
+		quad_layer.subImage.imageRect.extent.height = swapchains->color.height;
+		quad_layer.subImage.imageArrayIndex = 0;  // both array layers carry identical cyclopean pixels
+
+		quad_layer.pose.orientation.w = 1.0f;
+		quad_layer.pose.position.z = -1.0f;
+
+		// Aspect-match to texture so reticle stays circular.
+		quad_layer.size.height = 2.0f;
+		quad_layer.size.width = 2.0f * (float)swapchains->color.width / (float)swapchains->color.height;
+
+		const XrCompositionLayerBaseHeader* layers[1] = {
+			(const XrCompositionLayerBaseHeader*)&quad_layer,
+		};
+
+		XrFrameEndInfo endFrameInfo = {};
+		endFrameInfo.type = XR_TYPE_FRAME_END_INFO;
+		endFrameInfo.displayTime = predictedDisplayTime;
+		endFrameInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+		endFrameInfo.layerCount = 1;
+		endFrameInfo.layers = layers;
+
+		XR_CHECK(xrEndFrame(session, &endFrameInfo), "Failed to end XR frame");
+		return;
 	}
 
+	XrCompositionLayerProjectionView projection_layer_elements[2] = {};
 	for (uint32_t view = 0; view < viewCount; view++)
 	{
-		memset(&projection_layer_elements[view], 0, sizeof(XrCompositionLayerProjectionView));
 		projection_layer_elements[view].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
-		projection_layer_elements[view].pose = vr.weapon_zoomed ? centerPose : views[view].pose;
-		projection_layer_elements[view].fov = vr.weapon_zoomed ? fov : views[view].fov;
-
-		memset(&projection_layer_elements[view].subImage, 0, sizeof(XrSwapchainSubImage));
+		projection_layer_elements[view].pose = views[view].pose;
+		projection_layer_elements[view].fov = views[view].fov;
 		projection_layer_elements[view].subImage.swapchain = swapchains->color.swapchain;
-		projection_layer_elements[view].subImage.imageRect.offset.x = 0;
-		projection_layer_elements[view].subImage.imageRect.offset.y = 0;
 		projection_layer_elements[view].subImage.imageRect.extent.width = swapchains->color.width;
 		projection_layer_elements[view].subImage.imageRect.extent.height = swapchains->color.height;
 		projection_layer_elements[view].subImage.imageArrayIndex = view;
@@ -108,16 +129,14 @@ void VR_EndFrame(XrSession session, VR_SwapchainInfos* swapchains, XrView* views
 
 	XrCompositionLayerProjection projection_layer = {};
 	projection_layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION;
-	projection_layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-	projection_layer.layerFlags |= XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
+	projection_layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT
+	                            | XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
 	projection_layer.space = worldSpace;
 	projection_layer.viewCount = viewCount;
 	projection_layer.views = projection_layer_elements;
 
-	// Submit only projection layer - 2D overlays render directly to XR swapchain
 	const XrCompositionLayerBaseHeader* layers[1];
 	int layerCount = 0;
-
 	if (viewCount > 0)
 	{
 		layers[layerCount++] = (const XrCompositionLayerBaseHeader*)&projection_layer;
@@ -130,7 +149,5 @@ void VR_EndFrame(XrSession session, VR_SwapchainInfos* swapchains, XrView* views
 	endFrameInfo.layerCount = layerCount;
 	endFrameInfo.layers = layerCount > 0 ? layers : NULL;
 
-	XR_CHECK(
-		xrEndFrame(session, &endFrameInfo),
-		"Failed to end XR frame");
+	XR_CHECK(xrEndFrame(session, &endFrameInfo), "Failed to end XR frame");
 }

@@ -236,3 +236,4 @@ const VR_VK_SwapchainInfo* VR_VK_GetColorSwapchain(const VR_SwapchainInfos* swap
 {
 	return swapchains ? &swapchains->color : NULL;
 }
+
