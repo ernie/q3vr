@@ -1730,7 +1730,9 @@ CG_DrawLowerRight
 static void CG_DrawLowerRight( void ) {
 	float	y;
 
-	y = 480 - STATUSBAR_HEIGHT;
+	// Minimal (zoomed) HUD doesn't draw the status bar, so don't reserve
+	// space for it — anchor scores/powerups to the actual bottom edge.
+	y = cg.drawingZoomedHUD ? 480 : (480 - STATUSBAR_HEIGHT);
 
 	if ( cgs.gametype >= GT_TEAM && cg_drawTeamOverlay.integer == 2 ) {
 		y = CG_DrawTeamOverlay( y, qtrue, qfalse );
