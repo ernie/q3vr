@@ -277,6 +277,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define UI_TRINITYUPDATE 259
 #define UI_UPDATEPROGRESS 260
 #define UI_UPDATESTATUS 261
+#define UI_TRINITYSIGIL 262
 
 #define WINDOW_PASSWORD 0x01000000
 

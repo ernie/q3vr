@@ -1378,11 +1378,9 @@ void UI_Refresh( int realtime )
 		if (uis.activemenu->fullscreen)
 		{
 			// draw the background
-			if( uis.activemenu->showlogo ) {
+			trap_R_DrawStretchPic( 0, 0, uis.glconfig.vidWidth, uis.glconfig.vidHeight, 0, 0, 1, 1, uis.menuBackNoLogoShader );
+			if ( uis.activemenu->showlogo && !trap_Cvar_VariableValue( "ui_trinitySigil" ) ) {
 				UI_DrawHandlePic( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, uis.menuBackShader );
-			}
-			else {
-				UI_DrawHandlePic( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, uis.menuBackNoLogoShader );
 			}
 		}
 

@@ -515,6 +515,14 @@ itemDef {
 
 
 itemDef {
+      	name trinitySigil				// Rotating Trinity sigil overlay
+      	ownerdraw UI_TRINITYSIGIL
+      	rect 205 123 235 235
+      	visible 1
+	decoration
+    }
+
+itemDef {
 	name loginbtn
 	ownerdraw UI_TRINITYLOGIN
 	type ITEM_TYPE_OWNERDRAW

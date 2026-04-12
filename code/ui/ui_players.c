@@ -726,6 +726,7 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 	vec3_t			maxs = {16, 16, 32};
 	float			len;
 	float			xx;
+	float			desiredFovY;
 
 	if ( !pi->legsModel || !pi->torsoModel || !pi->headModel || !pi->animations[0].numFrames ) {
 		return;
@@ -748,14 +749,32 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 		}
 	}
 
-	UI_AdjustFrom640( &x, &y, &w, &h );
-
-	y -= jumpHeight;
-
 	memset( &refdef, 0, sizeof( refdef ) );
 	memset( &legs, 0, sizeof(legs) );
 	memset( &torso, 0, sizeof(torso) );
 	memset( &head, 0, sizeof(head) );
+
+	// Compensate for the renderer's NOWORLDMODEL cropFactor.
+	{
+		float desiredFovX = (int)(w / 640.0f * 90.0f);
+		float cropHeight = uiInfo.uiDC.glconfig.vidWidth * 0.75f;
+		float cropFactor = uiInfo.uiDC.glconfig.vidHeight / cropHeight;
+
+		xx = w / tan( desiredFovX / 360 * M_PI );
+		desiredFovY = atan2( h, xx );
+		desiredFovY *= ( 360 / (float)M_PI );
+
+		refdef.fov_x = 2.0f * RAD2DEG( atan( tan( DEG2RAD( desiredFovX ) * 0.5f ) / cropFactor ) );
+		refdef.fov_y = 2.0f * RAD2DEG( atan( tan( DEG2RAD( desiredFovY ) * 0.5f ) / cropFactor ) );
+
+		// calculate distance so the player nearly fills the box
+		len = 0.7 * ( maxs[2] - mins[2] );
+		origin[0] = len / tan( DEG2RAD(desiredFovX) * 0.5 );
+	}
+
+	UI_AdjustFrom640( &x, &y, &w, &h );
+
+	y -= jumpHeight;
 
 	refdef.rdflags = RDF_NOWORLDMODEL;
 
@@ -765,15 +784,6 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 	refdef.y = y;
 	refdef.width = w;
 	refdef.height = h;
-
-	refdef.fov_x = (int)((float)refdef.width / uiInfo.uiDC.xscale / 640.0f * 90.0f);
-	xx = refdef.width / uiInfo.uiDC.xscale / tan( refdef.fov_x / 360 * M_PI );
-	refdef.fov_y = atan2( refdef.height / uiInfo.uiDC.yscale, xx );
-	refdef.fov_y *= ( 360 / (float)M_PI );
-
-	// calculate distance so the player nearly fills the box
-	len = 0.7 * ( maxs[2] - mins[2] );
-	origin[0] = len / tan( DEG2RAD(refdef.fov_x) * 0.5 );
 	origin[1] = 0.5 * ( mins[1] + maxs[1] );
 	origin[2] = -0.5 * ( mins[2] + maxs[2] );
 

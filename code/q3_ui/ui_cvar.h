@@ -74,4 +74,6 @@ UI_CVAR( ui_ioq3, "ui_ioq3", "1", CVAR_ROM )
 UI_CVAR( ui_movement, "ui_movement", "0", CVAR_ARCHIVE )
 UI_CVAR( ui_gameplay, "ui_gameplay", "0", CVAR_ARCHIVE )
 
+UI_CVAR( ui_trinitySigil, "ui_trinitySigil", "1", CVAR_ARCHIVE )
+
 #undef UI_CVAR

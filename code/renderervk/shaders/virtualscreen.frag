@@ -19,7 +19,11 @@ void main() {
 	// - r_fbo=1: Source is linear HDR, apply 1/r_gamma and overbright
 	// - r_fbo=0: Source is sRGB-encoded (sampled via UNORM view), decode to linear
 	//            so the automatic sRGB conversion on output produces correct result
-	vec3 corrected = pow(color.rgb, vec3(gamma)) * obScale;
+	// Proper sRGB transfer function: the linear segment near zero avoids
+	// pow(x,1/2.2)'s infinite slope amplifying blit quantization noise.
+	vec3 lo = color.rgb * 12.92;
+	vec3 hi = 1.055 * pow(color.rgb, vec3(1.0 / 2.4)) - 0.055;
+	vec3 corrected = mix(lo, hi, step(vec3(0.0031308), color.rgb)) * obScale;
 
 	// Force fully opaque - virtual screen content should not be transparent
 	out_color = vec4(corrected, 1.0);
