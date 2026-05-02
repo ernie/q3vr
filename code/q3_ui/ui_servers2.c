@@ -123,9 +123,9 @@ static const char *master_items[] = {
 	"Local",
 	"Internet (all)",
 	"VR Master",
+	"Trinity",
 	"Q3A Master",
 	"ioq3 Master",
-	"Master4",
 	"Master5",
 	"Favorites",
 	NULL
@@ -444,9 +444,10 @@ int ArenaServers_SourceForLAN(void) {
 	default:
 	case UIAS_LOCAL:
 		return AS_LOCAL;
+	case UIAS_GLOBAL2:
+		return AS_MPLAYER;
 	case UIAS_GLOBAL0:
 	case UIAS_GLOBAL1:
-	case UIAS_GLOBAL2:
 	case UIAS_GLOBAL3:
 	case UIAS_GLOBAL4:
 	case UIAS_GLOBAL5:

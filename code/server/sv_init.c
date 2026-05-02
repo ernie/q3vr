@@ -693,11 +693,8 @@ void SV_Init (void)
 	sv_allowDownload = Cvar_Get ("sv_allowDownload", "1", CVAR_SERVERINFO);
 	Cvar_Get ("sv_dlURL", "", CVAR_SERVERINFO | CVAR_ARCHIVE);
 	
-	vr_master[0] = Cvar_Get("vr_master1", "mp.quakevr.com:27950", 0); // This is set to our Q3Q master
-	vr_master[1] = Cvar_Get("vr_master2", MASTER_SERVER_NAME, 0);
-	vr_master[2] = Cvar_Get("vr_master3", "directory.ioquake3.org", 0);
-	for(index = 3; index < MAX_MASTER_SERVERS; index++)
-		vr_master[index] = Cvar_Get(va("vr_master%d", index + 1), "", CVAR_ARCHIVE);
+	for ( index = 0; index < MAX_MASTER_SERVERS; index++ )
+		vr_master[index] = Cvar_Get( va( "vr_master%d", index + 1 ), "", CVAR_ARCHIVE );
 
 	sv_reconnectlimit = Cvar_Get ("sv_reconnectlimit", "3", 0);
 	sv_showloss = Cvar_Get ("sv_showloss", "0", 0);

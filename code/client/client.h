@@ -44,6 +44,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define	RETRANSMIT_TIMEOUT	3000	// time between connection packet retransmits
 
+// Trinity directory lives at vr_master2; its responses route to AS_MPLAYER.
+#define MPLAYER_MASTER_INDEX	1
+
 // snapshots are a view of the server at a given time
 typedef struct {
 	qboolean		valid;			// cleared if delta parsing was invalid
@@ -407,6 +410,13 @@ typedef struct {
 	// additional global servers
 	int			numGlobalServerAddresses;
 	netadr_t		globalServerAddresses[MAX_GLOBAL_SERVERS];
+
+	int			nummplayerservers;
+	serverInfo_t  mplayerServers[MAX_GLOBAL_SERVERS];
+	int			numMplayerServerAddresses;
+	netadr_t		mplayerServerAddresses[MAX_GLOBAL_SERVERS];
+
+	netadr_t		masterAdr[MAX_MASTER_SERVERS];
 
 	int			numfavoriteservers;
 	serverInfo_t	favoriteServers[MAX_OTHER_SERVERS];
