@@ -402,10 +402,12 @@ static void Main_MenuDraw( void ) {
 	}
 	else
 	{
-		// if update became available after menu was built, rebuild it
-		if ( !s_main.update.string && (int)trap_Cvar_VariableValue( "update_available" ) == 1 ) {
-			UI_MainMenu();
-			return;
+		// Autoupdate check completes asynchronously after the menu is built,
+		// so toggle the Update Available item per-frame from the cvar.
+		if ( (int)trap_Cvar_VariableValue( "update_available" ) == 1 ) {
+			s_main.update.generic.flags &= ~( QMF_HIDDEN | QMF_INACTIVE );
+		} else {
+			s_main.update.generic.flags |= ( QMF_HIDDEN | QMF_INACTIVE );
 		}
 
 		// standard menu drawing
@@ -750,26 +752,27 @@ void UI_MainMenu( void ) {
 		s_main.account.generic.bottom = s_main.account.generic.y + SMALLCHAR_HEIGHT;
 	}
 
-	// Update Available button — right-aligned, below Account
-	if ( (int)trap_Cvar_VariableValue( "update_available" ) == 1 ) {
-		s_main.update.generic.type			= MTYPE_PTEXT;
-		s_main.update.generic.flags			= QMF_RIGHT_JUSTIFY|QMF_PULSEIFFOCUS;
-		s_main.update.generic.x				= 610;
-		s_main.update.generic.y				= 134 + SMALLCHAR_HEIGHT + 2;
-		s_main.update.generic.id			= ID_UPDATE;
-		s_main.update.generic.callback		= Main_MenuEvent;
-		s_main.update.generic.ownerdraw		= Main_DrawUpdateButton;
-		s_main.update.string				= "Update Available";
-		s_main.update.color					= color_yellow;
-		s_main.update.style					= UI_RIGHT|UI_SMALLFONT;
-		Menu_AddItem( &s_main.menu, &s_main.update );
-		{
-			int w = strlen( s_main.update.string ) * SMALLCHAR_WIDTH;
-			s_main.update.generic.left   = s_main.update.generic.x - w;
-			s_main.update.generic.right  = s_main.update.generic.x;
-			s_main.update.generic.top    = s_main.update.generic.y;
-			s_main.update.generic.bottom = s_main.update.generic.y + SMALLCHAR_HEIGHT;
-		}
+	// Update Available button — right-aligned, below Account.
+	// Always add the item; visibility is toggled per-frame in Main_MenuDraw
+	// based on update_available, since the autoupdate check runs async and may
+	// complete after this menu is built.
+	s_main.update.generic.type			= MTYPE_PTEXT;
+	s_main.update.generic.flags			= QMF_RIGHT_JUSTIFY|QMF_PULSEIFFOCUS|QMF_HIDDEN|QMF_INACTIVE;
+	s_main.update.generic.x				= 610;
+	s_main.update.generic.y				= 134 + SMALLCHAR_HEIGHT + 2;
+	s_main.update.generic.id			= ID_UPDATE;
+	s_main.update.generic.callback		= Main_MenuEvent;
+	s_main.update.generic.ownerdraw		= Main_DrawUpdateButton;
+	s_main.update.string				= "Update Available";
+	s_main.update.color					= color_yellow;
+	s_main.update.style					= UI_RIGHT|UI_SMALLFONT;
+	Menu_AddItem( &s_main.menu, &s_main.update );
+	{
+		int w = strlen( s_main.update.string ) * SMALLCHAR_WIDTH;
+		s_main.update.generic.left   = s_main.update.generic.x - w;
+		s_main.update.generic.right  = s_main.update.generic.x;
+		s_main.update.generic.top    = s_main.update.generic.y;
+		s_main.update.generic.bottom = s_main.update.generic.y + SMALLCHAR_HEIGHT;
 	}
 
 	trap_Key_SetCatcher( KEYCATCH_UI );
