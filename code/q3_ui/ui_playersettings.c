@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 //
 #include "ui_local.h"
+#include "../game/ui_swatches.h"
 
 #define ART_FRAMEL			"menu/art/frame2_l"
 #define ART_FRAMER			"menu/art/frame1_r"
@@ -72,9 +73,6 @@ typedef struct {
 } playersettings_t;
 
 static playersettings_t	s_playersettings;
-
-static int gamecodetoui[] = {4,2,3,0,5,1,6};
-static int uitogamecode[] = {4,6,2,3,1,5,7};
 
 static const char *handicap_items[] = {
 	"None",

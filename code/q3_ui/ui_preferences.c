@@ -30,6 +30,7 @@ GAME OPTIONS MENU
 
 
 #include "ui_local.h"
+#include "../game/ui_swatches.h"
 
 
 #define ART_FRAMEL				"menu/art/frame2_l"
@@ -154,9 +155,6 @@ static const char *gameplay_names[] =
 	"Quake Live",
 	NULL
 };
-
-static int gamecodetoui[] = {4,2,3,0,5,1,6};
-static int uitogamecode[] = {4,6,2,3,1,5,7};
 
 static void Preferences_SetMenuItems( void ) {
 	int c;

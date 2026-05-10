@@ -33,6 +33,7 @@ USER INTERFACE MAIN
 
 #include "ui_local.h"
 #include "../vrcommon/vr_clientinfo.h"
+#include "../game/ui_swatches.h"
 
 extern displayContextDef_t *DC;
 vr_clientinfo_t *vr = NULL;
@@ -115,9 +116,6 @@ static char* netnames[] = {
 #ifndef MISSIONPACK
 static char quake3worldMessage[] = "Visit www.quake3world.com - News, Community, Events, Files";
 #endif
-
-static int gamecodetoui[] = {4,2,3,0,5,1,6};
-static int uitogamecode[] = {4,6,2,3,1,5,7};
 
 
 static void UI_StartServerRefresh(qboolean full, qboolean force);
