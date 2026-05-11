@@ -458,6 +458,7 @@ qboolean Q_IsColorString(const char *p);  // ^[0-9a-zA-Z]
 #define S_COLOR_DEVEL	S_COLOR_CYAN
 #define S_COLOR_WARNING	S_COLOR_YELLOW
 #define S_COLOR_ERROR	S_COLOR_RED
+#define S_COLOR_STRIP	S_COLOR_WHITE
 
 extern vec4_t	g_color_table[10];
 
