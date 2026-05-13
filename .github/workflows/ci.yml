@@ -12,8 +12,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1
+        uses: jakoch/install-vulkan-sdk-action@v1.5.2
         with:
+          vulkan_version: '1.4.350.0'
           cache: true
           stripdown: true
 
@@ -45,10 +46,23 @@ jobs:
           sudo apt-get install -y libsdl2-dev libxcb-glx0-dev libgl-dev libxxf86vm-dev
 
       - name: Install Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1
+        uses: jakoch/install-vulkan-sdk-action@v1.5.2
         with:
-          cache: true
-          stripdown: true
+          vulkan_version: '1.4.350.0'
+          cache: false      # v1.5.x cache restore is broken on Linux
+          stripdown: false  # appears to remove libvulkan.so on Linux
+
+      # SDK 1.4.350 moved the loader out of $VULKAN_SDK/lib/, so CMake's
+      # find_library(NAMES vulkan) misses it. Locate it and re-expose at the
+      # expected path.
+      - name: Ensure libvulkan.so symlink
+        run: |
+          find "$VULKAN_SDK" -name 'libvulkan*' -ls 2>/dev/null
+          LIBVK=$(find "$VULKAN_SDK" -name 'libvulkan.so' -print -quit 2>/dev/null)
+          [ -z "$LIBVK" ] && LIBVK=$(find "$VULKAN_SDK" -name 'libvulkan.so.1' -print -quit 2>/dev/null)
+          if [ -n "$LIBVK" ] && [ ! -e "$VULKAN_SDK/lib/libvulkan.so" ]; then
+            ln -sv "$LIBVK" "$VULKAN_SDK/lib/libvulkan.so"
+          fi
 
       - name: Build
         run: |

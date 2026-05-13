@@ -207,9 +207,10 @@ if(DEFINED PRIMARY_CLIENT)
         "${CMAKE_SOURCE_DIR}/code/thirdparty/openal-soft-1.25.1/COPYING"
         "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/licenses/COPYING.openal-soft"
     )
-    if(ZIP_EXECUTABLE)
-        add_dependencies(${PRIMARY_CLIENT} pakQ3VR)
-    endif()
+    # pakQ3VR is built unconditionally via `cmake -E tar`, so the POST_BUILD
+    # copy above must always wait for it. (Previously guarded by ZIP_EXECUTABLE
+    # back when a separate `zip` binary was required.)
+    add_dependencies(${PRIMARY_CLIENT} pakQ3VR)
 endif()
 
 # Install targets
