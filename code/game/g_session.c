@@ -44,14 +44,21 @@ void G_WriteClientSessionData( gclient_t *client ) {
 	const char	*s;
 	const char	*var;
 
-	s = va("%i %i %i %i %i %i %i", 
+	// Trinity handshake fields (nonce/time/verified) are appended after
+	// the stock seven session ints. The nonce is serialized as either
+	// the 31-hex-char value or a single "-" sentinel when unset, so the
+	// column count stays fixed for the reader's sscanf format.
+	s = va("%i %i %i %i %i %i %i %s %i %i",
 		client->sess.sessionTeam,
 		client->sess.spectatorNum,
 		client->sess.spectatorState,
 		client->sess.spectatorClient,
 		client->sess.wins,
 		client->sess.losses,
-		client->sess.teamLeader
+		client->sess.teamLeader,
+		client->sess.handshakeNonce[0] ? client->sess.handshakeNonce : "-",
+		client->sess.handshakeTime,
+		(int)client->sess.trinityVerified
 		);
 
 	var = va( "session%i", (int)(client - level.clients) );
@@ -72,23 +79,46 @@ void G_ReadSessionData( gclient_t *client ) {
 	int teamLeader;
 	int spectatorState;
 	int sessionTeam;
+	char nonceIn[32];
+	int  handshakeTimeIn;
+	int  trinityVerifiedIn;
 
 	var = va( "session%i", (int)(client - level.clients) );
 	trap_Cvar_VariableStringBuffer( var, s, sizeof(s) );
 
-	sscanf( s, "%i %i %i %i %i %i %i",
+	// Initialize trinity locals so a pre-port (7-field) or otherwise
+	// truncated cvar lands us at the safe "not verified" state.
+	nonceIn[0] = '-';
+	nonceIn[1] = '\0';
+	handshakeTimeIn = 0;
+	trinityVerifiedIn = 0;
+
+	sscanf( s, "%i %i %i %i %i %i %i %31s %i %i",
 		&sessionTeam,
 		&client->sess.spectatorNum,
 		&spectatorState,
 		&client->sess.spectatorClient,
 		&client->sess.wins,
 		&client->sess.losses,
-		&teamLeader
+		&teamLeader,
+		nonceIn,
+		&handshakeTimeIn,
+		&trinityVerifiedIn
 		);
 
 	client->sess.sessionTeam = (team_t)sessionTeam;
 	client->sess.spectatorState = (spectatorState_t)spectatorState;
 	client->sess.teamLeader = (qboolean)teamLeader;
+
+	// Restore trinity handshake state. Reject any nonce that isn't
+	// exactly 31 hex chars (the writer's format), falling back to "no
+	// nonce" -- better to re-handshake than to trust a malformed value.
+	client->sess.handshakeNonce[0] = '\0';
+	if ( nonceIn[0] != '-' && strlen( nonceIn ) == 31 ) {
+		Q_strncpyz( client->sess.handshakeNonce, nonceIn, sizeof( client->sess.handshakeNonce ) );
+	}
+	client->sess.handshakeTime = handshakeTimeIn;
+	client->sess.trinityVerified = trinityVerifiedIn ? qtrue : qfalse;
 }
 
 
@@ -165,6 +195,13 @@ void G_InitSessionData( gclient_t *client, const char *team, qboolean isBot ) {
 	}
 
 	AddTournamentQueue(client);
+
+	// Trinity handshake state is per-session; reset on first connect or
+	// gametype change (G_InitWorldSession routes through here, not the
+	// reader, when level.newSession is set).
+	sess->handshakeNonce[0] = '\0';
+	sess->handshakeTime = 0;
+	sess->trinityVerified = qfalse;
 
 	G_WriteClientSessionData( client );
 }
