@@ -884,12 +884,12 @@ void G_Say( gentity_t *ent, gentity_t *target, int mode, const char *chatText ) 
 	switch ( mode ) {
 	default:
 	case SAY_ALL:
-		G_LogPrintf( "say: %s: %s\n", ent->client->pers.netname, chatText );
+		G_LogPrintf( "say: %s" S_COLOR_WHITE ": %s" S_COLOR_WHITE "\n", ent->client->pers.netname, chatText );
 		Com_sprintf (name, sizeof(name), "%s%c%c"EC": ", ent->client->pers.netname, Q_COLOR_ESCAPE, COLOR_WHITE );
 		color = COLOR_GREEN;
 		break;
 	case SAY_TEAM:
-		G_LogPrintf( "sayteam: %s: %s\n", ent->client->pers.netname, chatText );
+		G_LogPrintf( "sayteam: %s" S_COLOR_WHITE ": %s" S_COLOR_WHITE "\n", ent->client->pers.netname, chatText );
 		if (Team_GetLocationMsg(ent, location, sizeof(location)))
 			Com_sprintf (name, sizeof(name), EC"(%s%c%c"EC") (%s)"EC": ", 
 				ent->client->pers.netname, Q_COLOR_ESCAPE, COLOR_WHITE, location);
@@ -996,7 +996,7 @@ static void Cmd_Tell_f( gentity_t *ent ) {
 
 	SanitizeChatText( p );
 
-	G_LogPrintf( "tell: %s to %s: %s\n", ent->client->pers.netname, target->client->pers.netname, p );
+	G_LogPrintf( "tell: %s" S_COLOR_WHITE " to %s" S_COLOR_WHITE ": %s" S_COLOR_WHITE "\n", ent->client->pers.netname, target->client->pers.netname, p );
 	G_Say( ent, target, SAY_TELL, p );
 	// don't tell to the player self if it was already directed to this player
 	// also don't send the chat back to a bot
@@ -1059,7 +1059,7 @@ void G_Voice( gentity_t *ent, gentity_t *target, int mode, const char *id, qbool
 
 	// echo the text to the console
 	if ( g_dedicated.integer ) {
-		G_Printf( "voice: %s %s\n", ent->client->pers.netname, id);
+		G_Printf( "voice: %s" S_COLOR_WHITE " %s\n", ent->client->pers.netname, id);
 	}
 
 	// send it to all the appropriate clients
@@ -1126,7 +1126,7 @@ static void Cmd_VoiceTell_f( gentity_t *ent, qboolean voiceonly ) {
 
 	SanitizeChatText( id );
 
-	G_LogPrintf( "vtell: %s to %s: %s\n", ent->client->pers.netname, target->client->pers.netname, id );
+	G_LogPrintf( "vtell: %s" S_COLOR_WHITE " to %s" S_COLOR_WHITE ": %s\n", ent->client->pers.netname, target->client->pers.netname, id );
 	G_Voice( ent, target, SAY_TELL, id, voiceonly );
 	// don't tell to the player self if it was already directed to this player
 	// also don't send the chat back to a bot

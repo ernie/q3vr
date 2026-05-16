@@ -1195,7 +1195,12 @@ void LogExit( const char *string ) {
 
 		ping = cl->ps.ping < 999 ? cl->ps.ping : 999;
 
-		G_LogPrintf( "score: %i  ping: %i  client: %i %s\n", cl->ps.persistant[PERS_SCORE], ping, level.sortedClients[i],	cl->pers.netname );
+		// Trailing reset: netname can end on any ^N code, and without
+		// the reset the in-game console (G_LogPrintf fans out to
+		// G_Printf when g_dedicated) inherits that color for the
+		// next line's timestamp -- most visibly during the /rcon
+		// rotate scoreboard dump.
+		G_LogPrintf( "score: %i  ping: %i  client: %i %s" S_COLOR_WHITE "\n", cl->ps.persistant[PERS_SCORE], ping, level.sortedClients[i],	cl->pers.netname );
 #ifdef MISSIONPACK
 		if (g_singlePlayer.integer && !(g_entities[cl - level.clients].r.svFlags & SVF_BOT)) {
 			team = cl->sess.sessionTeam;
