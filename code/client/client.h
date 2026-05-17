@@ -336,6 +336,9 @@ typedef struct {
 	byte voipOutgoingData[1024];
 	float voipPower;
 	int voipLastSelfSendTime;
+	float voipPeak;                           // local outgoing peak amplitude this frame, 0.0-1.0
+	float voipIncomingPeak[MAX_CLIENTS];      // per-client received peak amplitude, 0.0-1.0
+	int   voipIncomingPowerTime[MAX_CLIENTS]; // cls.realtime when each entry was last updated
 #endif
 
 #ifdef LEGACY_PROTOCOL
@@ -524,13 +527,24 @@ extern	cvar_t	*cl_mumbleScale;
 extern	cvar_t	*cl_voipUseVAD;
 extern	cvar_t	*cl_voipVADThreshold;
 extern	cvar_t	*cl_voipSend;
+extern	cvar_t	*cl_voipCapture;
 extern	cvar_t	*cl_voipSendTarget;
 extern	cvar_t	*cl_voipGainDuringCapture;
 extern	cvar_t	*cl_voipCaptureMult;
 extern	cvar_t	*cl_voipShowMeter;
 extern	cvar_t	*cl_voipVolume;
 extern	cvar_t	*cl_voip;
-extern	cvar_t	*cl_voipVADMuted;
+extern	cvar_t	*cl_voipLevel;
+extern	cvar_t	*cl_voipLevels;
+
+void CL_CaptureVoip( void );
+void CL_UpdateVoipLevels( void );
+void CL_ParseVoip( msg_t *msg, qboolean ignoreData );
+void CL_WriteVoip( msg_t *msg );
+void CL_InitVoip( void );
+void CL_ShutdownVoip( void );
+void CL_Voip_f( void );
+void CL_VoipCvarInit( void );
 
 // ms; drives both the HUD "talking" icon decay and the VAD hang-over window
 #define VOIP_TALKING_TIMEOUT		500

@@ -605,8 +605,8 @@ void SCR_DrawVoipMeter( void ) {
 
 	if (!cl_voipShowMeter->integer)
 		return;  // player doesn't want to show meter at all.
-	else if (!cl_voipSend->integer)
-		return;  // not recording at the moment.
+	else if (!cl_voipCapture->integer)
+		return;  // capture device not open.
 	else if (clc.state != CA_ACTIVE)
 		return;  // not connected to a server.
 	else if (!clc.voipEnabled)

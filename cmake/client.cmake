@@ -22,6 +22,7 @@ set(CLIENT_SOURCES
     ${SOURCE_DIR}/client/cl_parse.c
     ${SOURCE_DIR}/client/cl_scrn.c
     ${SOURCE_DIR}/client/cl_ui.c
+    ${SOURCE_DIR}/client/cl_voip.c
     ${SOURCE_DIR}/client/cl_avi.c
     ${SOURCE_DIR}/client/cl_trinity.c
     ${SOURCE_DIR}/client/cl_trinity_rconset.c
