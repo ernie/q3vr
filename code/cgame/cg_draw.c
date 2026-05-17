@@ -29,6 +29,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 extern vr_clientinfo_t *vr;
 
+#define VOIP_SPEAKER_DISPLAY_TIME	1000
+#define VOIP_SPEAKER_FADE_TIME		300
+#define VOIP_SPEAKER_ICON_SIZE		8
+
 #ifdef MISSIONPACK
 #include "../ui/ui_shared.h"
 
@@ -671,10 +675,11 @@ static void CG_DrawStatusBar( void ) {
 		float bsz = headsize * 0.35f;
 		float bx = headx + headsize - bsz;
 		float by = heady + headsize - bsz;
+		int cn;
 
 		if ( cg.demoPlayback || cgs.tvPlayback ) {
 			// during playback, use channel info from engine for followed player
-			int cn = cg.snap->ps.clientNum;
+			cn = cg.snap->ps.clientNum;
 			transmitting = cg.voipTalking[cn];
 			muted = qfalse;	// remote players' self-mute state is not on the wire
 			if ( cgs.voipVersion >= 2 && cg.voipChannel[cn] ) {
@@ -683,8 +688,13 @@ static void CG_DrawStatusBar( void ) {
 				VectorSet( txColor, 1.0f, 1.0f, 1.0f );
 			}
 		} else {
+			cn = cg.clientNum;
 			(void)CG_GetVoipChannelColor( txColor );
-			transmitting = cg.voipTalking[cg.clientNum];
+			// Show as transmitting during the active state OR briefly after, to bridge
+			// VAD-utterance gaps. Mirrors the talker-list's existing fade window.
+			transmitting = cg.voipTalking[cn] ||
+				( cg.voipTalkingTime[cn] &&
+				  cg.time - cg.voipTalkingTime[cn] < VOIP_SPEAKER_DISPLAY_TIME );
 			muted = CG_LocalVoipMuted();
 		}
 
@@ -692,7 +702,7 @@ static void CG_DrawStatusBar( void ) {
 			iconShader = cgs.media.speakerMutedShader;
 			txColor[3] = 0.5f;
 		} else if ( transmitting ) {
-			iconShader = cgs.media.speakerShader;
+			iconShader = CG_VoipSpeakerShader( cg.voipLevel[cn] );
 			txColor[3] = 0.5f + 0.3f * sin( cg.time * 0.008f );
 		} else {
 			iconShader = cgs.media.speakerIdleShader;
@@ -1299,6 +1309,23 @@ qboolean CG_GetVoipChannelColor( vec3_t color ) {
 
 /*
 =====================
+CG_VoipSpeakerShader
+
+Pick a speaker shader for a given level value (0-4). Level 0 returns the idle
+shader (used both for "not transmitting" and "transmitting but silent" — the
+caller distinguishes those by checking cg.voipTalking[i]). Levels 1-4 return
+the corresponding speakerLevelShader entry.
+=====================
+*/
+qhandle_t CG_VoipSpeakerShader( int level ) {
+	if ( level <= 0 ) return cgs.media.speakerIdleShader;
+	if ( level > 4 )  level = 4;
+	return cgs.media.speakerLevelShader[level - 1];
+}
+
+
+/*
+=====================
 CG_LocalVoipMuted
 
 True when the local player has muted their VAD mic; inert in PTT mode.
@@ -1341,10 +1368,6 @@ Show a stack of player names for active VOIP speakers.
 Fades out 300ms after they stop talking.
 =====================
 */
-#define VOIP_SPEAKER_DISPLAY_TIME	1000
-#define VOIP_SPEAKER_FADE_TIME		300
-#define VOIP_SPEAKER_ICON_SIZE		8
-
 static float CG_DrawVoipSpeakers( float y ) {
 	int		i;
 	float	x;
@@ -1398,7 +1421,7 @@ static float CG_DrawVoipSpeakers( float y ) {
 			iconColor[3] = fadeColor[3];
 			trap_R_SetColor( iconColor );
 			CG_DrawPic( x + 2, y + 1, VOIP_SPEAKER_ICON_SIZE, VOIP_SPEAKER_ICON_SIZE,
-				cg.voipTalking[i] ? cgs.media.speakerShader : cgs.media.speakerIdleShader );
+				CG_VoipSpeakerShader( cg.voipLevel[i] ) );
 			trap_R_SetColor( NULL );
 		}
 
@@ -3145,7 +3168,7 @@ static void CG_DrawScoreboardVoipBadges( menuDef_t *menu ) {
 				(void)CG_GetVoipChannelColor( voipColor );
 				talking = cg.voipTalking[cg.clientNum];
 				voipColor[3] = talking ? 0.8f : 0.2f;
-				voipIcon = talking ? cgs.media.speakerShader : cgs.media.speakerIdleShader;
+				voipIcon = talking ? CG_VoipSpeakerShader( cg.voipLevel[cg.clientNum] ) : cgs.media.speakerIdleShader;
 			} else if ( cg.voipTalking[sp->client] ) {
 				if ( cgs.voipVersion >= 2 && cg.voipChannel[sp->client] ) {
 					CG_VoipChannelFlagsToColor( cg.voipChannel[sp->client], voipColor );
@@ -3153,7 +3176,7 @@ static void CG_DrawScoreboardVoipBadges( menuDef_t *menu ) {
 					VectorSet( voipColor, 1.0f, 1.0f, 1.0f );
 				}
 				voipColor[3] = 0.8f;
-				voipIcon = cgs.media.speakerShader;
+				voipIcon = CG_VoipSpeakerShader( cg.voipLevel[sp->client] );
 			} else {
 				voipColor[0] = 1.0f; voipColor[1] = 1.0f;
 				voipColor[2] = 1.0f; voipColor[3] = 0.2f;

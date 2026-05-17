@@ -258,15 +258,73 @@ static void CG_ParseHexBitmask( const char *hex, qboolean *out, int count ) {
 	}
 }
 
-void CG_UpdateVoipTalkingState( void ) {
-	char value[MAX_CLIENTS / 4 + 2];
-	int i;
+/*
+=====================
+CG_UpdateVoipLevels
 
-	if ( trap_GetValue( value, sizeof( value ), "voip_talking" ) ) {
-		CG_ParseHexBitmask( value, cg.voipTalking, MAX_CLIENTS );
-	} else {
+Decompose the engine's cl_voipLevel (local self) and cl_voipLevels (per-client
+hex digits) into separate "is transmitting" (cg.voipTalking[i]) and "shader
+level" (cg.voipLevel[i]) signals. Called once per frame from cg_view.c.
+
+Encoding: cvar digit 0 = inactive/stale, digit 1 = active+silent, digits 2-5 =
+active + level 1-4. Decomposes to voipTalking = (digit > 0), voipLevel =
+max(0, digit - 1).
+=====================
+*/
+void CG_UpdateVoipLevels( void ) {
+	char value[MAX_CLIENTS + 2];
+	int i;
+	int d;
+	qboolean playback = (qboolean)( cg.demoPlayback || cgs.tvPlayback );
+
+	// Local self from cg_voipLevel (single integer 0-5). Only valid during live play —
+	// during demo/TV playback there's no local capture and cl_voipLevel stays 0, while
+	// cg.clientNum tracks the followed player whose received audio data is in the
+	// cl_voipLevels per-client string (engine populates that slot during playback).
+	if ( !playback ) {
+		d = cg_voipLevel.integer;
+		if ( d < 0 ) d = 0;
+		if ( d > 5 ) d = 5;
+		cg.voipTalking[cg.clientNum] = (d > 0);
+		cg.voipLevel[cg.clientNum]   = (d > 1) ? (d - 1) : 0;
+	}
+
+	// Per-client received from cl_voipLevels (MAX_CLIENTS hex digits). During playback
+	// we also parse the cg.clientNum slot (the followed player); during live play we
+	// skip it because cg_voipLevel above is the authoritative self signal.
+	trap_Cvar_VariableStringBuffer( "cl_voipLevels", value, sizeof( value ) );
+	{
+		int len = (int) strlen( value );
 		for ( i = 0; i < MAX_CLIENTS; i++ ) {
-			cg.voipTalking[i] = qfalse;
+			if ( i == cg.clientNum && !playback ) continue;  // self handled above (live only)
+
+			if ( i < len ) {
+				char c = value[i];
+				if ( c >= '0' && c <= '9' ) {
+					d = c - '0';
+				} else if ( c >= 'a' && c <= 'f' ) {
+					d = 10 + (c - 'a');
+				} else if ( c >= 'A' && c <= 'F' ) {
+					d = 10 + (c - 'A');
+				} else {
+					d = 0;
+				}
+				if ( d < 0 ) d = 0;
+				if ( d > 5 ) d = 5;
+			} else {
+				d = 0;
+			}
+
+			cg.voipTalking[i] = (d > 0);
+			cg.voipLevel[i]   = (d > 1) ? (d - 1) : 0;
+		}
+	}
+
+	// Refresh fade timestamps for any active slot — drives the talker-list fade
+	// window. Updates even when the talker list isn't drawn (intentional fix).
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		if ( cg.voipTalking[i] ) {
+			cg.voipTalkingTime[i] = cg.time;
 		}
 	}
 }
@@ -908,8 +966,11 @@ static void CG_RegisterGraphics( void ) {
 	cgs.media.smoke2 = trap_R_RegisterModel( "models/weapons2/shells/s_shell.md3" );
 
 	cgs.media.balloonShader = trap_R_RegisterShader( "sprites/balloon3" );
-	cgs.media.speakerShader = trap_R_RegisterShader( "gfx/2d/speaker" );
 	cgs.media.speakerIdleShader = trap_R_RegisterShader( "gfx/2d/speaker_idle" );
+	cgs.media.speakerLevelShader[0] = trap_R_RegisterShader( "gfx/2d/speaker_level1" );
+	cgs.media.speakerLevelShader[1] = trap_R_RegisterShader( "gfx/2d/speaker_level2" );
+	cgs.media.speakerLevelShader[2] = trap_R_RegisterShader( "gfx/2d/speaker_level3" );
+	cgs.media.speakerLevelShader[3] = trap_R_RegisterShader( "gfx/2d/speaker_level4" );
 	cgs.media.speakerMutedShader = trap_R_RegisterShader( "gfx/2d/speaker_muted" );
 
 	cgs.media.bloodExplosionShader = trap_R_RegisterShader( "bloodExplosion" );

@@ -1505,9 +1505,10 @@ static void CG_DrawPlayerVoipBadge(rectDef_t *rect) {
 	qboolean transmitting;
 	qboolean muted;
 	qhandle_t iconShader;
+	int cn;
 
 	if (cg.demoPlayback || cgs.tvPlayback) {
-		int cn = cg.snap->ps.clientNum;
+		cn = cg.snap->ps.clientNum;
 		transmitting = cg.voipTalking[cn];
 		muted = qfalse;
 		if (cgs.voipVersion >= 2 && cg.voipChannel[cn]) {
@@ -1516,8 +1517,9 @@ static void CG_DrawPlayerVoipBadge(rectDef_t *rect) {
 			VectorSet(txColor, 1.0f, 1.0f, 1.0f);
 		}
 	} else {
+		cn = cg.clientNum;
 		(void)CG_GetVoipChannelColor(txColor);
-		transmitting = cg.voipTalking[cg.clientNum];
+		transmitting = cg.voipTalking[cn];
 		muted = CG_LocalVoipMuted();
 	}
 
@@ -1525,7 +1527,7 @@ static void CG_DrawPlayerVoipBadge(rectDef_t *rect) {
 		iconShader = cgs.media.speakerMutedShader;
 		txColor[3] = 0.5f;
 	} else if (transmitting) {
-		iconShader = cgs.media.speakerShader;
+		iconShader = CG_VoipSpeakerShader( cg.voipLevel[cn] );
 		txColor[3] = 0.5f + 0.3f * sin(cg.time * 0.008f);
 	} else {
 		iconShader = cgs.media.speakerIdleShader;
