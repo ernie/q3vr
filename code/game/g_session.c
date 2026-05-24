@@ -44,11 +44,13 @@ void G_WriteClientSessionData( gclient_t *client ) {
 	const char	*s;
 	const char	*var;
 
-	// Trinity handshake fields (nonce/time/verified) are appended after
-	// the stock seven session ints. The nonce is serialized as either
-	// the 31-hex-char value or a single "-" sentinel when unset, so the
-	// column count stays fixed for the reader's sscanf format.
-	s = va("%i %i %i %i %i %i %i %s %i %i",
+	// Trinity handshake fields (nonce/time/responded/usertype/announcedJoin)
+	// are appended after the stock seven session ints. The nonce is
+	// serialized as either the 31-hex-char value or a single "-" sentinel
+	// when unset, so the column count stays fixed for the reader's sscanf
+	// format. pendingAnnounceJoin is intentionally NOT serialized -- it's
+	// an ephemeral G_RunFrame queue marker, not persistent state.
+	s = va("%i %i %i %i %i %i %i %s %i %i %i %i",
 		client->sess.sessionTeam,
 		client->sess.spectatorNum,
 		client->sess.spectatorState,
@@ -58,7 +60,9 @@ void G_WriteClientSessionData( gclient_t *client ) {
 		client->sess.teamLeader,
 		client->sess.handshakeNonce[0] ? client->sess.handshakeNonce : "-",
 		client->sess.handshakeTime,
-		(int)client->sess.trinityVerified
+		(int)client->sess.handshakeResponded,
+		client->sess.trinityUserType,
+		(int)client->sess.announcedJoin
 		);
 
 	var = va( "session%i", (int)(client - level.clients) );
@@ -81,19 +85,29 @@ void G_ReadSessionData( gclient_t *client ) {
 	int sessionTeam;
 	char nonceIn[32];
 	int  handshakeTimeIn;
-	int  trinityVerifiedIn;
+	int  handshakeRespondedIn;
+	int  trinityUserTypeIn;
+	int  announcedJoinIn;
 
 	var = va( "session%i", (int)(client - level.clients) );
 	trap_Cvar_VariableStringBuffer( var, s, sizeof(s) );
 
-	// Initialize trinity locals so a pre-port (7-field) or otherwise
-	// truncated cvar lands us at the safe "not verified" state.
+	// Initialize trinity locals so a pre-port (7-field, or 10-field
+	// pre-refactor) or otherwise truncated cvar lands us at the safe
+	// "not authed / not handshook" state. A truncated read leaves
+	// trailing locals at zero, which is the right default for every
+	// one of these flags.
 	nonceIn[0] = '-';
 	nonceIn[1] = '\0';
 	handshakeTimeIn = 0;
-	trinityVerifiedIn = 0;
+	handshakeRespondedIn = 0;
+	trinityUserTypeIn = 0;
+	announcedJoinIn = 0;
 
-	sscanf( s, "%i %i %i %i %i %i %i %31s %i %i",
+	// Stock seven ints first, then the five Trinity fields:
+	// nonce, handshakeTime, handshakeResponded, trinityUserType,
+	// announcedJoin.
+	sscanf( s, "%i %i %i %i %i %i %i %31s %i %i %i %i",
 		&sessionTeam,
 		&client->sess.spectatorNum,
 		&spectatorState,
@@ -103,7 +117,9 @@ void G_ReadSessionData( gclient_t *client ) {
 		&teamLeader,
 		nonceIn,
 		&handshakeTimeIn,
-		&trinityVerifiedIn
+		&handshakeRespondedIn,
+		&trinityUserTypeIn,
+		&announcedJoinIn
 		);
 
 	client->sess.sessionTeam = (team_t)sessionTeam;
@@ -118,7 +134,11 @@ void G_ReadSessionData( gclient_t *client ) {
 		Q_strncpyz( client->sess.handshakeNonce, nonceIn, sizeof( client->sess.handshakeNonce ) );
 	}
 	client->sess.handshakeTime = handshakeTimeIn;
-	client->sess.trinityVerified = trinityVerifiedIn ? qtrue : qfalse;
+	client->sess.handshakeResponded = handshakeRespondedIn ? qtrue : qfalse;
+	// Clamp to non-negative -- a manually-tampered cvar with a negative
+	// value should not project as a special enum state.
+	client->sess.trinityUserType = trinityUserTypeIn < 0 ? 0 : trinityUserTypeIn;
+	client->sess.announcedJoin = announcedJoinIn ? qtrue : qfalse;
 }
 
 
@@ -201,7 +221,10 @@ void G_InitSessionData( gclient_t *client, const char *team, qboolean isBot ) {
 	// reader, when level.newSession is set).
 	sess->handshakeNonce[0] = '\0';
 	sess->handshakeTime = 0;
-	sess->trinityVerified = qfalse;
+	sess->handshakeResponded = qfalse;
+	sess->trinityUserType = 0;
+	sess->announcedJoin = qfalse;
+	sess->pendingAnnounceJoin = qfalse;
 
 	G_WriteClientSessionData( client );
 }

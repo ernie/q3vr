@@ -1407,6 +1407,31 @@ void CheckExitRules( void ) {
 			}
 			trap_SendServerCommand( -1, "print \"Timelimit hit.\n\"" );
 			LogExit( "Timelimit hit." );
+
+			// On timelimit in FFA/1v1, identify the winner by highest score
+			// and announce. Skipped for team games (no single-player winner).
+			// No ScoreIsTied() check needed -- the tied case branched into
+			// overtime earlier in this function, so reaching here implies
+			// a unique winner exists.
+			if ( g_gametype.integer == GT_FFA || g_gametype.integer == GT_TOURNAMENT ) {
+				int		j, bestScore, bestClient;
+				gclient_t *winCl;
+				bestScore = -999999;
+				bestClient = -1;
+				for ( j = 0; j < level.maxclients; j++ ) {
+					winCl = level.clients + j;
+					if ( winCl->pers.connected != CON_CONNECTED ) continue;
+					if ( winCl->sess.sessionTeam != TEAM_FREE ) continue;
+					if ( winCl->ps.persistant[PERS_SCORE] > bestScore ) {
+						bestScore = winCl->ps.persistant[PERS_SCORE];
+						bestClient = j;
+					}
+				}
+				if ( bestClient >= 0 ) {
+					G_TrinityAnnounceWinner( bestClient );
+				}
+			}
+
 			return;
 		}
 	}
@@ -1448,6 +1473,10 @@ void CheckExitRules( void ) {
 				LogExit( "Fraglimit hit." );
 				trap_SendServerCommand( -1, va("print \"%s" S_COLOR_WHITE " hit the fraglimit.\n\"",
 					cl->pers.netname ) );
+
+				// Trinity win announcement for the winning client. No-op
+				// if not verified. cl - level.clients is the winner's clientNum.
+				G_TrinityAnnounceWinner( cl - level.clients );
 				return;
 			}
 		}
@@ -2045,12 +2074,15 @@ void G_RunFrame( int levelTime ) {
 	// for tracking changes
 	CheckCvars();
 
-	// Trinity handshake: send pending challenges and kick unverified clients
+	// Trinity handshake: send pending challenges and kick clients
+	// that don't respond to the protocol challenge within 10s.
+	// Identity verification (trinityUserType) is separate -- set by
+	// the trinity_auth_ok rcon, not by this loop.
 	if ( g_trinityHandshake.integer ) {
 		for ( i = 0; i < level.maxclients; i++ ) {
 			gclient_t *cl = &level.clients[i];
 			if ( cl->pers.connected != CON_CONNECTED ||
-			     cl->sess.trinityVerified ||
+			     cl->sess.handshakeResponded ||
 			     !cl->sess.handshakeTime ||
 			     ( g_entities[i].r.svFlags & SVF_BOT ) ) {
 				continue;
@@ -2071,6 +2103,11 @@ void G_RunFrame( int levelTime ) {
 			}
 		}
 	}
+
+	// Trinity announcements: emit any queued join broadcasts. Deferred
+	// from ClientBegin so the local client on a listen server is past
+	// its serverCommandSequence baseline by the time commands fire.
+	G_TrinityProcessAnnouncements();
 
 	if (g_listEntity.integer) {
 		for (i = 0; i < MAX_GENTITIES; i++) {

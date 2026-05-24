@@ -1753,8 +1753,8 @@ static void Cmd_TrinityHandshake_f( gentity_t *ent ) {
 		return;
 	}
 
-	if ( client->sess.trinityVerified ) {
-		return;  // already verified
+	if ( client->sess.handshakeResponded ) {
+		return;  // already handshook this connection
 	}
 
 	if ( trap_Argc() < 5 ) {
@@ -1788,7 +1788,13 @@ static void Cmd_TrinityHandshake_f( gentity_t *ent ) {
 		return;
 	}
 
-	client->sess.trinityVerified = qtrue;
+	// Protocol handshake completed. We do NOT set trinityUserType here --
+	// that flips only when the tracker confirms identity by emitting
+	// trinity_auth_ok via rcon. handshakeResponded is what the 10s
+	// timeout watches; setting it stops the timer from kicking us.
+	// Announcement and CS_PLAYERS update happen in the trinity_auth_ok
+	// handler, not here.
+	client->sess.handshakeResponded = qtrue;
 
 	// Log handshake for tracker
 	if ( username[0] ) {

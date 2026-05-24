@@ -535,6 +535,9 @@ static void CG_MapRestart( void ) {
 
 	cg.rewardTime = 0;
 	cg.rewardStack = 0;
+	cg.trinityAnnounceIn = 0;
+	cg.trinityAnnounceOut = 0;
+	cg.trinityAnnounceTime = 0;
 	cg.intermissionStarted = qfalse;
 	cg.levelShot = qfalse;
 
@@ -1073,6 +1076,24 @@ static void CG_ServerCommand( void ) {
 
 	if ( !cmd[0] ) {
 		// server claimed the command
+		return;
+	}
+
+	if ( !strcmp( cmd, "tann" ) ) {
+		if ( trap_Argc() >= 3 ) {
+			char	subtype;
+			int		clientNum;
+
+			// Copy the subtype char immediately -- CG_Argv buffers may be
+			// reused across calls in some engines, so don't keep a pointer
+			// from CG_Argv(1) while calling CG_Argv(2).
+			subtype = CG_Argv( 1 )[0];
+			clientNum = atoi( CG_Argv( 2 ) );
+
+			if ( subtype ) {
+				CG_TrinityAnnounce_Play( subtype, clientNum );
+			}
+		}
 		return;
 	}
 

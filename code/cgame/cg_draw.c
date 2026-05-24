@@ -4519,6 +4519,11 @@ void CG_ResetSeekState( void ) {
 	cg.rewardStack = 0;
 	cg.rewardTime = 0;
 
+	// Trinity announcement queue
+	cg.trinityAnnounceIn = 0;
+	cg.trinityAnnounceOut = 0;
+	cg.trinityAnnounceTime = 0;
+
 	// Center print — CG_DrawCenterString: CG_FadeColor(centerPrintTime, 1000*cg_centertime)
 	cg.centerPrintTime = 0;
 
@@ -4572,6 +4577,12 @@ void CG_ResetSeekState( void ) {
 	// Flush queued announcer sounds (e.g. stale "Excellent!")
 	CG_AddBufferedSound( -1 );
 
+	// Buffered-sound gate -- leaving the old value here means any sound
+	// that played in a forward-of-here timeline pushes cg.soundTime into
+	// our future, blocking both the buffered queue and the Trinity tick
+	// until cg.time catches up (which it never does after a backward seek).
+	cg.soundTime = 0;
+
 	// Force VR head-tracking EMA to re-seed from the new timeline
 	cg.vrViewInitialized = qfalse;
 }
@@ -4594,7 +4605,11 @@ void CG_WarmupEvent( void ) {
 
 	cg.rewardStack = 0;
 	cg.rewardTime = 0;
-	
+
+	cg.trinityAnnounceIn = 0;
+	cg.trinityAnnounceOut = 0;
+	cg.trinityAnnounceTime = 0;
+
 	cg.weaponSelectTime = cg.time;
 
 	cg.lowAmmoWarning = 0;

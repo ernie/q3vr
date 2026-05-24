@@ -161,5 +161,6 @@ CG_CVAR( cg_voteYesKey, "cl_voteYesKey", "", CVAR_ROM )
 CG_CVAR( cg_voteNoKey, "cl_voteNoKey", "", CVAR_ROM )
 
 CG_CVAR( cg_trueShotgun, "cg_trueShotgun", "0", CVAR_ARCHIVE )
+CG_CVAR( cg_trinityAnnounce, "cg_trinityAnnounce", "1", CVAR_ARCHIVE )
 
 #undef CG_CVAR

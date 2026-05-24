@@ -854,21 +854,27 @@ void ClientUserinfoChanged( int clientNum ) {
 	
 	// send over a subset of the userinfo keys so other clients can
 	// print scoreboards, display models, and play custom sounds
+	// tu enum: 0 = not authenticated, 1 = verified user, 2 = admin.
+	// Higher values reserved (and projected through as-is so any future
+	// reader that knows about them sees the real value). Bots can't
+	// authenticate against the hub so they're always tu\0.
 	if (ent->r.svFlags & SVF_BOT)
 	{
-		s = va("n\\%s\\t\\%i\\model\\%s\\hmodel\\%s\\c1\\%s\\c2\\%s\\hc\\%i\\w\\%i\\l\\%i\\skill\\%s\\tt\\%d\\tl\\%d",
+		s = va("n\\%s\\t\\%i\\model\\%s\\hmodel\\%s\\c1\\%s\\c2\\%s\\hc\\%i\\w\\%i\\l\\%i\\skill\\%s\\tt\\%d\\tl\\%d\\tu\\%i",
 			client->pers.netname, client->sess.sessionTeam, model, headModel, c1, c2,
 			client->pers.maxHealth, client->sess.wins, client->sess.losses,
-			Info_ValueForKey( userinfo, "skill" ), teamTask, teamLeader );
+			Info_ValueForKey( userinfo, "skill" ), teamTask, teamLeader,
+			client->sess.trinityUserType );
 	}
 	else
 	{
 		const char *voipProto = Info_ValueForKey( userinfo, "cl_voipProtocol" );
-		s = va("n\\%s\\t\\%i\\model\\%s\\hmodel\\%s\\g_redteam\\%s\\g_blueteam\\%s\\c1\\%s\\c2\\%s\\hc\\%i\\w\\%i\\l\\%i\\tt\\%d\\tl\\%d\\vr\\%s\\voip\\%s",
+		s = va("n\\%s\\t\\%i\\model\\%s\\hmodel\\%s\\g_redteam\\%s\\g_blueteam\\%s\\c1\\%s\\c2\\%s\\hc\\%i\\w\\%i\\l\\%i\\tt\\%d\\tl\\%d\\vr\\%s\\voip\\%s\\tu\\%i",
 			client->pers.netname, client->sess.sessionTeam, model, headModel, redTeam, blueTeam, c1, c2,
 			client->pers.maxHealth, client->sess.wins, client->sess.losses, teamTask, teamLeader,
 			Info_ValueForKey( userinfo, "vr" )[0] ? "1" : "0",
-			*voipProto ? voipProto : "");
+			*voipProto ? voipProto : "",
+			client->sess.trinityUserType );
 	}
 
 	trap_SetConfigstring( CS_PLAYERS+clientNum, s );
@@ -1037,12 +1043,18 @@ void ClientBegin( int clientNum ) {
 		if ( g_gametype.integer != GT_TOURNAMENT  ) {
 			trap_SendServerCommand( -1, va("print \"%s" S_COLOR_WHITE " entered the game\n\"", client->pers.netname) );
 		}
+
+		// Trinity join announcement for already-verified players coming back
+		// after a map rotation or switching from spectator to playing. The
+		// helper is idempotent -- bails if announcedJoin is set.
+		G_TrinityMaybeAnnounceJoin( ent );
 	}
 	// Trinity handshake: generate nonce, challenge sent from G_RunFrame.
-	// trinityVerified lives in sess so it really does persist across
-	// map changes -- G_InitGame's g_clients memset wipes pers but sess
-	// is restored from the session<N> cvar by G_ReadSessionData.
-	if ( g_trinityHandshake.integer && !client->sess.trinityVerified && !( ent->r.svFlags & SVF_BOT ) ) {
+	// handshakeResponded persists across map rotation via the session<N>
+	// cvar, so a client that already completed the protocol handshake on
+	// a prior map doesn't re-handshake here. trinityUserType (identity,
+	// set by trinity_auth_ok rcon) persists the same way.
+	if ( g_trinityHandshake.integer && !client->sess.handshakeResponded && !( ent->r.svFlags & SVF_BOT ) ) {
 		int j;
 		int hs_seed = trap_Milliseconds() ^ ( clientNum * 65537 );
 
