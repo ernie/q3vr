@@ -303,31 +303,6 @@ const char *G_GetArenaInfoByMap( const char *map ) {
 
 
 /*
-=================
-PlayerIntroSound
-=================
-*/
-static void PlayerIntroSound( const char *modelAndSkin ) {
-	char	model[MAX_QPATH];
-	char	*skin;
-
-	Q_strncpyz( model, modelAndSkin, sizeof(model) );
-	skin = strrchr( model, '/' );
-	if ( skin ) {
-		*skin++ = '\0';
-	}
-	else {
-		skin = model;
-	}
-
-	if( Q_stricmp( skin, "default" ) == 0 ) {
-		skin = model;
-	}
-
-	trap_SendConsoleCommand( EXEC_APPEND, va( "play sound/player/announce/%s.wav\n", skin ) );
-}
-
-/*
 ===============
 G_CountBotPlayersByName
 
@@ -672,7 +647,6 @@ G_CheckBotSpawn
 */
 void G_CheckBotSpawn( void ) {
 	int		n;
-	char	userinfo[MAX_INFO_VALUE];
 
 	G_CheckMinimumPlayers();
 
@@ -685,11 +659,6 @@ void G_CheckBotSpawn( void ) {
 		}
 		ClientBegin( botSpawnQueue[n].clientNum );
 		botSpawnQueue[n].spawnTime = 0;
-
-		if( g_gametype.integer == GT_SINGLE_PLAYER ) {
-			trap_GetUserinfo( botSpawnQueue[n].clientNum, userinfo, sizeof(userinfo) );
-			PlayerIntroSound( Info_ValueForKey (userinfo, "model") );
-		}
 	}
 }
 
