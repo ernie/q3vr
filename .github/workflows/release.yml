@@ -134,6 +134,7 @@ jobs:
           mkdir -p trinity-assets
           gh release download --repo ernie/trinity --pattern 'pak8t.pk3' --dir trinity-assets
           gh release download --repo ernie/trinity --pattern 'pak3t.pk3' --dir trinity-assets
+          gh release download --repo ernie/trinity --pattern 'zzz-trinity-announcer.pk3' --dir trinity-assets
 
       - name: Bundle Trinity assets
         run: |
@@ -142,6 +143,7 @@ jobs:
               echo "Bundling Trinity assets into $dir/"
               find "$dir" -type d -name baseq3 -exec cp trinity-assets/pak8t.pk3 {} \;
               find "$dir" -type d -name missionpack -exec cp trinity-assets/pak3t.pk3 {} \;
+              find "$dir" -type d -name baseq3 -exec cp trinity-assets/zzz-trinity-announcer.pk3 {} \;
             fi
           done
 

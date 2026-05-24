@@ -337,6 +337,40 @@ qboolean FS_Initialized( void ) {
 
 /*
 =================
+FS_TrinityPakIndex
+=================
+*/
+static int FS_TrinityPakIndex( pack_t *pack ) {
+	static const char *trinityPaks[] = {
+		"pak8t", "pak3t", "zzz-trinity-announcer"
+	};
+	int t, i;
+	const char *base;
+	int baseLen;
+
+	for ( t = 0; t < ARRAY_LEN( trinityPaks ); t++ ) {
+		base = trinityPaks[t];
+		baseLen = (int)strlen( base );
+
+		if ( Q_stricmpn( pack->pakBasename, base, baseLen ) != 0 )
+			continue;
+		if ( pack->pakBasename[baseLen] != '\0' &&
+		     pack->pakBasename[baseLen] != '.' )
+			continue;
+
+		for ( i = 0; i < fs_numServerReferencedPaks; i++ ) {
+			if ( !fs_serverReferencedPakNames[i] )
+				continue;
+			if ( !Q_stricmp( fs_serverReferencedPakNames[i],
+			                 va( "%s/%s", pack->pakGamename, base ) ) )
+				return i;
+		}
+	}
+	return -1;
+}
+
+/*
+=================
 FS_PakIsPure
 =================
 */
@@ -345,15 +379,19 @@ qboolean FS_PakIsPure( pack_t *pack ) {
 
 	if ( fs_numServerPaks ) {
 		for ( i = 0 ; i < fs_numServerPaks ; i++ ) {
-			// FIXME: also use hashed file names
-			// NOTE TTimo: a pk3 with same checksum but different name would be validated too
-			//   I don't see this as allowing for any exploit, it would only happen if the client does manips of its file names 'not a bug'
 			if ( pack->checksum == fs_serverPaks[i] ) {
-				return qtrue;		// on the aproved list
+				return qtrue;
 			}
 		}
-		return qfalse;	// not on the pure server pak list
+		return qfalse;
 	}
+
+	if ( fs_numServerReferencedPaks ) {
+		i = FS_TrinityPakIndex( pack );
+		if ( i >= 0 && pack->checksum != (int)fs_serverReferencedPaks[i] )
+			return qfalse;
+	}
+
 	return qtrue;
 }
 
