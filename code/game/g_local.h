@@ -726,6 +726,7 @@ void Team_ResetFlags( void );
 //
 void G_TrinityMaybeAnnounceJoin( gentity_t *ent );
 void G_TrinityAnnounceWinner( int clientNum );
+void G_TrinityAnnounceTeamWinner( int team );
 void G_TrinityProcessAnnouncements( void );
 
 //

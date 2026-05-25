@@ -1615,6 +1615,7 @@ void CG_VoteSubmit( qboolean yes );
 // cg_trinity_announce.c
 //
 void CG_TrinityAnnounce_Play( char subtype, int clientNum );
+void CG_TrinityAnnounce_PlayTeam( int team );
 void CG_TrinityAnnounce_Tick( void );
 
 //

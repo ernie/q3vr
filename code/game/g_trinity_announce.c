@@ -1,7 +1,7 @@
 // Trinity-verified player announcement broadcast.
-// Server emits a "tann <j|w> <clientNum>" reliable server command at the
-// moment an announcement should play. Client (cg_trinity_announce.c)
-// resolves the filename and plays the sound.
+// Server emits a "tann <j|w> <clientNum>" or "tann t <r|b>" reliable
+// server command at the moment an announcement should play. Client
+// (cg_trinity_announce.c) resolves the filename and plays the sound.
 
 #include "g_local.h"
 
@@ -54,6 +54,24 @@ void G_TrinityMaybeAnnounceJoin( gentity_t *ent ) {
 // final frag. -1 means "nothing pending".
 static int trinityPendingWinClient = -1;
 static int trinityPendingWinFireTime = 0;
+
+// Parallel pending state for team-game winners.
+static int trinityPendingWinTeam = -1;
+static int trinityPendingWinTeamFireTime = 0;
+
+static void G_TrinityBroadcastTeamWinner( int team ) {
+	char tok;
+
+	if ( team == TEAM_RED ) {
+		tok = 'r';
+	} else if ( team == TEAM_BLUE ) {
+		tok = 'b';
+	} else {
+		return;
+	}
+
+	trap_SendServerCommand( -1, va("tann t %c", tok) );
+}
 
 static void G_TrinityBroadcastWinner( int clientNum ) {
 	gentity_t *ent;
@@ -139,6 +157,12 @@ void G_TrinityProcessAnnouncements( void ) {
 		G_TrinityBroadcastWinner( trinityPendingWinClient );
 		trinityPendingWinClient = -1;
 	}
+
+	if ( trinityPendingWinTeam >= 0 &&
+	     level.time >= trinityPendingWinTeamFireTime ) {
+		G_TrinityBroadcastTeamWinner( trinityPendingWinTeam );
+		trinityPendingWinTeam = -1;
+	}
 }
 
 void G_TrinityAnnounceWinner( int clientNum ) {
@@ -157,4 +181,17 @@ void G_TrinityAnnounceWinner( int clientNum ) {
 	// scoreboard fades in (matches BeginIntermission timing in g_main.c).
 	trinityPendingWinClient = clientNum;
 	trinityPendingWinFireTime = level.time + INTERMISSION_DELAY_TIME;
+}
+
+void G_TrinityAnnounceTeamWinner( int team ) {
+	if ( team != TEAM_RED && team != TEAM_BLUE ) {
+		return;
+	}
+	// Skip campaign for symmetry with G_TrinityAnnounceWinner -- the SP
+	// postgame menu plays its own callout.
+	if ( g_gametype.integer == GT_SINGLE_PLAYER ) {
+		return;
+	}
+	trinityPendingWinTeam = team;
+	trinityPendingWinTeamFireTime = level.time + INTERMISSION_DELAY_TIME;
 }
