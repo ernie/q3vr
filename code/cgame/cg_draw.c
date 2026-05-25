@@ -2127,7 +2127,7 @@ static void CG_DrawLagometer( void ) {
 	int		color;
 	float	vscale;
 
-	if ( !cg_lagometer.integer || cgs.localServer ) {
+	if ( !cg_lagometer.integer || cgs.localServer || cg.demoPlayback || cgs.tvPlayback ) {
 		CG_DrawDisconnect();
 		return;
 	}
@@ -2224,7 +2224,7 @@ static void CG_DrawLagometer( void ) {
 		CG_DrawBigString( x, y, "snc", 1.0 );
 	}
 
-	if ( !cg.demoPlayback ) {
+	if ( !cg.demoPlayback && !cgs.tvPlayback ) {
 		CG_DrawString( x+1, y, va( "%ims", cg.meanPing ), colorWhite, 5, 10, 0, DS_PROPORTIONAL );
 	}
 
@@ -3525,14 +3525,21 @@ static void CG_DrawTVTimeline( void ) {
 	int		time, duration;
 	float	frac;
 	int		timeSec, durationSec;
+	vec4_t	dimColor = { 0.0f, 0.0f, 0.0f, 0.6f };
 	vec4_t	bgColor = { 0.0f, 0.0f, 0.0f, 0.5f };
 	vec4_t	fgColor = { 0.8f, 0.8f, 0.2f, 0.7f };
+	vec4_t	lineColor = { 1.0f, 1.0f, 1.0f, 0.9f };
+	float	scrubX;
+	float	scrubFrac;
+	int		scrubMs, scrubSec;
 
 	if ( !cgs.tvPlayback || !cg_tvTimeline.integer ) {
 		return;
 	}
 
-	// Auto-cancel scrub if input capture was lost
+	// Auto-cancel scrub if input capture was lost. Must run before the
+	// early-return below so scrub state never leaks into VR menuYaw /
+	// scoreboard cursor state.
 	if ( cgs.tvScrubActive && !( trap_Key_GetCatcher() & KEYCATCH_CGAME ) ) {
 		cgs.tvScrubActive = qfalse;
 		vr->menuYawLocked = qfalse;
@@ -3541,6 +3548,11 @@ static void CG_DrawTVTimeline( void ) {
 			vr->scoreboardCursorX = NULL;
 			vr->scoreboardCursorY = NULL;
 		}
+	}
+
+	// Timeline only visible while actively scrubbing.
+	if ( !cgs.tvScrubActive ) {
+		return;
 	}
 
 	time = cg_tvTime.integer;
@@ -3553,18 +3565,14 @@ static void CG_DrawTVTimeline( void ) {
 	if ( frac < 0.0f ) frac = 0.0f;
 	if ( frac > 1.0f ) frac = 1.0f;
 
-	// progress bar at screen bottom
+	// dimmed backdrop covering the bar, time readout, and scrub label
+	CG_FillRect( 0, 434, 640, 46, dimColor );
+
+	// bar at screen bottom
 	CG_FillRect( 0, 474, 640, 6, bgColor );
+	CG_FillRect( 0, 474, 640 * frac, 6, fgColor );
 
-	// dim progress fill when scrubbing to emphasize scrub indicator
-	if ( cgs.tvScrubActive ) {
-		vec4_t dimFgColor = { 0.8f, 0.8f, 0.2f, 0.35f };
-		CG_FillRect( 0, 474, 640 * frac, 6, dimFgColor );
-	} else {
-		CG_FillRect( 0, 474, 640 * frac, 6, fgColor );
-	}
-
-	// time text above the bar (right-aligned)
+	// time text above the bar
 	timeSec = time / 1000;
 	durationSec = duration / 1000;
 	CG_DrawString( 636, 474 - SMALLCHAR_HEIGHT,
@@ -3574,48 +3582,22 @@ static void CG_DrawTVTimeline( void ) {
 		colorWhite, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0,
 		DS_SHADOW | DS_RIGHT );
 
-	// scrub indicator (only when actively scrubbing)
-	if ( cgs.tvScrubActive ) {
-		vec4_t	lineColor = { 1.0f, 1.0f, 1.0f, 0.9f };
-		int		scrubX;
-		float	scrubFrac;
-		int		scrubMs, scrubSec;
-		float	textX;
-		int		flags;
-		const char *timeStr;
-		int		textWidth;
+	// scrub indicator
+	scrubX = cgs.cursorX;
+	if ( scrubX < 0.0f ) scrubX = 0.0f;
+	if ( scrubX > 640.0f ) scrubX = 640.0f;
 
-		scrubX = cgs.cursorX;
-		if ( scrubX < 0 ) scrubX = 0;
-		if ( scrubX > 640 ) scrubX = 640;
+	// vertical line extending from timeline bar upward
+	CG_FillRect( scrubX - 1, 474 - 20, 2, 26, lineColor );
 
-		// vertical line extending up from timeline
-		CG_FillRect( scrubX - 1, 454, 2, 26, lineColor );
-
-		// time label above the line, shifted to stay within screen bounds
-		scrubFrac = scrubX / 640.0f;
-		scrubMs = (int)( scrubFrac * duration );
-		scrubSec = scrubMs / 1000;
-		timeStr = va( "%d:%02d", scrubSec / 60, scrubSec % 60 );
-		textWidth = CG_DrawStrlen( timeStr ) * SMALLCHAR_WIDTH;
-
-		textX = (float)scrubX;
-		flags = DS_SHADOW;
-		if ( textX - textWidth / 2 < 0 ) {
-			// near left edge: left-align to avoid clipping
-			textX = 0;
-		} else if ( textX + textWidth / 2 > 640 ) {
-			// near right edge: right-align to avoid clipping
-			textX = 640;
-			flags |= DS_RIGHT;
-		} else {
-			flags |= DS_CENTER;
-		}
-
-		CG_DrawString( textX, 454 - SMALLCHAR_HEIGHT,
-			timeStr, colorWhite, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0,
-			flags );
-	}
+	// time label above the line
+	scrubFrac = scrubX / 640.0f;
+	scrubMs = (int)( scrubFrac * duration );
+	scrubSec = scrubMs / 1000;
+	CG_DrawString( scrubX, 474 - 20 - SMALLCHAR_HEIGHT,
+		va( "%d:%02d", scrubSec / 60, scrubSec % 60 ),
+		colorWhite, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0,
+		DS_SHADOW | DS_CENTER );
 }
 
 /*
