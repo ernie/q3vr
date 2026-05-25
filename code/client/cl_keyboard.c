@@ -349,6 +349,7 @@ VKeyboard_Hide
 void VKeyboard_Hide( void ) {
 	vkb.active = qfalse;
 	vkb.repeatKey = NULL;
+	vkb.clickSound = 0;	// stale across sound-subsystem reset (mod switch, snd_restart)
 	vr.vkbOffhandTriggerDown = qfalse;
 }
 
