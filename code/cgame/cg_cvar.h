@@ -114,8 +114,6 @@ CG_CVAR( cg_blood, "com_blood", "1", CVAR_ARCHIVE )
 CG_CVAR( cg_bloodParticles, "cg_bloodParticles", "0", CVAR_ARCHIVE )
 CG_CVAR( cg_damageEffect, "cg_damageEffect", "0", CVAR_ARCHIVE )
 #ifdef MISSIONPACK
-CG_CVAR( cg_redTeamName, "g_redteam", DEFAULT_REDTEAM_NAME, CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_USERINFO )
-CG_CVAR( cg_blueTeamName, "g_blueteam", DEFAULT_BLUETEAM_NAME, CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_USERINFO )
 CG_CVAR( cg_currentSelectedPlayer, "cg_currentSelectedPlayer", "0", CVAR_ARCHIVE )
 CG_CVAR( cg_currentSelectedPlayerName, "cg_currentSelectedPlayerName", "", CVAR_ARCHIVE )
 CG_CVAR( cg_singlePlayer, "ui_singlePlayerActive", "0", CVAR_USERINFO )
