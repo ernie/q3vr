@@ -430,7 +430,9 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 	float pitch   = j_pitch->value   * cl.joystickAxis[j_pitch_axis->integer];
 	float up      = j_up->value      * cl.joystickAxis[j_up_axis->integer];
 
-	if ( !(in_speed.active ^ cl_run->integer) ) {
+	// Walk/run is driven by analog stick magnitude in VR (see IN_VRJoystick).
+	// vr.walking already accounts for vr_analogWalk being disabled (then it stays false).
+	if ( vr.walking ) {
 		cmd->buttons |= BUTTON_WALKING;
 	}
 

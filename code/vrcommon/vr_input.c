@@ -127,6 +127,7 @@ extern cvar_t *vr_weaponScope;
 extern cvar_t *vr_hapticIntensity;
 extern cvar_t *vr_thumbstickDeadzone;
 extern cvar_t *vr_thumbstickFullDeflection;
+extern cvar_t *vr_analogWalk;
 extern cvar_t *vr_weaponAdjust;
 extern cvar_t *vr_weaponSelectorMode;
 extern cvar_t *vr_6dof;
@@ -1331,6 +1332,34 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
 					joystick[0] *= scaleFactor;
 					joystick[1] *= scaleFactor;
 				}
+			}
+
+			// Analog walk/run: gentle pushes walk silently, firm pushes run (footsteps).
+			// We only decide the BUTTON_WALKING flag here - the emitted axis values are
+			// left untouched, so movement speed stays the same continuous curve and there
+			// is no jolt when crossing the threshold (see CG/server PM_CmdScale).
+			if ( vr_analogWalk->integer )
+			{
+				float maxc = fabsf(joystick[0]) > fabsf(joystick[1]) ? fabsf(joystick[0]) : fabsf(joystick[1]);
+				// The run-line is the server's component=64 boundary (~160 u/s): below it
+				// the player walks silently, above it they run and generate footsteps.
+				// Anchoring here means we never assert a "walking" state the anti-cheat in
+				// bg_pmove.c would override. The flag only gates footsteps/animation - the
+				// emitted axis values are untouched, so speed stays a smooth 0..320 curve.
+				const float runLine = 64.0f / 127.0f; // ~0.5039
+				const float hyst = 0.04f; // asymmetric drop-to-walk band prevents flicker
+				if ( vr.walking )
+				{
+					if ( maxc > runLine ) vr.walking = qfalse;       // crossed up -> run
+				}
+				else
+				{
+					if ( maxc < runLine - hyst ) vr.walking = qtrue; // eased down -> walk
+				}
+			}
+			else
+			{
+				vr.walking = qfalse; // feature off => classic always-run
 			}
 
 			//sideways
