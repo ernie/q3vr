@@ -44,8 +44,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
   #define BASEGAME					"baseq3"
   #define CLIENT_WINDOW_TITLE		"quake3vr"
   #define CLIENT_WINDOW_MIN_TITLE	"q3vr"
-  #define HOMEPATH_NAME_UNIX		".q3a"
-  #define HOMEPATH_NAME_WIN			"Quake3"
+  #define HOMEPATH_NAME_UNIX		".trinityvr"
+  #define HOMEPATH_NAME_WIN			"TrinityVR"
   #define HOMEPATH_NAME_MACOSX		HOMEPATH_NAME_WIN
   #define GAMENAME_FOR_MASTER		"Quake3Arena"
 #if 0
