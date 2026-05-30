@@ -1,4 +1,4 @@
-set(PROJECT_NAME q3vr)
+set(PROJECT_NAME trinityvr)
 set(PROJECT_VERSION 1.0.0)
 
 # Override version from CI tag (GITHUB_REF_NAME) or git tag
@@ -34,8 +34,8 @@ else()
     set(Q3VR_VERSION_STRING "unknown")
 endif()
 
-set(SERVER_NAME q3vr-ded)
-set(CLIENT_NAME q3vr)
+set(SERVER_NAME trinityvr-ded)
+set(CLIENT_NAME trinityvr)
 
 set(BASEGAME baseq3)
 
@@ -44,6 +44,9 @@ set(GAME_MODULE qagame)
 set(UI_MODULE ui)
 
 set(WINDOWS_ICON_PATH ${CMAKE_SOURCE_DIR}/misc/quake3.ico)
+# Secondary icon embedded in the exe (IDI_ICON2) as an opt-in for user-created
+# shortcuts; the default application icon stays WINDOWS_ICON_PATH above.
+set(WINDOWS_ICON2_PATH ${CMAKE_SOURCE_DIR}/misc/trinityvr.ico)
 
 set(MACOS_ICON_PATH ${CMAKE_SOURCE_DIR}/misc/quake3_flat.icns)
 set(MACOS_BUNDLE_ID org.ioquake.${CLIENT_NAME})

@@ -30,7 +30,7 @@ if(USE_RENDERER_DLOPEN)
     list(APPEND RENDERER_DEFINITIONS USE_RENDERER_DLOPEN)
 else()
     # Q3VR: Multiple static renderers are allowed - each creates a separate executable
-    # (q3vr.exe for Vulkan, glq3vr.exe for OpenGL)
+    # (trinityvr.exe for Vulkan, gltrinityvr.exe for OpenGL)
     if(NOT BUILD_RENDERER_GL2 AND NOT BUILD_RENDERER_VK)
         message(FATAL_ERROR "At least one renderer must be enabled (BUILD_RENDERER_GL2 or BUILD_RENDERER_VK)")
     endif()

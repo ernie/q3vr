@@ -59,6 +59,13 @@ IDI_ICON1               ICON    DISCARDABLE     WINDOWS_ICON_PATH
 IDI_ICON1               ICON    DISCARDABLE     "quake3.ico"
 #endif
 
+// Secondary icon embedded for opt-in use by user-created shortcuts (selectable
+// via the shortcut "Change Icon" dialog). IDI_ICON1 above keeps the lowest ID,
+// so it remains the default application icon shown by Explorer and the window.
+#ifdef WINDOWS_ICON2_PATH
+IDI_ICON2               ICON    DISCARDABLE     WINDOWS_ICON2_PATH
+#endif
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
