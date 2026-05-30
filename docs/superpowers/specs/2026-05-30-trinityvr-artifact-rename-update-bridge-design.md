@@ -160,6 +160,21 @@ any old-code `q3vr.exe` that never updated during the window gets a one-time
 "asset not found" and must reinstall. Tracked so the bridge does not linger
 indefinitely.
 
+### F. `.github/workflows/ci.yml` — CI trigger branch + artifact globs
+
+(Added during implementation — the dev branch `renderervk` was renamed to
+`trinity`, and `ci.yml` carried the same stale binary names as `release.yml`.)
+
+- `on.push.branches`: `[renderervk]` → `[trinity]`, so CI fires on the active
+  branch again. (`release.yml` is tag- / `workflow_dispatch`-triggered and was
+  never branch-pinned, so it needed no trigger change.)
+- Upload-artifact globs: `q3vr.exe`/`glq3vr.exe` → `trinityvr.exe`/
+  `gltrinityvr.exe` (windows-mingw), `q3vr`/`glq3vr` → `trinityvr`/`gltrinityvr`
+  (linux). This job has no `if-no-files-found: error`, so the stale names failed
+  *silently* (uploaded no binaries) rather than erroring.
+
+No bridge logic in CI — it produces throwaway 5-day artifacts, not releases.
+
 ## The invariant
 
 For each platform, `UPDATE_ASSET_PREFIX` in code must match the
