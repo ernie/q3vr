@@ -1616,6 +1616,8 @@ void CG_VoteSubmit( qboolean yes );
 //
 void CG_TrinityAnnounce_Play( char subtype, int clientNum );
 void CG_TrinityAnnounce_PlayTeam( int team );
+sfxHandle_t CG_TrinityAnnounce_TeamScoreSound( int team );
+sfxHandle_t CG_TrinityAnnounce_TeamLeadSound( int team );
 void CG_TrinityAnnounce_Tick( void );
 
 //

@@ -51,3 +51,7 @@ profile
 # Cache
 ####################
 .cache/
+
+# Local-only project guidance (never committed)
+####################
+CLAUDE.md
