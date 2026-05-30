@@ -154,11 +154,41 @@ jobs:
           done
           [ -d linux ] && cp misc/update-trinity.sh linux/
 
+      # Transitional bridge: old q3vr installs match the q3vr-* asset and need a
+      # q3vr-named exe in the payload so Sys_ApplyPendingUpdate replaces their
+      # running exe and relaunches into the new code. Remove this step (and the
+      # q3vr-* archive lines below) once the install base has migrated.
+      - name: Create legacy-named binary copies (bridge)
+        run: |
+          for dir in windows-msvc windows-mingw; do
+            if [ -d "$dir" ]; then
+              find "$dir" -name trinityvr.exe   -exec sh -c 'cp "$1" "$(dirname "$1")/q3vr.exe"'   _ {} \;
+              find "$dir" -name gltrinityvr.exe -exec sh -c 'cp "$1" "$(dirname "$1")/glq3vr.exe"' _ {} \;
+            fi
+          done
+          if [ -d linux ]; then
+            find linux -name trinityvr   -exec sh -c 'cp "$1" "$(dirname "$1")/q3vr"'   _ {} \;
+            find linux -name gltrinityvr -exec sh -c 'cp "$1" "$(dirname "$1")/glq3vr"' _ {} \;
+          fi
+
       - name: Create archives
         run: |
+          # Bridge (q3vr-*) archives include the legacy-named exe copies made above.
           7z a -r q3vr-windows-msvc-x86_64.zip    ./windows-msvc/*
           7z a -r q3vr-windows-mingw-x86_64.zip   ./windows-mingw/*
-          7z a -r q3vr-linux-x86_64.zip            ./linux/*
+          7z a -r q3vr-linux-x86_64.zip           ./linux/*
+
+          # Remove the legacy-named copies so the canonical (trinityvr-*) archives stay clean.
+          find windows-msvc  -name 'q3vr.exe'   -delete
+          find windows-msvc  -name 'glq3vr.exe' -delete
+          find windows-mingw -name 'q3vr.exe'   -delete
+          find windows-mingw -name 'glq3vr.exe' -delete
+          find linux         -name 'q3vr'       -delete
+          find linux         -name 'glq3vr'     -delete
+
+          7z a -r trinityvr-windows-msvc-x86_64.zip  ./windows-msvc/*
+          7z a -r trinityvr-windows-mingw-x86_64.zip ./windows-mingw/*
+          7z a -r trinityvr-linux-x86_64.zip         ./linux/*
 
       - name: Create release
         uses: softprops/action-gh-release@v2
