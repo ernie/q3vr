@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [renderervk]
+    branches: [trinity]
 
 jobs:
   windows-mingw:
@@ -29,8 +29,8 @@ jobs:
           name: windows-mingw
           path: |
             build/Release/**/*.dll
-            build/Release/**/q3vr.exe
-            build/Release/**/glq3vr.exe
+            build/Release/**/trinityvr.exe
+            build/Release/**/gltrinityvr.exe
             build/Release/**/*.pk3
           retention-days: 5
 
@@ -75,7 +75,7 @@ jobs:
           name: linux
           path: |
             build/Release/**/*.so
-            build/Release/**/q3vr
-            build/Release/**/glq3vr
+            build/Release/**/trinityvr
+            build/Release/**/gltrinityvr
             build/Release/**/*.pk3
           retention-days: 5
