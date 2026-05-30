@@ -55,11 +55,11 @@ extern CURLMsg *(*qcurl_multi_info_read)(CURLM *multi_handle, int *msgs_in_queue
 #endif
 
 #ifndef UPDATE_GITHUB_REPO
-#define UPDATE_GITHUB_REPO "q3vr"
+#define UPDATE_GITHUB_REPO "trinity-vr"
 #endif
 
 #ifndef UPDATE_ASSET_PREFIX
-#define UPDATE_ASSET_PREFIX "q3vr"
+#define UPDATE_ASSET_PREFIX "trinityvr"
 #endif
 
 #define UPDATE_API_BUFSIZE		(256 * 1024)
@@ -184,7 +184,7 @@ static int Update_ParseVersion( const char *str, int *major, int *minor, int *pa
 ==================
 Update_GetCurrentVersion
 
-Extract version string from com_engine cvar ("q3vr/vX.Y.Z")
+Extract version string from com_engine cvar ("trinity-vr/vX.Y.Z")
 ==================
 */
 static const char *Update_GetCurrentVersion( void )
@@ -218,7 +218,7 @@ static qboolean Update_IsExcluded( const char *filename )
 Update_BuildAssetName
 
 Build the expected asset filename for this platform/arch.
-e.g., "q3vr-windows-msvc-x86_64.zip"
+e.g., "trinityvr-windows-msvc-x86_64.zip"
 ==================
 */
 static void Update_BuildAssetName( char *buf, int bufSize )
