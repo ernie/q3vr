@@ -14,10 +14,10 @@ jobs:
     name: Windows MSVC
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1.5.2
+        uses: jakoch/install-vulkan-sdk-action@v1.5.5
         with:
           vulkan_version: '1.4.350.0'
           cache: true
@@ -28,7 +28,7 @@ jobs:
           cmake -S . -B build -G "Visual Studio 17 2022"
           cmake --build build --config Release
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-msvc
           path: |
@@ -43,10 +43,10 @@ jobs:
     name: Windows MinGW
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1.5.2
+        uses: jakoch/install-vulkan-sdk-action@v1.5.5
         with:
           vulkan_version: '1.4.350.0'
           cache: true
@@ -57,7 +57,7 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-mingw
           path: |
@@ -72,7 +72,7 @@ jobs:
     name: Linux
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install dependencies
         run: |
@@ -80,7 +80,7 @@ jobs:
           sudo apt-get install -y libsdl2-dev libxcb-glx0-dev libgl-dev libxxf86vm-dev
 
       - name: Install Vulkan SDK
-        uses: jakoch/install-vulkan-sdk-action@v1.5.2
+        uses: jakoch/install-vulkan-sdk-action@v1.5.5
         with:
           vulkan_version: '1.4.350.0'
           cache: false      # v1.5.x cache restore is broken on Linux
@@ -103,7 +103,7 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: |
@@ -118,14 +118,14 @@ jobs:
     needs: [windows-msvc, windows-mingw, linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           sparse-checkout: |
             misc/update-trinity.bat
             misc/update-trinity.sh
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
 
       - name: Download Trinity assets
         env:
@@ -195,7 +195,7 @@ jobs:
       # workflow artifact instead, so the bridge output can be inspected.
       - name: Upload archives for inspection (dry-run)
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-archives
           path: '*.zip'
@@ -203,7 +203,7 @@ jobs:
 
       - name: Create release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             *.zip
