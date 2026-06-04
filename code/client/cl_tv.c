@@ -995,6 +995,11 @@ void CL_TV_BuildSnapshot( void ) {
 			continue;
 		if ( i == tvPlay.viewpoint )
 			continue;
+		// Backstop for the writer invariant: entities are stored by number, so a
+		// real slot has entities[i].number == i. A flagged slot that doesn't is a
+		// zeroed phantom; emitting it routes number 0 onto cg_entities[0]. Skip it.
+		if ( tvPlay.entities[i].number != i )
+			continue;
 		if ( CL_TV_SkipEventEntity( &tvPlay.entities[i] ) )
 			continue;
 		total++;
@@ -1007,6 +1012,8 @@ void CL_TV_BuildSnapshot( void ) {
 			if ( !( tvPlay.entityBitmask[i >> 3] & ( 1 << ( i & 7 ) ) ) )
 				continue;
 			if ( i == tvPlay.viewpoint )
+				continue;
+			if ( tvPlay.entities[i].number != i )   // skip zeroed phantom (see count loop)
 				continue;
 			if ( CL_TV_SkipEventEntity( &tvPlay.entities[i] ) )
 				continue;
@@ -1024,6 +1031,8 @@ void CL_TV_BuildSnapshot( void ) {
 			if ( !( tvPlay.entityBitmask[i >> 3] & ( 1 << ( i & 7 ) ) ) )
 				continue;
 			if ( i == tvPlay.viewpoint )
+				continue;
+			if ( tvPlay.entities[i].number != i )   // skip zeroed phantom (see count loop)
 				continue;
 			if ( CL_TV_SkipEventEntity( &tvPlay.entities[i] ) )
 				continue;
