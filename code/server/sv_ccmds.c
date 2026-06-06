@@ -297,6 +297,13 @@ static void SV_MapRestart_f( void ) {
 	sv.state = SS_LOADING;
 	sv.restarting = qtrue;
 
+	// Per-match demo boundary: tournament rotates matches via map_restart,
+	// so finalize the finished match's recording while its g_matchUUID is
+	// still current, and re-arm so the next "active" starts a fresh file
+	// under the new uuid.
+	SV_TV_FinalizeRecording();
+	SV_TV_AutoStart();
+
 	SV_RestartGameProgs();
 
 	// run a few frames to allow everything to settle

@@ -409,13 +409,7 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 	const char	*p;
 
 	// stop any active TV recording before map change
-	if ( tv.recording && tv.autoRecording && !tv.keepRecording
-		 && sv_tvAutoMinPlayers->integer > 0 ) {
-		Com_Printf( "TV: Auto-recording did not meet player threshold, discarding.\n" );
-		SV_TV_StopRecord( qtrue );
-	} else {
-		SV_TV_StopRecord( qfalse );
-	}
+	SV_TV_FinalizeRecording();
 
 	// shut down the existing game if it is running
 	SV_ShutdownGameProgs();
@@ -769,13 +763,7 @@ void SV_Shutdown( char *finalmsg ) {
 	Com_Printf( "----- Server Shutdown (%s) -----\n", finalmsg );
 
 	// stop any active TV recording
-	if ( tv.recording && tv.autoRecording && !tv.keepRecording
-		 && sv_tvAutoMinPlayers->integer > 0 ) {
-		Com_Printf( "TV: Auto-recording did not meet player threshold, discarding.\n" );
-		SV_TV_StopRecord( qtrue );
-	} else {
-		SV_TV_StopRecord( qfalse );
-	}
+	SV_TV_FinalizeRecording();
 
 	NET_LeaveMulticast6();
 
