@@ -424,6 +424,12 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	level.time = levelTime;
 	level.startTime = levelTime;
 
+	// Seed warmup state early: the zeroed struct reads as "match live"
+	// until SP_worldspawn derives the real value.
+	if ( g_gametype.integer != GT_SINGLE_PLAYER ) {
+		level.warmupTime = -1;
+	}
+
 	level.snd_fry = G_SoundIndex("sound/player/fry.wav");	// FIXME standing in lava / slime
 
 	if ( g_gametype.integer != GT_SINGLE_PLAYER && g_logfile.string[0] ) {
