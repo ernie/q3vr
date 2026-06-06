@@ -503,6 +503,13 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 	// don't allow a map_restart if game is modified
 	sv_gametype->modified = qfalse;
 
+	// Clear the spawn's own echo: applying a boot-time latched
+	// correction (e.g. a per-mode cfg overriding an inherited
+	// q3config value) leaves modified set with nothing pending,
+	// which made the first map_restart after boot full-reload.
+	// A genuine maxclients change re-latches and re-dirties.
+	sv_maxclients->modified = qfalse;
+
 	// run a few frames to allow everything to settle
 	for (i = 0;i < 3; i++)
 	{
