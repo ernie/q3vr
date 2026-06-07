@@ -1308,6 +1308,19 @@ static float CG_DrawModeIndicators( float y ) {
 
 	x = SCREEN_WIDTH - pad;
 
+	// identical modes: collapse to M+G [icon]
+	if ( cgs.gameplay == cgs.pmove_movement ) {
+		x -= iconSize;
+		if ( cgs.gameplay >= GP_VQ3 && cgs.gameplay <= GP_QL ) {
+			CG_DrawPic( x, y, iconSize, iconSize, cgs.media.modeIcons[cgs.gameplay] );
+		}
+		x -= pad;
+		x -= BIGCHAR_WIDTH * 3;
+		CG_DrawString( x, y + 2, "M+G", color, BIGCHAR_WIDTH, BIGCHAR_HEIGHT, 0, DS_SHADOW );
+
+		return y + iconSize + 4;
+	}
+
 	// gameplay: G [icon]  (rightmost)
 	x -= iconSize;
 	if ( cgs.gameplay >= GP_VQ3 && cgs.gameplay <= GP_QL ) {
@@ -4368,10 +4381,6 @@ static void CG_DrawHUD2D(void)
 
 	CG_DrawLagometer();
 
-	// Arena-wide, so outside the alive-only block CG_DrawReward sits in:
-	// dead players and spectators see the watch/depart moment too.
-	CG_DrawViewerMoment();
-
 #ifdef MISSIONPACK
 	if (!cg_paused.integer) {
 		CG_DrawUpperRight();
@@ -4393,6 +4402,9 @@ static void CG_DrawHUD2D(void)
 	// don't draw center string if scoreboard is up
 	cg.scoreBoardShowing = CG_DrawScoreboard();
 	if ( !cg.scoreBoardShowing) {
+		// arena-wide (unlike CG_DrawReward's alive-only block), and gated
+		// like the centerprint so the eye hides under the scoreboard
+		CG_DrawViewerMoment();
 		CG_DrawCenterString();
 	}
 
