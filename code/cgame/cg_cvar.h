@@ -133,6 +133,7 @@ CG_CVAR( cg_timescaleFadeSpeed, "cg_timescaleFadeSpeed", "0", 0 )
 CG_CVAR( cg_timescale, "timescale", "1", 0 )
 CG_CVAR( cg_scorePlum, "cg_scorePlums", "0", CVAR_USERINFO | CVAR_ARCHIVE )
 CG_CVAR( cg_damagePlums, "cg_damagePlums", "0", CVAR_USERINFO | CVAR_ARCHIVE )
+CG_CVAR( cg_damagePlumScale, "cg_damagePlumScale", "1.0", CVAR_ARCHIVE_ND )
 CG_CVAR( cg_smoothClients, "cg_smoothClients", "1", CVAR_USERINFO | CVAR_ARCHIVE )
 CG_CVAR( cg_cameraMode, "com_cameraMode", "0", CVAR_CHEAT )
 #ifdef MISSIONPACK
