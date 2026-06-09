@@ -142,21 +142,6 @@ typedef enum {
 	WEAPON_FIRING
 } weaponstate_t;
 
-// movement modes (synced via g_movement CVAR_SYSTEMINFO)
-typedef enum {
-	PM_MOVEMENT_VQ3,	// 0 - vanilla Quake 3
-	PM_MOVEMENT_CPM,	// 1 - CPMA
-	PM_MOVEMENT_QL,		// 2 - vanilla Quake Live
-	PM_MOVEMENT_QLT		// 3 - Quake Live Turbo
-} pmMovement_t;
-
-// gameplay modes (synced via g_gameplay CVAR_SYSTEMINFO)
-typedef enum {
-	GP_VQ3,			// 0 - vanilla Quake 3
-	GP_CPM,			// 1 - CPMA
-	GP_QL			// 2 - Quake Live
-} gameplay_t;
-
 // pmove->pm_flags
 #define	PMF_DUCKED			1
 #define	PMF_JUMP_HELD		2
@@ -203,8 +188,7 @@ typedef struct {
 	int			pmove_fixed;
 	int			pmove_msec;
 
-	int			pmove_movement;		// pmMovement_t
-	int			pmove_gameplay;	// gameplay_t
+	int			pmove_mode;			// gamemode_t; combat & movement both index from it
 
 	// callbacks to test the world
 	// these will be different functions during game and cgame
@@ -559,7 +543,7 @@ gitem_t	*BG_FindItemForPowerup( powerup_t pw );
 gitem_t	*BG_FindItemForHoldable( holdable_t pw );
 #define	ITEM_INDEX(x) ((x)-bg_itemlist)
 
-qboolean	BG_CanItemBeGrabbed( int gametype, int gameplay, const entityState_t *ent, const playerState_t *ps );
+qboolean	BG_CanItemBeGrabbed( int gametype, int mode, const entityState_t *ent, const playerState_t *ps );
 
 
 // g_dmflags->integer flags

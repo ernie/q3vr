@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "cg_local.h"
 #include "../game/bg_hash.h"
+#include "../game/bg_mode.h"
 #ifdef MISSIONPACK
 #include "../../ui/menudef.h"
 
@@ -231,14 +232,9 @@ void CG_ParseSysteminfo( void ) {
 
 	cgs.synchronousClients = ( atoi( Info_ValueForKey( info, "g_synchronousClients" ) ) ) ? qtrue : qfalse;
 
-	cgs.pmove_movement = atoi( Info_ValueForKey( info, "g_movement" ) );
-	if ( cgs.pmove_movement < PM_MOVEMENT_VQ3 || cgs.pmove_movement > PM_MOVEMENT_QLT ) {
-		cgs.pmove_movement = PM_MOVEMENT_VQ3;
-	}
-
-	cgs.gameplay = atoi( Info_ValueForKey( info, "g_gameplay" ) );
-	if ( cgs.gameplay < GP_VQ3 || cgs.gameplay > GP_QL ) {
-		cgs.gameplay = GP_VQ3;
+	cgs.mode = atoi( Info_ValueForKey( info, "g_mode" ) );
+	if ( cgs.mode < MODE_VQ3 || cgs.mode >= MODE_COUNT ) {
+		cgs.mode = MODE_VQ3;
 	}
 }
 

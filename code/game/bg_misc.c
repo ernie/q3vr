@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../qcommon/q_shared.h"
 #include "bg_public.h"
-#include "bg_gameplay.h"
+#include "bg_mode.h"
 
 /*QUAKED item_***** ( 0 0 0 ) (-16 -16 -16) (16 16 16) suspended
 DO NOT USE THIS CLASS, IT JUST HOLDS GENERAL INFORMATION.
@@ -1054,7 +1054,7 @@ Returns false if the item should not be picked up.
 This needs to be the same for client side prediction and server use.
 ================
 */
-qboolean BG_CanItemBeGrabbed( int gametype, int gameplay, const entityState_t *ent, const playerState_t *ps ) {
+qboolean BG_CanItemBeGrabbed( int gametype, int mode, const entityState_t *ent, const playerState_t *ps ) {
 	gitem_t	*item;
 
 	if ( ent->modelindex < 1 || ent->modelindex >= bg_numItems ) {
@@ -1068,7 +1068,7 @@ qboolean BG_CanItemBeGrabbed( int gametype, int gameplay, const entityState_t *e
 		return qtrue;	// weapons are always picked up
 
 	case IT_AMMO:
-		if ( ps->ammo[ item->giTag ] >= GP_GetAmmoMax( GP_GetConfig( gameplay ), item->giTag ) ) {
+		if ( ps->ammo[ item->giTag ] >= Mode_GetAmmoMax( Mode_GetConfig( mode ), item->giTag ) ) {
 			return qfalse;		// can't hold any more
 		}
 		return qtrue;
@@ -1079,7 +1079,7 @@ qboolean BG_CanItemBeGrabbed( int gametype, int gameplay, const entityState_t *e
 			return qfalse;
 		}
 #endif
-		return GP_CanGrabArmor( GP_GetConfig( gameplay ), item, ps );
+		return Mode_CanGrabArmor( Mode_GetConfig( mode ), item, ps );
 
 	case IT_HEALTH:
 		// small and mega healths will go over the max, otherwise

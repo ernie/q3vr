@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // active (after loading) gameplay
 
 #include "cg_local.h"
-#include "../game/bg_gameplay.h"
+#include "../game/bg_mode.h"
 #include "../vrcommon/vr_clientinfo.h"
 
 extern vr_clientinfo_t *vr;
@@ -593,7 +593,7 @@ Returns the appropriate armor icon/model for the current armor type in CPM mode.
 ================
 */
 qhandle_t CG_GetArmorIcon( void ) {
-	if ( cgs.gameplay == GP_CPM ) {
+	if ( Mode_GetConfig( cgs.mode )->armorTiered ) {
 		switch ( cg.snap->ps.stats[STAT_ARMORTYPE] ) {
 		case ARMORTYPE_RA: return cgs.media.armorIconRA;
 		case ARMORTYPE_YA: return cgs.media.armorIcon;
@@ -605,7 +605,7 @@ qhandle_t CG_GetArmorIcon( void ) {
 }
 
 qhandle_t CG_GetArmorModel( void ) {
-	if ( cgs.gameplay == GP_CPM ) {
+	if ( Mode_GetConfig( cgs.mode )->armorTiered ) {
 		switch ( cg.snap->ps.stats[STAT_ARMORTYPE] ) {
 		case ARMORTYPE_RA: return cgs.media.armorModelRA;
 		case ARMORTYPE_YA: return cgs.media.armorModel;
@@ -1293,53 +1293,23 @@ static float CG_DrawVRFollowIcon( float y ) {
 =================
 CG_DrawModeIndicators
 
-Shows movement and gameplay mode icons in the upper-right when the scoreboard is visible.
+Shows the g_mode profile icon in the upper-right when the scoreboard is visible.
 =================
 */
 static float CG_DrawModeIndicators( float y ) {
 	int		iconSize = 20;
 	int		pad = 4;
 	int		x;
-	vec4_t	color = { 1, 1, 1, 1 };
 
 	if ( !cg.showScores ) {
 		return y;
 	}
 
-	x = SCREEN_WIDTH - pad;
-
-	// identical modes: collapse to M+G [icon]
-	if ( cgs.gameplay == cgs.pmove_movement ) {
-		x -= iconSize;
-		if ( cgs.gameplay >= GP_VQ3 && cgs.gameplay <= GP_QL ) {
-			CG_DrawPic( x, y, iconSize, iconSize, cgs.media.modeIcons[cgs.gameplay] );
-		}
-		x -= pad;
-		x -= BIGCHAR_WIDTH * 3;
-		CG_DrawString( x, y + 2, "M+G", color, BIGCHAR_WIDTH, BIGCHAR_HEIGHT, 0, DS_SHADOW );
-
-		return y + iconSize + 4;
+	// g_mode profile icon, upper-right
+	x = SCREEN_WIDTH - pad - iconSize;
+	if ( cgs.mode >= MODE_VQ3 && cgs.mode < MODE_COUNT ) {
+		CG_DrawPic( x, y, iconSize, iconSize, cgs.media.modeIcons[cgs.mode] );
 	}
-
-	// gameplay: G [icon]  (rightmost)
-	x -= iconSize;
-	if ( cgs.gameplay >= GP_VQ3 && cgs.gameplay <= GP_QL ) {
-		CG_DrawPic( x, y, iconSize, iconSize, cgs.media.modeIcons[cgs.gameplay] );
-	}
-	x -= pad;
-	x -= BIGCHAR_WIDTH;
-	CG_DrawString( x, y + 2, "G", color, BIGCHAR_WIDTH, BIGCHAR_HEIGHT, 0, DS_SHADOW );
-
-	x -= pad * 2;
-
-	// movement: M [icon]
-	x -= iconSize;
-	if ( cgs.pmove_movement >= PM_MOVEMENT_VQ3 && cgs.pmove_movement <= PM_MOVEMENT_QLT ) {
-		CG_DrawPic( x, y, iconSize, iconSize, cgs.media.modeIcons[cgs.pmove_movement] );
-	}
-	x -= pad;
-	x -= BIGCHAR_WIDTH;
-	CG_DrawString( x, y + 2, "M", color, BIGCHAR_WIDTH, BIGCHAR_HEIGHT, 0, DS_SHADOW );
 
 	return y + iconSize + 4;
 }

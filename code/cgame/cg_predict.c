@@ -26,7 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 // It also handles local physics interaction, like fragments bouncing off walls
 
 #include "cg_local.h"
-#include "../game/bg_gameplay.h"
+#include "../game/bg_mode.h"
 
 static	pmove_t		cg_pmove;
 
@@ -285,7 +285,7 @@ static void CG_TouchItem( centity_t *cent ) {
 		return;
 	}
 
-	if ( !BG_CanItemBeGrabbed( cgs.gametype, cgs.gameplay, &cent->currentState, &cg.predictedPlayerState ) ) {
+	if ( !BG_CanItemBeGrabbed( cgs.gametype, cgs.mode, &cent->currentState, &cg.predictedPlayerState ) ) {
 		return;		// can't hold it
 	}
 
@@ -501,8 +501,7 @@ void CG_PredictPlayerState( void ) {
 
 	cg_pmove.pmove_fixed = cgs.pmove_fixed;
 	cg_pmove.pmove_msec = cgs.pmove_msec;
-	cg_pmove.pmove_movement = cgs.pmove_movement;
-	cg_pmove.pmove_gameplay = cgs.gameplay;
+	cg_pmove.pmove_mode = cgs.mode;
 
 	// run cmds
 	moved = qfalse;

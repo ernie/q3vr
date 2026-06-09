@@ -221,44 +221,12 @@ itemDef {
 	}
 
 	itemDef {
-      		name options
-		group grpOptions
-		text "Movement:"
-		type ITEM_TYPE_MULTI
-		cvar "ui_movement"
-		cvarFloatList { "Vanilla Quake 3" 0 "CPMA" 1 "Quake Live" 2 "Quake Live Turbo" 3 }
-		rect 50 71 200 17
-      		textalign ITEM_ALIGN_RIGHT
-      		textalignx 143
-      		textaligny 14
-		textscale .25
-      		forecolor 1 1 1 1
-      		visible 1
-    		}
-
-	itemDef {
-      		name options
-		group grpOptions
-		text "Gameplay:"
-		type ITEM_TYPE_MULTI
-		cvar "ui_gameplay"
-		cvarFloatList { "Vanilla Quake 3" 0 "CPMA" 1 "Quake Live" 2 }
-		rect 50 88 200 17
-      		textalign ITEM_ALIGN_RIGHT
-      		textalignx 143
-      		textaligny 14
-		textscale .25
-      		forecolor 1 1 1 1
-      		visible 1
-    		}
-
-	itemDef {
 		name options
 		group grpOptions
 		type ITEM_TYPE_YESNO
 		text "Laser Sight:"
 		cvar "vr_lasersight"
-		rect 50 105 200 17
+		rect 50 71 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -273,7 +241,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Simple Items (Weapon Wheel):"
 		cvar "cg_weaponSelectorSimple2DIcons"
-		rect 50 122 200 17
+		rect 50 88 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -288,7 +256,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Show Item In Hand:"
 		cvar "vr_showItemInHand"
-		rect 50 139 200 17
+		rect 50 105 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -303,7 +271,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Marks On Walls:"
 		cvar "cg_marks"
-		rect 50 156 200 17
+		rect 50 122 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -318,7 +286,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Show Floating Scores:"
 		cvar "cg_scorePlums"
-		rect 50 173 200 17
+		rect 50 139 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -334,7 +302,7 @@ itemDef {
 		type ITEM_TYPE_MULTI
 		cvar "cg_brassTime"
 		cvarFloatList { "High" 2500 "Med" 1250 "Off" 0 }
-		rect 50 190 200 17
+		rect 50 156 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -349,7 +317,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Identify Target:"
 		cvar "cg_drawCrosshairNames"
-		rect 50 207 200 17
+		rect 50 173 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -364,7 +332,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Force Player Models:"
 		cvar "cg_forceModel"
-		rect 50 224 200 17
+		rect 50 190 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -379,7 +347,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Draw Team Overlay:"
 		cvar "cg_drawTeamOverlay"
-		rect 50 241 200 17
+		rect 50 207 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -394,7 +362,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Show Time:"
 		cvar "cg_drawTimer"
-		rect 50 258 200 17
+		rect 50 224 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -409,7 +377,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Taunts Off:"
 		cvar "cg_noTaunt"
-		rect 50 275 200 17
+		rect 50 241 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -425,7 +393,7 @@ itemDef {
 		text "HUD Type:"
 		cvar "cg_hudfiles"
 		cvarStrList { Normal "ui/hud.txt" Small "ui/hud2.txt" }
-		rect 50 292 200 17
+		rect 50 258 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -441,7 +409,7 @@ itemDef {
 		text "HUD Mode:"
 		cvar "vr_hudDrawStatus"
 		cvarFloatList { "Off" 0 "Floating" 1 "Fixed to View" 2 }
-		rect 50 309 200 17
+		rect 50 275 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -457,7 +425,7 @@ itemDef {
 		text "HUD Scale:"
 		type ITEM_TYPE_SLIDER
 		cvarfloat "vr_hudScale" 0.1 0.5 2.0
-		rect 50 326 200 17
+		rect 50 292 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -472,7 +440,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Draw HUD On Weapon Wheel:"
 		cvar "vr_weaponSelectorWithHud"
-		rect 50 343 200 17
+		rect 50 309 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -487,7 +455,7 @@ itemDef {
 		type ITEM_TYPE_YESNO
 		text "Smooth Follow:"
 		cvar "cg_smoothFollow"
-		rect 50 360 200 17
+		rect 50 326 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14
@@ -503,7 +471,7 @@ itemDef {
 		type ITEM_TYPE_MULTI
 		cvar "vr_goreLevel"
 		cvarFloatList { "None" 0 "Blood Only" 1 "Blood & Gibs (Default)" 2 "Extra Gore (Performance Hit)" 3 }
-		rect 50 377 200 17
+		rect 50 343 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 80
 		textaligny 14
@@ -520,7 +488,7 @@ itemDef {
 		type ITEM_TYPE_MULTI
 		cvar "cg_damageEffect"
 		cvarFloatList { "Classic" 0 "Modern" 1 }
-		rect 50 394 200 17
+		rect 50 360 200 17
 		textalign ITEM_ALIGN_RIGHT
 		textalignx 143
 		textaligny 14

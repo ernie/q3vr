@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 //
 
 #include "g_local.h"
+#include "bg_mode.h"
 
 
 /*
@@ -460,8 +461,8 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 			}
 		}
 
-		// count down armor when over max (CPM: armor never decays)
-		if ( g_gameplay.integer != GP_CPM
+		// count down armor when over max (CPM: tiered armor never decays)
+		if ( !Mode_GetConfig( g_mode.integer )->armorTiered
 			&& client->ps.stats[STAT_ARMOR] > client->ps.stats[STAT_MAX_HEALTH] ) {
 			client->ps.stats[STAT_ARMOR]--;
 		}
@@ -926,8 +927,7 @@ void ClientThink_real( gentity_t *ent ) {
 
 	pm.pmove_fixed = pmove_fixed.integer | client->pers.pmoveFixed;
 	pm.pmove_msec = pmove_msec.integer;
-	pm.pmove_movement = g_movement.integer;
-	pm.pmove_gameplay = g_gameplay.integer;
+	pm.pmove_mode = g_mode.integer;
 
 	VectorCopy( client->ps.origin, client->oldOrigin );
 

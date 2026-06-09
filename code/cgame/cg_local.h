@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/q_shared.h"
 #include "../renderercommon/tr_types.h"
 #include "../game/bg_public.h"
+#include "../game/bg_mode.h"
 #include "cg_public.h"
 
 #include "../vrcommon/vr_safe_types.h"
@@ -959,8 +960,8 @@ typedef struct {
 	qhandle_t	scoreboardScore;
 	qhandle_t	scoreboardTime;
 
-	// mode icons for movement/gameplay display (indexed by pmMovement_t / gameplay_t)
-	qhandle_t	modeIcons[4];
+	// profile icons for the HUD mode indicator (indexed by gamemode_t)
+	qhandle_t	modeIcons[MODE_COUNT];
 
 	// medals shown during gameplay
 	qhandle_t	medalImpressive;
@@ -1247,8 +1248,7 @@ typedef struct {
 
 	qboolean		pmove_fixed;
 	int				pmove_msec;
-	int				pmove_movement;
-	int				gameplay;
+	int				mode;			// g_mode (0..3); controls movement + combat
 
 	qboolean		synchronousClients;
 

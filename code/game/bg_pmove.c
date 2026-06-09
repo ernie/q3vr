@@ -26,7 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/q_shared.h"
 #include "bg_public.h"
 #include "bg_local.h"
-#include "bg_gameplay.h"
+#include "bg_mode.h"
 #include "../vrcommon/vr_clientinfo.h"
 
 pmove_t		*pm;
@@ -59,7 +59,7 @@ extern vr_clientinfo_t *vr;
 float PM_GetFrictionCoefficient( void ) {
 	if (vr != NULL && vr->clientNum == pm->ps->clientNum && vr->use_6dof) {
 		return 10.0f; // Required for 6DoF: player must track HMD movement instantly
-	} else if ( pm->pmove_movement == PM_MOVEMENT_CPM ) {
+	} else if ( pm->pmove_mode == MODE_CPM ) {
 		return 8.0f;
 	} else {
 		return 6.0f;
@@ -69,7 +69,7 @@ float PM_GetFrictionCoefficient( void ) {
 float PM_GetAccelerationCoefficient( void ) {
 	if (vr != NULL && vr->clientNum == pm->ps->clientNum && vr->use_6dof) {
 		return 1000.0f; // Required for 6DoF: player must track HMD movement instantly
-	} else if ( pm->pmove_movement == PM_MOVEMENT_CPM ) {
+	} else if ( pm->pmove_mode == MODE_CPM ) {
 		return 15.0f;
 	} else {
 		return 10.0f;
@@ -403,13 +403,13 @@ static qboolean PM_CheckJump( void ) {
 	pml.walking = qfalse;
 
 	// QL/PQL: auto-hop (skip PMF_JUMP_HELD so holding jump re-jumps on landing)
-	if ( pm->pmove_movement != PM_MOVEMENT_QL && pm->pmove_movement != PM_MOVEMENT_QLT ) {
+	if ( pm->pmove_mode != MODE_QL && pm->pmove_mode != MODE_QLT ) {
 		pm->ps->pm_flags |= PMF_JUMP_HELD;
 	}
 
 	pm->ps->groundEntityNum = ENTITYNUM_NONE;
 
-	if ( pm->pmove_movement == PM_MOVEMENT_CPM ) {
+	if ( pm->pmove_mode == MODE_CPM ) {
 		// ramp jump: additive when moving up, hard set otherwise
 		if ( pm->ps->velocity[2] > 0 ) {
 			pm->ps->velocity[2] += JUMP_VELOCITY;
@@ -421,8 +421,8 @@ static qboolean PM_CheckJump( void ) {
 			pm->ps->velocity[2] += 100;
 		}
 		pm->ps->stats[STAT_JUMPTIME] = 400;
-	} else if ( pm->pmove_movement == PM_MOVEMENT_QL || pm->pmove_movement == PM_MOVEMENT_QLT ) {
-		if ( pm->pmove_movement == PM_MOVEMENT_QLT && pm->ps->velocity[2] > 0 ) {
+	} else if ( pm->pmove_mode == MODE_QL || pm->pmove_mode == MODE_QLT ) {
+		if ( pm->pmove_mode == MODE_QLT && pm->ps->velocity[2] > 0 ) {
 			pm->ps->velocity[2] += 275;	// PQL ramp jump: additive when moving up
 		} else {
 			pm->ps->velocity[2] = 275;		// QL/PQL jump velocity
@@ -731,7 +731,7 @@ static void PM_AirMove( void ) {
 	wishspeed *= scale;
 
 	// not on ground, so little effect on velocity
-	if ( pm->pmove_movement == PM_MOVEMENT_CPM || pm->pmove_movement == PM_MOVEMENT_QLT ) {
+	if ( pm->pmove_mode == MODE_CPM || pm->pmove_mode == MODE_QLT ) {
 		float wishspeed2 = wishspeed;
 		float accel;
 
@@ -1606,7 +1606,7 @@ static void PM_BeginWeaponChange( int weapon ) {
 
 	PM_AddEvent( EV_CHANGE_WEAPON );
 	pm->ps->weaponstate = WEAPON_DROPPING;
-	pm->ps->weaponTime += GP_GetConfig( pm->pmove_gameplay )->weaponDropTime;
+	pm->ps->weaponTime += Mode_GetConfig( pm->pmove_mode )->weaponDropTime;
 	PM_StartTorsoAnim( TORSO_DROP );
 }
 
@@ -1630,7 +1630,7 @@ static void PM_FinishWeaponChange( void ) {
 
 	pm->ps->weapon = weapon;
 	pm->ps->weaponstate = WEAPON_RAISING;
-	pm->ps->weaponTime += GP_GetConfig( pm->pmove_gameplay )->weaponRaiseTime;
+	pm->ps->weaponTime += Mode_GetConfig( pm->pmove_mode )->weaponRaiseTime;
 	PM_StartTorsoAnim( TORSO_RAISE );
 }
 
@@ -1756,7 +1756,7 @@ static void PM_Weapon( void ) {
 	// check for out of ammo
 	if ( ! pm->ps->ammo[ pm->ps->weapon ] ) {
 		PM_AddEvent( EV_NOAMMO );
-		pm->ps->weaponTime += GP_GetConfig( pm->pmove_gameplay )->noAmmoTime;
+		pm->ps->weaponTime += Mode_GetConfig( pm->pmove_mode )->noAmmoTime;
 		return;
 	}
 
@@ -1769,7 +1769,7 @@ static void PM_Weapon( void ) {
 	PM_AddEvent( EV_FIRE_WEAPON );
 
 	{
-		const gameplayConfig_t *gp = GP_GetConfig( pm->pmove_gameplay );
+		const modeConfig_t *gp = Mode_GetConfig( pm->pmove_mode );
 		if ( pm->ps->weapon > WP_NONE && pm->ps->weapon < WP_NUM_WEAPONS ) {
 			addTime = gp->weapons[pm->ps->weapon].fireTime;
 		} else {

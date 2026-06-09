@@ -23,7 +23,7 @@ set(CGAME_SOURCES
     ${SOURCE_DIR}/cgame/cg_main.c
     ${SOURCE_DIR}/game/bg_hash.c
     ${SOURCE_DIR}/game/bg_misc.c
-    ${SOURCE_DIR}/game/bg_gameplay.c
+    ${SOURCE_DIR}/game/bg_mode.c
     ${SOURCE_DIR}/game/bg_pmove.c
     ${SOURCE_DIR}/game/bg_slidemove.c
     ${SOURCE_DIR}/game/bg_lib.c
@@ -62,7 +62,7 @@ set(GAME_SOURCES
     ${SOURCE_DIR}/game/ai_team.c
     ${SOURCE_DIR}/game/ai_vcmd.c
     ${SOURCE_DIR}/game/bg_misc.c
-    ${SOURCE_DIR}/game/bg_gameplay.c
+    ${SOURCE_DIR}/game/bg_mode.c
     ${SOURCE_DIR}/game/bg_pmove.c
     ${SOURCE_DIR}/game/bg_slidemove.c
     ${SOURCE_DIR}/game/bg_lib.c
@@ -96,7 +96,7 @@ set(GAME_QVM_SOURCES ${SOURCE_DIR}/game/g_syscalls.asm)
 set(UI_SOURCES
     ${SOURCE_DIR}/q3_ui/ui_main.c
     ${SOURCE_DIR}/game/bg_misc.c
-    ${SOURCE_DIR}/game/bg_gameplay.c
+    ${SOURCE_DIR}/game/bg_mode.c
     ${SOURCE_DIR}/game/bg_lib.c
     ${SOURCE_DIR}/q3_ui/ui_addbots.c
     ${SOURCE_DIR}/q3_ui/ui_atoms.c
