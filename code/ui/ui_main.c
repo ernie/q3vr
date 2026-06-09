@@ -34,6 +34,7 @@ USER INTERFACE MAIN
 #include "ui_local.h"
 #include "../vrcommon/vr_clientinfo.h"
 #include "../game/ui_swatches.h"
+#include "../game/bg_mode.h"
 
 extern displayContextDef_t *DC;
 vr_clientinfo_t *vr = NULL;
@@ -208,6 +209,8 @@ Q_EXPORT intptr_t vmMain( int command, int arg0, int arg1, int arg2, int arg3, i
 
 
 
+static qhandle_t uiModeIcons[MODE_COUNT];	// Trinity mode profile icons, indexed by MODE_*
+
 void AssetCache( void ) {
 	int n;
 	//if (Assets.textFont == NULL) {
@@ -235,6 +238,11 @@ void AssetCache( void ) {
 	for( n = 0; n < NUM_CROSSHAIRS; n++ ) {
 		uiInfo.uiDC.Assets.crosshairShader[n] = trap_R_RegisterShaderNoMip( va("gfx/2d/crosshair%c", 'a' + n ) );
 	}
+
+	uiModeIcons[MODE_VQ3] = trap_R_RegisterShaderNoMip( "gfx/2d/mode_vq3" );
+	uiModeIcons[MODE_CPM] = trap_R_RegisterShaderNoMip( "gfx/2d/mode_cpm" );
+	uiModeIcons[MODE_QL]  = trap_R_RegisterShaderNoMip( "gfx/2d/mode_ql" );
+	uiModeIcons[MODE_QLT] = trap_R_RegisterShaderNoMip( "gfx/2d/mode_qlt" );
 
 	uiInfo.newHighScoreSound = trap_S_RegisterSound("sound/feedback/voc_newhighscore.wav", qfalse);
 }
@@ -4972,6 +4980,20 @@ static const char *UI_FeederItemText(float feederID, int index, int column, qhan
 					} else {
 						return "No";
 					}
+				case SORT_MODE:
+					// Trinity mode icon. The engine only carries g_mode through
+					// LAN_GetServerInfo for servers it verified as Trinity, so its
+					// presence here already means "definitely Trinity".
+					{
+						const char *modeStr = Info_ValueForKey( info, "g_mode" );
+						if ( *modeStr ) {
+							int m = atoi( modeStr );
+							if ( m >= MODE_VQ3 && m < MODE_COUNT ) {
+								*handle = uiModeIcons[m];
+							}
+						}
+					}
+					return "";
 			}
 		}
 	} else if (feederID == FEEDER_SERVERSTATUS) {

@@ -671,6 +671,10 @@ void SVC_Info( netadr_t from ) {
 	Info_SetValueForKey( infostring, "sv_maxclients", 
 		va("%i", sv_maxclients->integer - sv_privateClients->integer ) );
 	Info_SetValueForKey( infostring, "gametype", va("%i", sv_gametype->integer ) );
+	// Trinity engine marker + mode profile, for the server-browser mode icons.
+	// g_mode is empty (key omitted) on QVMs without it.
+	Info_SetValueForKey( infostring, "engine", Cvar_VariableString( "com_engine" ) );
+	Info_SetValueForKey( infostring, "g_mode", Cvar_VariableString( "g_mode" ) );
 	Info_SetValueForKey( infostring, "pure", va("%i", sv_pure->integer ) );
 	Info_SetValueForKey(infostring, "g_needpass", va("%d", Cvar_VariableIntegerValue("g_needpass")));
 

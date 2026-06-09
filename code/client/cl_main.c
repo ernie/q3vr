@@ -2210,6 +2210,7 @@ void CL_InitServerInfo( serverInfo_t *server, netadr_t *address ) {
 	server->punkbuster = 0;
 	server->g_humanplayers = 0;
 	server->g_needpass = 0;
+	server->mode = -1;
 }
 
 #define MAX_SERVERSPERPACKET	256
@@ -3750,6 +3751,15 @@ static void CL_SetServerInfo(serverInfo_t *server, const char *info, int ping) {
 			server->punkbuster = atoi(Info_ValueForKey(info, "punkbuster"));
 			server->g_humanplayers = atoi(Info_ValueForKey(info, "g_humanplayers"));
 			server->g_needpass = atoi(Info_ValueForKey(info, "g_needpass"));
+			// Trinity mode profile: trust g_mode only from servers advertising a
+			// Trinity-family engine marker (trinity-engine/-vr/-quest), so
+			// non-Trinity servers never carry a mode.
+			if ( !Q_strncmp( Info_ValueForKey(info, "engine"), "trinity-", 8 ) &&
+					*Info_ValueForKey(info, "g_mode") ) {
+				server->mode = atoi(Info_ValueForKey(info, "g_mode"));
+			} else {
+				server->mode = -1;
+			}
 		}
 		server->ping = ping;
 	}

@@ -30,6 +30,7 @@ MULTIPLAYER MENU (SERVER BROWSER)
 
 
 #include "ui_local.h"
+#include "../game/bg_mode.h"
 
 
 #define REFRESH_DELAY			10	  // in ms
@@ -209,8 +210,9 @@ typedef struct servernode_s {
 	int		maxPing;
 	qboolean bPB;
 	qboolean demo;
+	int		mode;		// Trinity g_mode (MODE_*), or -1 if not a Trinity server
 
-} servernode_t; 
+} servernode_t;
 
 typedef struct {
 	char			buff[MAX_LISTBOXWIDTH_BUF];
@@ -250,6 +252,7 @@ typedef struct {
 	pinglist_t			pinglist[MAX_PINGLISTSIZE];
 	table_t				table[MAX_LISTBOXITEMS];
 	char*				items[MAX_LISTBOXITEMS];
+	qhandle_t			itemicons[MAX_LISTBOXITEMS];	// parallel to items: mode icon per visible row
 	int					numqueriedservers;
 	int					*numservers;
 	servernode_t		*serverlist;
@@ -282,6 +285,7 @@ static int				g_sortkey;
 static int				g_emptyservers;
 static int				g_fullservers;
 static int				g_excludebots;
+static qhandle_t		g_modeIcons[MODE_COUNT];	// Trinity mode profile icons, indexed by MODE_*
 
 static void ArenaServers_UpdateList( void );
 static void ArenaServers_UpdatePicture( void );
@@ -620,6 +624,9 @@ static void ArenaServers_UpdateList( void )
 			MAX_GAMENAMELENGTH, MAX_GAMENAMELENGTH, servernodeptr->gamename,
 			netnames[ servernodeptr->nettype ],
 			pingColor, servernodeptr->pingtime );
+
+		g_arenaservers.itemicons[j] = ( servernodeptr->mode >= MODE_VQ3 && servernodeptr->mode < MODE_COUNT )
+			? g_modeIcons[servernodeptr->mode] : 0;
 		j++;
 	}
 
@@ -962,6 +969,20 @@ static void ArenaServers_Insert( char* adrstr, char* info, int pingtime )
 	else {
 		servernodeptr->gametype = i;
 		Q_strncpyz( servernodeptr->gamename, gamenames[i], sizeof(servernodeptr->gamename) );
+	}
+
+	// Trinity mode profile: only trust g_mode when the server advertises a
+	// Trinity-family engine marker (trinity-engine/-vr/-quest), so non-Trinity
+	// servers never get a mode icon.
+	servernodeptr->mode = -1;
+	if ( !Q_strncmp( Info_ValueForKey( info, "engine" ), "trinity-", 8 ) ) {
+		s = Info_ValueForKey( info, "g_mode" );
+		if ( *s ) {
+			i = atoi( s );
+			if ( i >= MODE_VQ3 && i < MODE_COUNT ) {
+				servernodeptr->mode = i;
+			}
+		}
 	}
 }
 
@@ -1726,6 +1747,7 @@ static void ArenaServers_MenuInit( void ) {
 	g_arenaservers.list.width					= MAX_LISTBOXWIDTH;
 	g_arenaservers.list.height					= 11;
 	g_arenaservers.list.itemnames				= (const char **)g_arenaservers.items;
+	g_arenaservers.list.itemicons				= g_arenaservers.itemicons;
 	for( i = 0; i < MAX_LISTBOXITEMS; i++ ) {
 		g_arenaservers.items[i] = g_arenaservers.table[i].buff;
 	}
@@ -1964,6 +1986,11 @@ void ArenaServers_Cache( void ) {
 #if 0
 	trap_R_RegisterShaderNoMip( ART_PUNKBUSTER );
 #endif
+
+	g_modeIcons[MODE_VQ3] = trap_R_RegisterShaderNoMip( "gfx/2d/mode_vq3" );
+	g_modeIcons[MODE_CPM] = trap_R_RegisterShaderNoMip( "gfx/2d/mode_cpm" );
+	g_modeIcons[MODE_QL]  = trap_R_RegisterShaderNoMip( "gfx/2d/mode_ql" );
+	g_modeIcons[MODE_QLT] = trap_R_RegisterShaderNoMip( "gfx/2d/mode_qlt" );
 }
 
 

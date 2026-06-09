@@ -319,14 +319,17 @@ itemDef {
 	outlinecolor 0 1 0 .25
 	visible 1
 	// numcols [ xpos xwitdth textlen ], [ xpos xwidth textlen ] ..
+	// last column (ordinal 6 = SORT_MODE) is the Trinity mode icon, drawn far left;
+	// the host column is shifted right (2 -> 22) to make room for it.
 	columns
-	6
-	2 	40 	40
+	7
+	22 	40 	40
 	243 40 	20
 	368 5 	10
 	428 20 	10
 	528 20 	20
 	572 20  10
+	2  16  0
 	mouseenter { setitemcolor serverlist bordercolor .7 0 0 1 }
 	mouseexit { setitemcolor serverlist bordercolor .5 .5 .5 .5 }
 	doubleClick { uiScript JoinServer }
