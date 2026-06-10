@@ -83,6 +83,7 @@ G_CVAR( g_cubeTimeout, "g_cubeTimeout", "30", 0, 0, qfalse, qfalse )
 G_CVAR( g_redteam, "g_redteam", "Stroggs", CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_USERINFO, 0, qtrue, qtrue )
 G_CVAR( g_blueteam, "g_blueteam", "Pagans", CVAR_ARCHIVE | CVAR_SERVERINFO | CVAR_USERINFO, 0, qtrue, qtrue )
 G_CVAR( g_singlePlayer, "ui_singlePlayerActive", "", 0, 0, qfalse, qfalse )
+G_CVAR( g_clanRotation, "g_clanRotation", "0", 0, 0, qfalse, qfalse )
 
 G_CVAR( g_enableDust, "g_enableDust", "0", CVAR_SERVERINFO, 0, qtrue, qfalse )
 G_CVAR( g_enableBreath, "g_enableBreath", "0", CVAR_SERVERINFO, 0, qtrue, qfalse )
@@ -98,7 +99,7 @@ G_CVAR( g_localTeamPref, "g_localTeamPref", "", 0, 0, qfalse, qfalse )
 G_CVAR( sv_fps, "sv_fps", "40", CVAR_SYSTEMINFO, 0, qfalse, qfalse )
 G_CVAR( g_unlagged, "g_unlagged", "1", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qfalse, qfalse )
 
-G_CVAR( g_rotation, "g_rotation", "0", CVAR_ARCHIVE, 0, qfalse, qfalse )
+G_CVAR( g_rotation, "g_rotation", "", CVAR_ARCHIVE, 0, qfalse, qfalse )
 G_CVAR( g_mapname, "mapname", "", CVAR_SERVERINFO | CVAR_ROM, 0, qfalse, qfalse )
 
 G_CVAR( g_mode, "g_mode", "0", CVAR_SERVERINFO | CVAR_SYSTEMINFO | CVAR_LATCH, 0, qfalse, qfalse )

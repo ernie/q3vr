@@ -1349,11 +1349,33 @@ static void UI_DrawTeamName(rectDef_t *rect, float scale, vec4_t color, qboolean
   }
 }
 
+/*
+===============
+UI_ClanForTeamSlot
+
+Strict teaminfo lookup for the createserver bot slots: the team's parsed
+clan index, or -1 for a custom team name (UI_TeamIndexFromName can't
+signal a miss). Slots fall back to the generic character list on -1.
+===============
+*/
+static int UI_ClanForTeamSlot(qboolean blue) {
+	const char *name = UI_Cvar_VariableString(blue ? "ui_blueTeam" : "ui_redTeam");
+	int i;
+
+	for (i = 0; i < uiInfo.teamCount; i++) {
+		if (Q_stricmp(name, uiInfo.teamList[i].teamName) == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
 static void UI_DrawTeamMember(rectDef_t *rect, float scale, vec4_t color, qboolean blue, int num, int textStyle) {
 	// 0 - None
 	// 1 - Human
 	// 2..NumCharacters - Bot
 	int value = trap_Cvar_VariableValue(va(blue ? "ui_blueteam%i" : "ui_redteam%i", num));
+	int t;
 	const char *text;
 	if (value <= 0) {
 		text = "Closed";
@@ -1363,10 +1385,18 @@ static void UI_DrawTeamMember(rectDef_t *rect, float scale, vec4_t color, qboole
 		value -= 2;
 
 		if (ui_actualNetGameType.integer >= GT_TEAM) {
-			if (value >= uiInfo.characterCount) {
-				value = 0;
+			t = UI_ClanForTeamSlot(blue);
+			if (t >= 0) {
+				if (value >= TEAM_MEMBERS) {
+					value = 0;
+				}
+				text = uiInfo.teamList[t].teamMembers[value];
+			} else {
+				if (value >= uiInfo.characterCount) {
+					value = 0;
+				}
+				text = uiInfo.characterList[value].name;
 			}
-			text = uiInfo.characterList[value].name;
 		} else {
 			if (value >= UI_GetNumBots()) {
 				value = 0;
@@ -2854,10 +2884,11 @@ static qboolean UI_TeamMember_HandleKey(int flags, float *special, int key, qboo
 		value += select;
 
 		if (ui_actualNetGameType.integer >= GT_TEAM) {
-			if (value >= uiInfo.characterCount + 2) {
+			int count = (UI_ClanForTeamSlot(blue) >= 0) ? TEAM_MEMBERS : uiInfo.characterCount;
+			if (value >= count + 2) {
 				value = 0;
 			} else if (value < 0) {
-				value = uiInfo.characterCount + 2 - 1;
+				value = count + 2 - 1;
 			}
 		} else {
 			if (value >= UI_GetNumBots() + 2) {
@@ -3402,6 +3433,7 @@ static void UI_StartSkirmish(qboolean next) {
 
 	g = uiInfo.gameTypes[ui_gameType.integer].gtEnum;
 	trap_Cvar_SetValue( "g_gametype", g );
+	trap_Cvar_SetValue( "g_mode", Com_Clamp( 0, MODE_COUNT - 1, ui_mode.integer ) );
 	trap_Cmd_ExecuteText( EXEC_APPEND, va( "wait ; wait ; map %s\n", uiInfo.mapList[ui_currentMap.integer].mapLoadName) );
 	skill = trap_Cvar_VariableValue( "g_spSkill" );
 	trap_Cvar_Set("ui_scoreMap", uiInfo.mapList[ui_currentMap.integer].mapName);
@@ -3739,8 +3771,11 @@ static void UI_RunMenuScript(const char **args) {
 			trap_Cvar_Set("ui_singlePlayerActive", "0");
 			trap_Cvar_SetValue( "dedicated", Com_Clamp( 0, 2, ui_dedicated.integer ) );
 			trap_Cvar_SetValue( "g_gametype", Com_Clamp( 0, GT_MAX_GAME_TYPE-1, uiInfo.gameTypes[ui_netGameType.integer].gtEnum ) );
-			trap_Cvar_Set("g_redTeam", UI_Cvar_VariableString("ui_teamName"));
-			trap_Cvar_Set("g_blueTeam", UI_Cvar_VariableString("ui_opponentName"));
+			trap_Cvar_SetValue( "g_mode", Com_Clamp( 0, MODE_COUNT - 1, ui_mode.integer ) );
+			// ui_redTeam/ui_blueTeam are what the createserver selectors edit;
+			// ui_teamName/ui_opponentName (vanilla read those) are SP-skirmish-only
+			trap_Cvar_Set("g_redTeam", UI_Cvar_VariableString("ui_redTeam"));
+			trap_Cvar_Set("g_blueTeam", UI_Cvar_VariableString("ui_blueTeam"));
 			trap_Cmd_ExecuteText( EXEC_APPEND, va( "wait ; wait ; map %s\n", uiInfo.mapList[ui_currentNetMap.integer].mapLoadName ) );
 			skill = trap_Cvar_VariableValue( "g_spSkill" );
 			// set max clients based on spots
@@ -3767,10 +3802,17 @@ static void UI_RunMenuScript(const char **args) {
 			trap_Cvar_Set("sv_maxClients", va("%d",clients));
 
 			for (i = 0; i < PLAYERS_PER_TEAM; i++) {
+				int t;
 				int bot = trap_Cvar_VariableValue( va("ui_blueteam%i", i+1));
 				if (bot > 1) {
 					if (ui_actualNetGameType.integer >= GT_TEAM) {
-						Com_sprintf( buff, sizeof(buff), "addbot %s %f %s\n", uiInfo.characterList[bot-2].name, skill, "Blue");
+						t = UI_ClanForTeamSlot( qtrue );
+						if (t >= 0) {
+							// mirror the draw code's clamp for stale slot values
+							Com_sprintf( buff, sizeof(buff), "addbot %s %f %s\n", uiInfo.teamList[t].teamMembers[(bot-2 < TEAM_MEMBERS) ? bot-2 : 0], skill, "Blue");
+						} else {
+							Com_sprintf( buff, sizeof(buff), "addbot %s %f %s\n", uiInfo.characterList[bot-2].name, skill, "Blue");
+						}
 					} else {
 						Com_sprintf( buff, sizeof(buff), "addbot %s %f \n", UI_GetBotNameByNumber(bot-2), skill);
 					}
@@ -3779,7 +3821,12 @@ static void UI_RunMenuScript(const char **args) {
 				bot = trap_Cvar_VariableValue( va("ui_redteam%i", i+1));
 				if (bot > 1) {
 					if (ui_actualNetGameType.integer >= GT_TEAM) {
-						Com_sprintf( buff, sizeof(buff), "addbot %s %f %s\n", uiInfo.characterList[bot-2].name, skill, "Red");
+						t = UI_ClanForTeamSlot( qfalse );
+						if (t >= 0) {
+							Com_sprintf( buff, sizeof(buff), "addbot %s %f %s\n", uiInfo.teamList[t].teamMembers[(bot-2 < TEAM_MEMBERS) ? bot-2 : 0], skill, "Red");
+						} else {
+							Com_sprintf( buff, sizeof(buff), "addbot %s %f %s\n", uiInfo.characterList[bot-2].name, skill, "Red");
+						}
 					} else {
 						Com_sprintf( buff, sizeof(buff), "addbot %s %f \n", UI_GetBotNameByNumber(bot-2), skill);
 					}

@@ -425,43 +425,617 @@ static qboolean G_IsBotInUse( const char *name ) {
 
 /*
 ===============
+G_RandomIndex
+
+random() can return exactly 1.0, which would index one past the end
+===============
+*/
+static int G_RandomIndex( int count ) {
+	int		n = (int)( random() * count );
+
+	return ( n < count ) ? n : count - 1;
+}
+
+
+#ifdef MISSIONPACK
+
+/*
+================================================================================
+
+CLAN IDENTITY
+
+teaminfo.txt defines the TA clans, their rosters, and the alias/base-character
+table. Non-identity aliases get botinfos synthesized into g_aliasBotInfos:
+resolvable by name, never drawn at random. Clanned teams fill from their roster.
+
+================================================================================
+*/
+
+#define MAX_CLANS			16
+#define MAX_CLAN_MEMBERS	5
+#define MAX_CLAN_ALIASES	64
+#define MAX_CLANNAME		64
+#define MAX_ALIAS_BOTS		( MAX_CLANS * MAX_CLAN_MEMBERS )
+
+typedef struct {
+	char	alias[MAX_NETNAME];		// "Lionheart"
+	char	base[MAX_NETNAME];		// "Morgan"
+} clanMember_t;
+
+typedef struct {
+	char			name[MAX_CLANNAME];	// "Crusaders"
+	clanMember_t	members[MAX_CLAN_MEMBERS];
+} clan_t;
+
+typedef struct {
+	char	name[MAX_NETNAME];
+	char	base[MAX_NETNAME];
+} clanAlias_t;
+
+static int		g_numClans;
+static clan_t	g_clans[MAX_CLANS];
+static int		g_numAliasBots;
+static char		*g_aliasBotInfos[MAX_ALIAS_BOTS];
+
+
+/*
+===============
+G_Clan_ParseString
+
+String_Parse from ui_main.c, adapted to fixed storage
+===============
+*/
+static qboolean G_Clan_ParseString( const char **p, char *out, int size ) {
+	char	*token;
+
+	token = COM_ParseExt( p, qtrue );
+	if ( !token[0] ) {
+		return qfalse;
+	}
+	Q_strncpyz( out, token, size );
+	return qtrue;
+}
+
+
+/*
+===============
+G_Clan_ParseTeams
+
+Team_Parse from ui_main.c
+===============
+*/
+static qboolean G_Clan_ParseTeams( const char **p ) {
+	char	*token;
+	char	asset[MAX_QPATH];
+	clan_t	*clan;
+	int		i;
+
+	token = COM_ParseExt( p, qtrue );
+	if ( token[0] != '{' ) {
+		return qfalse;
+	}
+
+	while ( 1 ) {
+		token = COM_ParseExt( p, qtrue );
+
+		if ( token[0] == '}' ) {
+			return qtrue;
+		}
+		if ( !token[0] ) {
+			return qfalse;
+		}
+		if ( token[0] == '{' ) {
+			// seven tokens per entry: team name, icon asset, and 5 member names
+			clan = &g_clans[ ( g_numClans < MAX_CLANS ) ? g_numClans : MAX_CLANS - 1 ];
+			if ( !G_Clan_ParseString( p, clan->name, sizeof( clan->name ) ) ||
+					!G_Clan_ParseString( p, asset, sizeof( asset ) ) ) {
+				return qfalse;
+			}
+			for ( i = 0; i < MAX_CLAN_MEMBERS; i++ ) {
+				if ( !G_Clan_ParseString( p, clan->members[i].alias, sizeof( clan->members[0].alias ) ) ) {
+					return qfalse;
+				}
+			}
+			if ( g_numClans < MAX_CLANS ) {
+				g_numClans++;
+			}
+			token = COM_ParseExt( p, qtrue );
+			if ( token[0] != '}' ) {
+				return qfalse;
+			}
+		}
+	}
+	return qfalse;	// not reached
+}
+
+
+/*
+===============
+G_Clan_ParseAliases
+
+Alias_Parse from ui_main.c
+===============
+*/
+static qboolean G_Clan_ParseAliases( const char **p, clanAlias_t *aliases, int *numAliases ) {
+	char		*token;
+	char		action[8];
+	clanAlias_t	*alias;
+
+	token = COM_ParseExt( p, qtrue );
+	if ( token[0] != '{' ) {
+		return qfalse;
+	}
+
+	while ( 1 ) {
+		token = COM_ParseExt( p, qtrue );
+
+		if ( token[0] == '}' ) {
+			return qtrue;
+		}
+		if ( !token[0] ) {
+			return qfalse;
+		}
+		if ( token[0] == '{' ) {
+			// three tokens per entry: alias name, base character, preferred action
+			alias = &aliases[ ( *numAliases < MAX_CLAN_ALIASES ) ? *numAliases : MAX_CLAN_ALIASES - 1 ];
+			if ( !G_Clan_ParseString( p, alias->name, sizeof( alias->name ) ) ||
+					!G_Clan_ParseString( p, alias->base, sizeof( alias->base ) ) ||
+					!G_Clan_ParseString( p, action, sizeof( action ) ) ) {
+				return qfalse;
+			}
+			if ( *numAliases < MAX_CLAN_ALIASES ) {
+				(*numAliases)++;
+			}
+			token = COM_ParseExt( p, qtrue );
+			if ( token[0] != '}' ) {
+				return qfalse;
+			}
+		}
+	}
+	return qfalse;	// not reached
+}
+
+
+/*
+===============
+G_Clan_SkipBlock
+===============
+*/
+static qboolean G_Clan_SkipBlock( const char **p ) {
+	char	*token;
+	int		depth;
+
+	depth = 0;
+	while ( 1 ) {
+		token = COM_ParseExt( p, qtrue );
+		if ( !token[0] ) {
+			return qfalse;
+		}
+		if ( token[0] == '{' ) {
+			depth++;
+		} else if ( token[0] == '}' ) {
+			depth--;
+			if ( depth <= 0 ) {
+				return qtrue;
+			}
+		}
+	}
+	return qfalse;	// not reached
+}
+
+
+/*
+===============
+G_InitClans
+
+Runs every level init, bots or not — rotation must work on botless servers.
+===============
+*/
+void G_InitClans( void ) {
+	int				len;
+	fileHandle_t	f;
+	char			buf[8192];
+	const char		*p;
+	char			*token;
+	clanAlias_t		aliases[MAX_CLAN_ALIASES];
+	int				numAliases;
+	clanMember_t	*member;
+	int				c, m, a;
+
+	g_numClans = 0;
+	memset( g_clans, 0, sizeof( g_clans ) );
+	// the alias pool points into the per-level G_Alloc arena
+	g_numAliasBots = 0;
+	numAliases = 0;
+
+	len = trap_FS_FOpenFile( "teaminfo.txt", &f, FS_READ );
+	if ( f == FS_INVALID_HANDLE ) {
+		return;
+	}
+	if ( len >= sizeof( buf ) ) {
+		trap_Print( va( S_COLOR_RED "file too large: teaminfo.txt is %i, max allowed is %i\n",
+			len, (int)sizeof( buf ) ) );
+		trap_FS_FCloseFile( f );
+		return;
+	}
+	trap_FS_Read( buf, len, f );
+	trap_FS_FCloseFile( f );
+	buf[len] = '\0';
+
+	p = buf;
+	while ( 1 ) {
+		token = COM_ParseExt( &p, qtrue );
+		if ( !token[0] || token[0] == '}' ) {
+			break;
+		}
+		if ( !Q_stricmp( token, "teams" ) ) {
+			if ( !G_Clan_ParseTeams( &p ) ) {
+				break;
+			}
+		} else if ( !Q_stricmp( token, "aliases" ) ) {
+			if ( !G_Clan_ParseAliases( &p, aliases, &numAliases ) ) {
+				break;
+			}
+		} else if ( !Q_stricmp( token, "characters" ) ) {
+			if ( !G_Clan_SkipBlock( &p ) ) {
+				break;
+			}
+		}
+	}
+
+	// a roster name with no alias entry is its own base
+	for ( c = 0; c < g_numClans; c++ ) {
+		for ( m = 0; m < MAX_CLAN_MEMBERS; m++ ) {
+			member = &g_clans[c].members[m];
+			Q_strncpyz( member->base, member->alias, sizeof( member->base ) );
+			for ( a = 0; a < numAliases; a++ ) {
+				if ( !Q_stricmp( aliases[a].name, member->alias ) ) {
+					Q_strncpyz( member->base, aliases[a].base, sizeof( member->base ) );
+					break;
+				}
+			}
+		}
+	}
+}
+
+
+/*
+===============
+G_SynthesizeClanBots
+
+An unresolvable base (the stock "Ursla" typo) costs only that one member.
+===============
+*/
+static void G_SynthesizeClanBots( void ) {
+	int				c, m, count;
+	char			info[MAX_INFO_STRING];
+	char			*base;
+	clanMember_t	*member;
+
+	count = 0;
+	for ( c = 0; c < g_numClans; c++ ) {
+		for ( m = 0; m < MAX_CLAN_MEMBERS; m++ ) {
+			member = &g_clans[c].members[m];
+
+			// identity alias: the real bot IS the roster member
+			if ( !Q_stricmp( member->alias, member->base ) ) {
+				if ( !G_GetBotInfoByName( member->alias ) ) {
+					trap_Print( va( S_COLOR_YELLOW "WARNING: %s roster member %s has no botinfo\n",
+						g_clans[c].name, member->alias ) );
+				}
+				continue;
+			}
+
+			// a bot already loaded under the alias name wins
+			if ( G_GetBotInfoByName( member->alias ) ) {
+				trap_Print( va( S_COLOR_YELLOW "WARNING: bot %s already exists, not synthesizing clan alias\n",
+					member->alias ) );
+				continue;
+			}
+
+			base = G_GetBotInfoByName( member->base );
+			if ( !base ) {
+				trap_Print( va( S_COLOR_YELLOW "WARNING: clan alias %s: base bot %s not found, skipping\n",
+					member->alias, member->base ) );
+				continue;
+			}
+
+			if ( g_numAliasBots >= MAX_ALIAS_BOTS ) {
+				trap_Print( S_COLOR_YELLOW "WARNING: MAX_ALIAS_BOTS reached, clan alias synthesis stopped\n" );
+				return;
+			}
+
+			Q_strncpyz( info, base, sizeof( info ) );
+			Info_SetValueForKey( info, "name", member->alias );
+			Info_SetValueForKey( info, "funname", member->alias );
+
+			g_aliasBotInfos[g_numAliasBots] = G_Alloc( strlen( info ) + 1 );
+			if ( !g_aliasBotInfos[g_numAliasBots] ) {
+				return;
+			}
+			strcpy( g_aliasBotInfos[g_numAliasBots], info );
+			g_numAliasBots++;
+			count++;
+		}
+	}
+
+	if ( count ) {
+		trap_Print( va( "%i clan alias bots synthesized\n", count ) );
+	}
+}
+
+
+/*
+===============
+G_FindClanIndexByName
+
+Returns -1 if the team name isn't a parsed clan.
+===============
+*/
+static int G_FindClanIndexByName( const char *teamName ) {
+	char	clean[MAX_CLANNAME];
+	int		c;
+
+	Q_strncpyz( clean, teamName, sizeof( clean ) );
+	Q_CleanStr( clean );
+
+	for ( c = 0; c < g_numClans; c++ ) {
+		if ( !Q_stricmp( clean, g_clans[c].name ) ) {
+			return c;
+		}
+	}
+	return -1;
+}
+
+
+/*
+===============
+G_IsClanBaseCharacter
+===============
+*/
+static qboolean G_IsClanBaseCharacter( const char *name ) {
+	int		c, m;
+
+	for ( c = 0; c < g_numClans; c++ ) {
+		for ( m = 0; m < MAX_CLAN_MEMBERS; m++ ) {
+			if ( !Q_stricmp( name, g_clans[c].members[m].base ) ) {
+				return qtrue;
+			}
+		}
+	}
+	return qfalse;
+}
+
+
+/*
+===============
+G_ClanMemberIndex
+
+Roster slot of a (color-clean) name in the given clan, -1 if none.
+===============
+*/
+static int G_ClanMemberIndex( int clanIdx, const char *name ) {
+	int		m;
+
+	for ( m = 0; m < MAX_CLAN_MEMBERS; m++ ) {
+		if ( !Q_stricmp( name, g_clans[clanIdx].members[m].alias ) ) {
+			return m;
+		}
+	}
+	return -1;
+}
+
+
+/*
+===============
+G_RotateClanBots
+
+Same-map cycles go through map_restart, which keeps bots — swap the
+outgoing clan's bots for the incoming roster so rotation turns the
+roster over, not just the team name. Queued ahead of ExitLevel's map
+command, so the kicks and adds land before the restart.
+===============
+*/
+static void G_RotateClanBots( team_t team, int oldIdx, int newIdx ) {
+	int			i, m;
+	float		skill;
+	gclient_t	*cl;
+	char		clean[MAX_NETNAME];
+	char		userinfo[MAX_INFO_STRING];
+	char		*skillstr;
+	const char	*replacement;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		cl = level.clients + i;
+		if ( cl->pers.connected == CON_DISCONNECTED ) {
+			continue;
+		}
+		if ( !( g_entities[i].r.svFlags & SVF_BOT ) ) {
+			continue;
+		}
+		if ( cl->sess.sessionTeam != team ) {
+			continue;
+		}
+
+		Q_strncpyz( clean, cl->pers.netname, sizeof( clean ) );
+		Q_CleanStr( clean );
+
+		// already fits the incoming clan
+		if ( G_ClanMemberIndex( newIdx, clean ) >= 0 ) {
+			continue;
+		}
+		// wildcards stay; only the old roster and stray base characters go
+		if ( G_ClanMemberIndex( oldIdx, clean ) < 0 && !G_IsClanBaseCharacter( clean ) ) {
+			continue;
+		}
+
+		replacement = NULL;
+		for ( m = 0; m < MAX_CLAN_MEMBERS; m++ ) {
+			const char *alias = g_clans[newIdx].members[m].alias;
+			if ( !G_IsBotInUse( alias ) && G_GetBotInfoByName( alias ) ) {
+				replacement = alias;
+				break;
+			}
+		}
+
+		trap_GetUserinfo( i, userinfo, sizeof( userinfo ) );
+		skillstr = Info_ValueForKey( userinfo, "skill" );
+		skill = skillstr[0] ? atof( skillstr ) : trap_Cvar_VariableValue( "g_spSkill" );
+
+		trap_SendConsoleCommand( EXEC_APPEND, va( "clientkick %i\n", i ) );
+		if ( replacement ) {
+			G_MarkBotPending( replacement );
+			trap_SendConsoleCommand( EXEC_APPEND, va( "addbot %s %1.2f %s 0\n",
+				replacement, skill, team == TEAM_RED ? "red" : "blue" ) );
+		}
+	}
+}
+
+
+/*
+===============
+G_RotateLosingClan
+
+Winner stays: the loser's clan advances to the next in teaminfo order,
+skipping both current clans. ExitLevel-only, so aborted matches never rotate.
+===============
+*/
+void G_RotateLosingClan( void ) {
+	team_t		loserTeam;
+	int			loserIdx, winnerIdx, next, tries;
+	const char	*loserCvar;
+
+	if ( !g_clanRotation.integer ) {
+		return;
+	}
+	// the SP ladder owns its team names; rotation is inert there
+	if ( level.singlePlayer ) {
+		return;
+	}
+	if ( g_gametype.integer < GT_TEAM ) {
+		return;
+	}
+	// need a candidate that is neither the loser nor the winner
+	if ( g_numClans < 3 ) {
+		return;
+	}
+
+	if ( level.teamScores[TEAM_RED] == level.teamScores[TEAM_BLUE] ) {
+		return;
+	}
+	loserTeam = ( level.teamScores[TEAM_RED] < level.teamScores[TEAM_BLUE] ) ? TEAM_RED : TEAM_BLUE;
+
+	loserCvar = ( loserTeam == TEAM_RED ) ? "g_redteam" : "g_blueteam";
+	loserIdx = G_FindClanIndexByName( loserTeam == TEAM_RED ? g_redteam.string : g_blueteam.string );
+	if ( loserIdx < 0 ) {
+		return;
+	}
+	winnerIdx = G_FindClanIndexByName( loserTeam == TEAM_RED ? g_blueteam.string : g_redteam.string );
+
+	next = loserIdx;
+	for ( tries = 0; tries < g_numClans; tries++ ) {
+		next = ( next + 1 ) % g_numClans;
+		if ( next != loserIdx && next != winnerIdx ) {
+			break;
+		}
+	}
+
+	G_LogPrintf( "ClanRotation: %s %s -> %s\n",
+		loserTeam == TEAM_RED ? "red" : "blue",
+		g_clans[loserIdx].name, g_clans[next].name );
+	trap_Cvar_Set( loserCvar, g_clans[next].name );
+	G_RotateClanBots( loserTeam, loserIdx, next );
+}
+
+#endif	// MISSIONPACK
+
+
+/*
+===============
 G_AddRandomBot
 ===============
 */
 void G_AddRandomBot( team_t team ) {
-	int		n, num, selection;
+	int		n, num;
 	float	skill;
-	char	*value, netname[36], *teamstr, *skillstr;
+	char	*botname, netname[36], displayname[MAX_NETNAME], *teamstr;
+	char	skillstr[8];
+	char	*info;
 	int		available[MAX_BOTS];
+#ifdef MISSIONPACK
+	int		clanIdx = -1;
 
-	// First pass: collect indices of bots not currently in use
-	num = 0;
-	for ( n = 0; n < g_numBots; n++ ) {
-		value = Info_ValueForKey( g_botInfos[n], "name" );
-		if ( !G_IsBotInUse( value ) ) {
-			available[num++] = n;
-		}
+	if ( g_gametype.integer >= GT_TEAM && ( team == TEAM_RED || team == TEAM_BLUE ) ) {
+		clanIdx = G_FindClanIndexByName( team == TEAM_RED ? g_redteam.string : g_blueteam.string );
 	}
+#endif
 
-	// Fallback: if no unique bots available, use all bots
-	if ( num == 0 ) {
+	info = NULL;
+
+#ifdef MISSIONPACK
+	// Clanned team fill: 75% of adds draw from the team's own roster
+	if ( clanIdx >= 0 && random() < 0.75f ) {
+		const clan_t	*clan = &g_clans[clanIdx];
+		const char		*names[MAX_CLAN_MEMBERS];
+
+		num = 0;
+		for ( n = 0; n < MAX_CLAN_MEMBERS; n++ ) {
+			if ( !G_IsBotInUse( clan->members[n].alias ) &&
+					G_GetBotInfoByName( clan->members[n].alias ) ) {
+				names[num++] = clan->members[n].alias;
+			}
+		}
+		if ( num ) {
+			info = G_GetBotInfoByName( names[ G_RandomIndex( num ) ] );
+		}
+		// roster exhausted: fall through to the wildcard draw
+	}
+#endif
+
+	if ( info == NULL ) {
+		// First pass: collect indices of bots not currently in use
+		num = 0;
 		for ( n = 0; n < g_numBots; n++ ) {
-			available[num++] = n;
+#ifdef MISSIONPACK
+			// clan base characters appear only via their own clan's roster
+			if ( clanIdx >= 0 && G_IsClanBaseCharacter( Info_ValueForKey( g_botInfos[n], "name" ) ) ) {
+				continue;
+			}
+#endif
+			// Use the display name (funname or name) since that's what becomes netname
+			botname = Info_ValueForKey( g_botInfos[n], "funname" );
+			if ( !botname[0] ) {
+				botname = Info_ValueForKey( g_botInfos[n], "name" );
+			}
+			if ( !G_IsBotInUse( botname ) ) {
+				available[num++] = n;
+			}
 		}
+
+		// Fallback: if no unique bots available, use all bots
+		if ( num == 0 ) {
+			for ( n = 0; n < g_numBots; n++ ) {
+				available[num++] = n;
+			}
+		}
+
+		// No bots loaded at all
+		if ( num == 0 ) {
+			return;
+		}
+
+		// Pick a random bot from available list
+		info = g_botInfos[ available[ G_RandomIndex( num ) ] ];
 	}
 
-	// No bots loaded at all
-	if ( num == 0 ) {
-		return;
+	// copy out: Info_ValueForKey rotates only two static buffers
+	Q_strncpyz( netname, Info_ValueForKey( info, "name" ), sizeof(netname) );
+	Q_strncpyz( displayname, Info_ValueForKey( info, "funname" ), sizeof(displayname) );
+	if ( !displayname[0] ) {
+		Q_strncpyz( displayname, netname, sizeof(displayname) );
 	}
-
-	// Pick a random bot from available list
-	selection = available[(int)(random() * num)];
-
-	// Get bot info and add it
-	value = Info_ValueForKey( g_botInfos[selection], "name" );
-	skillstr = Info_ValueForKey( g_botInfos[selection], "skill" );
-	if ( *skillstr ) {
+	Q_strncpyz( skillstr, Info_ValueForKey( info, "skill" ), sizeof(skillstr) );
+	if ( skillstr[0] ) {
 		skill = atof( skillstr );
 	} else {
 		skill = trap_Cvar_VariableValue( "g_spSkill" );
@@ -475,12 +1049,11 @@ void G_AddRandomBot( team_t team ) {
 		teamstr = "";
 	}
 
-	Q_strncpyz( netname, value, sizeof(netname) );
 	Q_CleanStr( netname );
 
 	// Mark this bot as pending so subsequent calls to G_AddRandomBot
 	// in the same frame won't select the same bot
-	G_MarkBotPending( value );
+	G_MarkBotPending( displayname );
 
 	trap_SendConsoleCommand( EXEC_INSERT, va( "addbot %s %1.2f %s 0\n", netname, skill, teamstr ) );
 }
@@ -962,36 +1535,52 @@ void Svcmd_AddBot_f( void ) {
 
 /*
 ===============
-Svcmd_BotList_f
+G_PrintBotInfo
 ===============
 */
-void Svcmd_BotList_f( void ) {
-	int i;
+static void G_PrintBotInfo( const char *info ) {
 	char name[MAX_TOKEN_CHARS];
 	char funname[MAX_TOKEN_CHARS];
 	char model[MAX_TOKEN_CHARS];
 	char aifile[MAX_TOKEN_CHARS];
 
+	Q_strncpyz(name, Info_ValueForKey( info, "name" ), sizeof( name ));
+	if ( !*name ) {
+		strcpy(name, "UnnamedPlayer");
+	}
+	Q_strncpyz(funname, Info_ValueForKey( info, "funname" ), sizeof( funname ));
+	if ( !*funname ) {
+		strcpy(funname, "");
+	}
+	Q_strncpyz(model, Info_ValueForKey( info, "model" ), sizeof( model ));
+	if ( !*model ) {
+		strcpy(model, "visor/default");
+	}
+	Q_strncpyz(aifile, Info_ValueForKey( info, "aifile"), sizeof( aifile ));
+	if (!*aifile ) {
+		strcpy(aifile, "bots/default_c.c");
+	}
+	trap_Print(va("%-16s %-16s %-20s %-20s\n", name, model, aifile, funname));
+}
+
+
+/*
+===============
+Svcmd_BotList_f
+===============
+*/
+void Svcmd_BotList_f( void ) {
+	int i;
+
 	trap_Print("^1name             model            aifile              funname\n");
 	for (i = 0; i < g_numBots; i++) {
-		Q_strncpyz(name, Info_ValueForKey( g_botInfos[i], "name" ), sizeof( name ));
-		if ( !*name ) {
-			strcpy(name, "UnnamedPlayer");
-		}
-		Q_strncpyz(funname, Info_ValueForKey( g_botInfos[i], "funname" ), sizeof( funname ));
-		if ( !*funname ) {
-			strcpy(funname, "");
-		}
-		Q_strncpyz(model, Info_ValueForKey( g_botInfos[i], "model" ), sizeof( model ));
-		if ( !*model ) {
-			strcpy(model, "visor/default");
-		}
-		Q_strncpyz(aifile, Info_ValueForKey( g_botInfos[i], "aifile"), sizeof( aifile ));
-		if (!*aifile ) {
-			strcpy(aifile, "bots/default_c.c");
-		}
-		trap_Print(va("%-16s %-16s %-20s %-20s\n", name, model, aifile, funname));
+		G_PrintBotInfo( g_botInfos[i] );
 	}
+#ifdef MISSIONPACK
+	for ( i = 0; i < g_numAliasBots; i++ ) {
+		G_PrintBotInfo( g_aliasBotInfos[i] );
+	}
+#endif
 }
 
 
@@ -1158,6 +1747,15 @@ char *G_GetBotInfoByName( const char *name ) {
 		}
 	}
 
+#ifdef MISSIONPACK
+	for ( n = 0; n < g_numAliasBots ; n++ ) {
+		value = Info_ValueForKey( g_aliasBotInfos[n], "name" );
+		if ( !Q_stricmp( value, name ) ) {
+			return g_aliasBotInfos[n];
+		}
+	}
+#endif
+
 	return NULL;
 }
 
@@ -1176,6 +1774,11 @@ void G_InitBots( qboolean restart ) {
 	char		serverinfo[MAX_INFO_STRING];
 
 	G_LoadBots();
+#ifdef MISSIONPACK
+	if ( g_numBots ) {
+		G_SynthesizeClanBots();
+	}
+#endif
 	G_LoadArenas();
 
 	trap_Cvar_Register( &bot_minplayers, "bot_minplayers", "0", CVAR_SERVERINFO );

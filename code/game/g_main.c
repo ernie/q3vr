@@ -488,6 +488,11 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 		G_ModelIndex( SP_PODIUM_MODEL );
 	}
 
+#ifdef MISSIONPACK
+	G_InitClans();
+	level.singlePlayer = ( g_singlePlayer.integer != 0 );
+#endif
+
 	if ( trap_Cvar_VariableIntegerValue( "bot_enable" ) ) {
 		BotAISetup( restart );
 		BotAILoadMap( restart );
@@ -502,6 +507,10 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 			trap_Cvar_Set( SV_ROTATION, "1" );
 			level.denyMapRestart = qtrue;
 			ParseMapRotation();
+			// only guards the parse above; left set, it turns the first
+			// map's ExitLevel fallback (G_LoadMap(NULL)) into a no-op and
+			// wedges the level at intermission
+			level.denyMapRestart = qfalse;
 		}
 	}
 
@@ -1066,6 +1075,11 @@ void ExitLevel (void) {
 		}
 		return;	
 	}
+
+#ifdef MISSIONPACK
+	// must run before the team scores are reset below
+	G_RotateLosingClan();
+#endif
 
 	if ( !ParseMapRotation() ) {
 		char val[ MAX_CVAR_VALUE_STRING ];
