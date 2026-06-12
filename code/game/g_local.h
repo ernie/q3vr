@@ -39,6 +39,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define	CARNAGE_REWARD_TIME	3000
 #define REWARD_SPRITE_TIME	2000
 
+#define TDM_ASSIST_DAMAGE		50		// min health damage inside the window
+#define TDM_ASSIST_WINDOW		4000	// ms
+
 #define	INTERMISSION_DELAY_TIME	1000
 #define	SP_INTERMISSION_DELAY_TIME	5000
 
@@ -177,6 +180,10 @@ struct gentity_s {
 	tag_t		tag;
 
 	gitem_t		*item;			// for bonus items
+
+	// harvester skull provenance; gen 0 = untagged (suicide/world/team kill)
+	int			skullFraggerNum;
+	int			skullFraggerGen;
 };
 
 
@@ -214,6 +221,11 @@ typedef struct {
 	float		lastreturnedflag;
 	float		flagsince;
 	float		lastfraggedcarrier;
+
+	int			obeliskDamage;
+	int			lastNeutralFlagDrop;
+	int			neutralFlagPickupTime;
+	qboolean	neutralFlagFromGround;
 } playerTeamState_t;
 
 // client data that stays across multiple levels or tournament restarts
@@ -272,6 +284,8 @@ typedef struct {
 	int			teamVoteCount;		// to prevent people from constantly calling votes
 	qboolean	teamInfo;			// send team overlay updates?
 	qboolean	damagePlums;		// do we want to display damage numbers?
+
+	int			connectionGen;		// stamped per connection; cross-client records store it and must match at award time
 } clientPersistant_t;
 
 // unlagged
@@ -379,6 +393,15 @@ struct gclient_s {
 	// Roll is sent via standard cmd->angles[ROLL] mechanism
 	float		vrHeadPitch;
 	float		vrHeadYawOffset;
+
+	int			skullContributorGen[MAX_CLIENTS];	// gen of each skull-feeder this carry, 0 = absent
+	int			skullContributorCount[MAX_CLIENTS];	// skulls fed per contributor; bonus scales per skull
+	struct {
+		int		amount;
+		int		time;
+		int		gen;
+	} assistDamageFrom[MAX_CLIENTS];
+
 };
 
 
@@ -493,6 +516,8 @@ typedef struct {
 	// mirrored to CS_TRINITY_VIEWERS (the cgame owns all presentation)
 	int			webViewers;
 
+	int			connectionGen;
+
 } level_locals_t;
 
 
@@ -585,7 +610,7 @@ void TossClientItems( gentity_t *self );
 #ifdef MISSIONPACK
 void TossClientPersistantPowerups( gentity_t *self );
 #endif
-void TossClientCubes( gentity_t *self );
+void TossClientCubes( gentity_t *self, gentity_t *attacker );
 
 // damage flags
 #define DAMAGE_RADIUS				0x00000001	// damage was indirect

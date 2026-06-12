@@ -768,7 +768,11 @@ gentity_t *Drop_Item( gentity_t *ent, gitem_t *item, float angle ) {
 	AngleVectors( angles, velocity, NULL, NULL );
 	VectorScale( velocity, 150, velocity );
 	velocity[2] += 200 + crandom() * 50;
-	
+
+	if ( ent->client && item->giType == IT_TEAM && item->giTag == PW_NEUTRALFLAG ) {
+		ent->client->pers.teamState.lastNeutralFlagDrop = level.time;
+	}
+
 	return LaunchItem( item, ent->s.pos.trBase, velocity );
 }
 

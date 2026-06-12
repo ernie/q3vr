@@ -622,6 +622,10 @@ void SetTeam( gentity_t *ent, const char *s ) {
 		AddTournamentQueue(client);
 
 	client->sess.sessionTeam = team;
+	client->pers.teamState.obeliskDamage = 0;
+	client->pers.teamState.lastNeutralFlagDrop = 0;
+	client->pers.teamState.neutralFlagPickupTime = 0;
+	client->pers.teamState.neutralFlagFromGround = qfalse;
 	client->sess.spectatorState = specState;
 	client->sess.spectatorClient = specClient;
 
