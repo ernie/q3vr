@@ -39,8 +39,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define	CARNAGE_REWARD_TIME	3000
 #define REWARD_SPRITE_TIME	2000
 
-#define TDM_ASSIST_DAMAGE		50		// min health damage inside the window
-#define TDM_ASSIST_WINDOW		4000	// ms
+#define TDM_ASSIST_DAMAGE		75		// min health damage inside the window
+#define TDM_ASSIST_WINDOW		2000	// ms
 
 #define	INTERMISSION_DELAY_TIME	1000
 #define	SP_INTERMISSION_DELAY_TIME	5000
