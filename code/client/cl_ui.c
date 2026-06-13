@@ -410,7 +410,6 @@ LAN_CompareServers
 static int LAN_CompareServers( int source, int sortKey, int sortDir, int s1, int s2 ) {
 	int res;
 	serverInfo_t *server1, *server2;
-	int clients1, clients2;
 
 	server1 = LAN_GetServerPtr(source, s1);
 	server2 = LAN_GetServerPtr(source, s2);
@@ -428,23 +427,18 @@ static int LAN_CompareServers( int source, int sortKey, int sortDir, int s1, int
 			res = Q_stricmp( server1->mapName, server2->mapName );
 			break;
 		case SORT_CLIENTS:
-			// sub sort by max clients
-			if ( server1->clients == server2->clients ) {
-				clients1 = server1->maxClients;
-				clients2 = server2->maxClients;
-			} else {
-				clients1 = server1->clients;
-				clients2 = server2->clients;
-			}
-
-			if (clients1 < clients2) {
-				res = -1;
-			}
-			else if (clients1 > clients2) {
-				res = 1;
-			}
-			else {
-				res = 0;
+			{
+				int c1 = server1->clients, c2 = server2->clients;
+				if ( Cvar_VariableIntegerValue( "ui_browserExcludeBots" ) ) {
+					c1 = server1->g_humanplayers;
+					c2 = server2->g_humanplayers;
+				}
+				// sub sort by max clients
+				if ( c1 == c2 ) {
+					c1 = server1->maxClients;
+					c2 = server2->maxClients;
+				}
+				res = (c1 < c2) ? -1 : (c1 > c2) ? 1 : 0;
 			}
 			break;
 		case SORT_GAME:
