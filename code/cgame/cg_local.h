@@ -580,6 +580,11 @@ typedef struct {
 	float		vrViewYaw;
 	qboolean	vrViewInitialized;
 
+	// VR HUD portrait head smoothing (independent of the first-person view above)
+	float		vrPortraitPitch;		// smoothed portrait head pitch (absolute world)
+	float		vrPortraitYaw;			// smoothed portrait-space head yaw (180 = facing viewer, plus head offset off weapon aim)
+	qboolean	vrPortraitInitialized;	// set once first valid target is computed
+
 	// zoom key
 	qboolean	zoomed;
 	int			zoomTime;
@@ -1413,6 +1418,7 @@ void CG_CenterPrint( const char *str, int y, int charWidth );
 qhandle_t CG_GetArmorIcon( void );
 qhandle_t CG_GetArmorModel( void );
 void CG_DrawHead( float x, float y, float w, float h, int clientNum, vec3_t headAngles );
+qboolean CG_VRPortraitHeadAngles( vec3_t angles );
 void CG_DrawActive( void );
 void CG_GetProjectionCenter( float *outX, float *outY );
 float CG_GetCombinedFovScale( void );
