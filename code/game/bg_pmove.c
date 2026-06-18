@@ -41,12 +41,6 @@ float	pm_airaccelerate = 1.0f;
 float	pm_wateraccelerate = 4.0f;
 float	pm_flyaccelerate = 8.0f;
 
-// CPM/PQL air control constants
-static float	cpm_pm_airstopaccelerate = 2.5f;
-static float	cpm_pm_aircontrol = 150.0f;
-static float	cpm_pm_strafeaccelerate = 70.0f;
-static float	cpm_pm_wishspeed = 30.0f;
-
 float	pm_waterfriction = 1.0f;
 float	pm_flightfriction = 3.0f;
 float	pm_spectatorfriction = 5.0f;
@@ -55,26 +49,13 @@ int		c_pmove = 0;
 
 extern vr_clientinfo_t *vr;
 
+// per-frame mode tuning, set in PmoveSingle from Mode_GetConfig
+static const modeConfig_t	*pm_mode;
 
-float PM_GetFrictionCoefficient( void ) {
-	if (vr != NULL && vr->clientNum == pm->ps->clientNum && vr->use_6dof) {
-		return 10.0f; // Required for 6DoF: player must track HMD movement instantly
-	} else if ( pm->pmove_mode == MODE_CPM ) {
-		return 8.0f;
-	} else {
-		return 6.0f;
-	}
-}
+#define NO_RESPAWN_OVERBOUNCE 250
+static int pm_respawntimer = 0;
 
-float PM_GetAccelerationCoefficient( void ) {
-	if (vr != NULL && vr->clientNum == pm->ps->clientNum && vr->use_6dof) {
-		return 1000.0f; // Required for 6DoF: player must track HMD movement instantly
-	} else if ( pm->pmove_mode == MODE_CPM ) {
-		return 15.0f;
-	} else {
-		return 10.0f;
-	}
-}
+
 /*
 ===============
 PM_AddEvent
@@ -96,7 +77,7 @@ void PM_AddTouchEnt( int entityNum ) {
 	if ( entityNum == ENTITYNUM_WORLD ) {
 		return;
 	}
-	if ( pm->numtouch == MAXTOUCH ) {
+	if ( pm->numtouch >= MAXTOUCH ) {
 		return;
 	}
 
@@ -213,6 +194,8 @@ static void PM_Friction( void ) {
 		vel[0] = 0;
 		vel[1] = 0;		// allow sinking underwater
 		// FIXME: still have z friction underwater?
+		if ( pm->ps->pm_type == PM_SPECTATOR || pm->ps->powerups[ PW_FLIGHT ] )
+			vel[2] = 0.0f; // no slow-sinking/raising movements
 		return;
 	}
 
@@ -224,7 +207,7 @@ static void PM_Friction( void ) {
 			// if getting knocked back, no friction
 			if ( ! (pm->ps->pm_flags & PMF_TIME_KNOCKBACK) ) {
 				control = speed < pm_stopspeed ? pm_stopspeed : speed;
-				drop += control*PM_GetFrictionCoefficient()*pml.frametime;
+				drop += control*pm_mode->friction*pml.frametime;
 			}
 		}
 	}
@@ -403,32 +386,24 @@ static qboolean PM_CheckJump( void ) {
 	pml.walking = qfalse;
 
 	// QL/PQL: auto-hop (skip PMF_JUMP_HELD so holding jump re-jumps on landing)
-	if ( pm->pmove_mode != MODE_QL && pm->pmove_mode != MODE_QLT ) {
+	if ( !pm_mode->autoHop ) {
 		pm->ps->pm_flags |= PMF_JUMP_HELD;
 	}
 
 	pm->ps->groundEntityNum = ENTITYNUM_NONE;
 
-	if ( pm->pmove_mode == MODE_CPM ) {
-		// ramp jump: additive when moving up, hard set otherwise
-		if ( pm->ps->velocity[2] > 0 ) {
-			pm->ps->velocity[2] += JUMP_VELOCITY;
-		} else {
-			pm->ps->velocity[2] = JUMP_VELOCITY;
-		}
-		// double-jump: +100 bonus if jumping within 400ms of last jump
+	// ramp jump: additive z-velocity when already rising, hard set otherwise
+	if ( pm_mode->rampJump && pm->ps->velocity[2] > 0 ) {
+		pm->ps->velocity[2] += pm_mode->jumpVelocity;
+	} else {
+		pm->ps->velocity[2] = pm_mode->jumpVelocity;
+	}
+	// CPM double-jump: bonus z-velocity when jumping within 400ms of the last jump
+	if ( pm_mode->doubleJumpBonus ) {
 		if ( pm->ps->stats[STAT_JUMPTIME] > 0 ) {
-			pm->ps->velocity[2] += 100;
+			pm->ps->velocity[2] += pm_mode->doubleJumpBonus;
 		}
 		pm->ps->stats[STAT_JUMPTIME] = 400;
-	} else if ( pm->pmove_mode == MODE_QL || pm->pmove_mode == MODE_QLT ) {
-		if ( pm->pmove_mode == MODE_QLT && pm->ps->velocity[2] > 0 ) {
-			pm->ps->velocity[2] += 275;	// PQL ramp jump: additive when moving up
-		} else {
-			pm->ps->velocity[2] = 275;		// QL/PQL jump velocity
-		}
-	} else {
-		pm->ps->velocity[2] = JUMP_VELOCITY;
 	}
 	PM_AddEvent( EV_JUMP );
 
@@ -656,6 +631,9 @@ static void PM_AirControl( vec3_t wishdir, float wishspeed ) {
 	float	forwardScale;
 	int		i;
 
+	if ( pm_mode->airControl == 0.0f )
+		return;	// VQ3/QL: no air control, skip the normalize round-trips
+
 	if ( wishspeed == 0.0f )
 		return;
 
@@ -676,7 +654,7 @@ static void PM_AirControl( vec3_t wishdir, float wishspeed ) {
 
 	dot = DotProduct( pm->ps->velocity, wishdir );
 	k = 32 * forwardScale;
-	k *= cpm_pm_aircontrol * dot * dot * pml.frametime;
+	k *= pm_mode->airControl * dot * dot * pml.frametime;
 
 	if ( dot > 0 ) {
 		for ( i = 0; i < 2; i++ )
@@ -730,14 +708,16 @@ static void PM_AirMove( void ) {
 	wishspeed = VectorNormalize(wishdir);
 	wishspeed *= scale;
 
-	// not on ground, so little effect on velocity
-	if ( pm->pmove_mode == MODE_CPM || pm->pmove_mode == MODE_QLT ) {
+	// not on ground, so little effect on velocity. All modes share this path;
+	// VQ3/QL carry degenerate tuning (airControl 0, strafeAccel == airaccel, no
+	// cap) so it reduces to plain air acceleration, bit-for-bit.
+	{
 		float wishspeed2 = wishspeed;
 		float accel;
 
 		// air stop: moving against current velocity
 		if ( DotProduct( pm->ps->velocity, wishdir ) < 0 )
-			accel = cpm_pm_airstopaccelerate;
+			accel = pm_mode->airStopAccel;
 		else
 			accel = pm_airaccelerate;
 
@@ -748,16 +728,14 @@ static void PM_AirMove( void ) {
 			&& abs( pm->cmd.forwardmove ) <= 54 ) {
 			float strafeScale = ( abs( pm->cmd.rightmove ) - 10 ) / ( 120.0f - 10 );
 			strafeScale = Com_Clamp( 0.0f, 1.0f, strafeScale );
-			if ( wishspeed > cpm_pm_wishspeed ) {
-				wishspeed = wishspeed + ( cpm_pm_wishspeed - wishspeed ) * strafeScale;
+			if ( wishspeed > pm_mode->airWishspeedCap ) {
+				wishspeed = wishspeed + ( pm_mode->airWishspeedCap - wishspeed ) * strafeScale;
 			}
-			accel = accel + ( cpm_pm_strafeaccelerate - accel ) * strafeScale;
+			accel = accel + ( pm_mode->strafeAccel - accel ) * strafeScale;
 		}
 
 		PM_Accelerate( wishdir, wishspeed, accel );
 		PM_AirControl( wishdir, wishspeed2 );
-	} else {
-		PM_Accelerate (wishdir, wishspeed, pm_airaccelerate);
 	}
 
 	// we may have a ground plane that is very steep, even
@@ -896,7 +874,7 @@ static void PM_WalkMove( void ) {
 	if ( ( pml.groundTrace.surfaceFlags & SURF_SLICK ) || pm->ps->pm_flags & PMF_TIME_KNOCKBACK ) {
 		accelerate = pm_airaccelerate;
 	} else {
-		accelerate = PM_GetAccelerationCoefficient();
+		accelerate = pm_mode->groundAccelerate;
 	}
 
 	PM_Accelerate (wishdir, wishspeed, accelerate);
@@ -911,15 +889,21 @@ static void PM_WalkMove( void ) {
 //		pm->ps->velocity[2] = 0;
 	}
 
-	vel = VectorLength(pm->ps->velocity);
+	if ( pm_respawntimer ) { // no more overbounce at respawn
+		// slide along the ground plane
+		PM_ClipVelocity (pm->ps->velocity, pml.groundTrace.plane.normal,
+			pm->ps->velocity, OVERCLIP );
+	} else {
+		vel = VectorLength(pm->ps->velocity);
 
-	// slide along the ground plane
-	PM_ClipVelocity (pm->ps->velocity, pml.groundTrace.plane.normal, 
-		pm->ps->velocity, OVERCLIP );
+		// slide along the ground plane
+		PM_ClipVelocity (pm->ps->velocity, pml.groundTrace.plane.normal,
+			pm->ps->velocity, OVERCLIP );
 
-	// don't decrease velocity when going up or down a slope
-	VectorNormalize(pm->ps->velocity);
-	VectorScale(pm->ps->velocity, vel, pm->ps->velocity);
+		// don't decrease velocity when going up or down a slope
+		VectorNormalize(pm->ps->velocity);
+		VectorScale(pm->ps->velocity, vel, pm->ps->velocity);
+	}
 
 	// don't do anything if standing still
 	if (!pm->ps->velocity[0] && !pm->ps->velocity[1]) {
@@ -985,7 +969,7 @@ static void PM_NoclipMove( void ) {
 	{
 		drop = 0;
 
-		friction = PM_GetFrictionCoefficient()*1.5;	// extra friction
+		friction = pm_mode->friction*1.5;	// extra friction
 		control = speed < pm_stopspeed ? pm_stopspeed : speed;
 		drop += control*friction*pml.frametime;
 
@@ -1012,7 +996,7 @@ static void PM_NoclipMove( void ) {
 	wishspeed = VectorNormalize(wishdir);
 	wishspeed *= scale;
 
-	PM_Accelerate(wishdir, wishspeed, PM_GetAccelerationCoefficient() );
+	PM_Accelerate( wishdir, wishspeed, pm_mode->groundAccelerate );
 
 	// move
 	VectorMA (pm->ps->origin, pml.frametime, pm->ps->velocity, pm->ps->origin);
@@ -1601,6 +1585,7 @@ static void PM_BeginWeaponChange( int weapon ) {
 	}
 	
 	if ( pm->ps->weaponstate == WEAPON_DROPPING ) {
+		pm->ps->eFlags &= ~EF_FIRING;
 		return;
 	}
 
@@ -1630,6 +1615,7 @@ static void PM_FinishWeaponChange( void ) {
 
 	pm->ps->weapon = weapon;
 	pm->ps->weaponstate = WEAPON_RAISING;
+	pm->ps->eFlags &= ~EF_FIRING;
 	pm->ps->weaponTime += Mode_GetConfig( pm->pmove_mode )->weaponRaiseTime;
 	PM_StartTorsoAnim( TORSO_RAISE );
 }
@@ -1947,6 +1933,23 @@ void trap_SnapVector( float *v );
 void PmoveSingle (pmove_t *pmove) {
 	pm = pmove;
 
+	// pull this frame's tuning from the mode table
+	pm_mode = Mode_GetConfig( pm->pmove_mode );
+	if ( vr != NULL && vr->clientNum == pm->ps->clientNum && vr->use_6dof ) {
+		// 6DoF (single-player only): the body must track the HMD instantly.
+		// Clone the active mode and override only the two movement coefficients
+		// so every downstream pm_mode-> read stays identical to the server.
+		// Recomputed every tick on purpose — use_6dof can toggle mid-session
+		// (e.g. the SP intermission podium), so this must never be cached.
+		// (Full-struct copy; the movement fields are the struct prefix if a
+		// future profiler ever justifies a movement-only clone.)
+		static modeConfig_t vr6dof;
+		vr6dof = *pm_mode;
+		vr6dof.friction         = 10.0f;
+		vr6dof.groundAccelerate = 1000.0f;
+		pm_mode = &vr6dof;
+	}
+
 	// this counter lets us debug movement problems with a journal
 	// by setting a conditional breakpoint fot the previous frame
 	c_pmove++;
@@ -2042,6 +2045,13 @@ void PmoveSingle (pmove_t *pmove) {
 		pm->cmd.upmove = 0;
 	}
 
+	if ( pm_respawntimer ) {
+		pm_respawntimer -= pml.msec;
+		if ( pm_respawntimer < 0 ) {
+			pm_respawntimer = 0;
+		}
+	}
+
 	if ( pm->ps->pm_type == PM_SPECTATOR ) {
 		PM_CheckDuck ();
 		PM_FlyMove ();
@@ -2122,6 +2132,11 @@ void PmoveSingle (pmove_t *pmove) {
 	// entering / leaving water splashes
 	PM_WaterEvents();
 
+	if ( pm->ps->powerups[PW_FLIGHT] && !pml.groundPlane ) {
+		// don't snap velocity in free-fly or we will be not able to stop via flight friction
+		return;
+	}
+
 	// snap some parts of playerstate to save network bandwidth
 	trap_SnapVector( pm->ps->velocity );
 }
@@ -2148,6 +2163,10 @@ void Pmove (pmove_t *pmove) {
 	}
 
 	pmove->ps->pmove_framecount = (pmove->ps->pmove_framecount+1) & ((1<<PS_PMOVEFRAMECOUNTBITS)-1);
+
+	if ( pmove->ps->pm_flags & PMF_RESPAWNED && pm_respawntimer == 0 ) {
+		pm_respawntimer = NO_RESPAWN_OVERBOUNCE;
+	}
 
 	// chop the move up if it is too long, to prevent framerate
 	// dependent behavior
