@@ -31,7 +31,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define	DEFAULT_GRAVITY		800
 #define	GIB_HEALTH			-40
-#define	ARMOR_PROTECTION	0.66
 
 #define	HEALTH_SOFT_LIMIT	100
 #define	AMMO_HARD_LIMIT		200

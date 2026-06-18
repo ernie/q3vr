@@ -49,7 +49,7 @@ int		c_pmove = 0;
 
 extern vr_clientinfo_t *vr;
 
-// per-frame mode tuning, set in PmoveSingle from Mode_GetConfig
+// per-frame mode tuning
 static const modeConfig_t	*pm_mode;
 
 #define NO_RESPAWN_OVERBOUNCE 250
@@ -632,7 +632,7 @@ static void PM_AirControl( vec3_t wishdir, float wishspeed ) {
 	int		i;
 
 	if ( pm_mode->airControl == 0.0f )
-		return;	// VQ3/QL: no air control, skip the normalize round-trips
+		return;	// skip the normalize round-trips
 
 	if ( wishspeed == 0.0f )
 		return;
