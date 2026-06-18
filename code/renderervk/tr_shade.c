@@ -104,6 +104,44 @@ static void R_BindAnimatedImage( const textureBundle_t *bundle ) {
 
 /*
 ================
+RB_CullInverted
+
+Returns qtrue when the current draw must use inverted face culling, i.e. it
+selects the precompiled mirror (flipped-cull) pipeline variant. This happens
+when rendering through a mirror/portal view, OR when the current entity's axes
+form a reflection (negative determinant, e.g. a left-handed VR weapon). The two
+conditions XOR: a reflected entity seen through a mirror winds normally again.
+================
+*/
+static qboolean RB_CullInverted( void ) {
+	qboolean portalMirror = ( backEnd.viewParms.portalView == PV_MIRROR );
+	qboolean entityMirror = ( backEnd.currentEntity && backEnd.currentEntity->mirrored );
+	return ( portalMirror != entityMirror );
+}
+
+
+/*
+================
+RB_EffectiveCull
+
+Returns the cull type to index pipeline arrays with, swapping front/back when
+RB_CullInverted() (mirror/portal view or reflected entity). Two-sided is left
+untouched. Use this anywhere a pipeline is selected by tess.shader->cullType.
+================
+*/
+static cullType_t RB_EffectiveCull( cullType_t cull ) {
+	if ( RB_CullInverted() ) {
+		if ( cull == CT_FRONT_SIDED )
+			return CT_BACK_SIDED;
+		if ( cull == CT_BACK_SIDED )
+			return CT_FRONT_SIDED;
+	}
+	return cull;
+}
+
+
+/*
+================
 DrawTris
 
 Draws triangle outlines for debugging
@@ -126,19 +164,19 @@ static void DrawTris( const shaderCommands_t *input ) {
 	if ( tess.vboIndex ) {
 #ifdef USE_PMLIGHT
 		if ( tess.dlightPass )
-			pipeline = backEnd.viewParms.portalView == PV_MIRROR ? vk.tris_mirror_debug_red_pipeline : vk.tris_debug_red_pipeline;
+			pipeline = RB_CullInverted() ? vk.tris_mirror_debug_red_pipeline : vk.tris_debug_red_pipeline;
 		else
 #endif
-			pipeline = backEnd.viewParms.portalView == PV_MIRROR ? vk.tris_mirror_debug_green_pipeline : vk.tris_debug_green_pipeline;
+			pipeline = RB_CullInverted() ? vk.tris_mirror_debug_green_pipeline : vk.tris_debug_green_pipeline;
 	} else
 #endif
 	{
 #ifdef USE_PMLIGHT
 		if ( tess.dlightPass )
-			pipeline = backEnd.viewParms.portalView == PV_MIRROR ? vk.tris_mirror_debug_red_pipeline : vk.tris_debug_red_pipeline;
+			pipeline = RB_CullInverted() ? vk.tris_mirror_debug_red_pipeline : vk.tris_debug_red_pipeline;
 		else
 #endif
-			pipeline = backEnd.viewParms.portalView == PV_MIRROR ? vk.tris_mirror_debug_pipeline : vk.tris_debug_pipeline;
+			pipeline = RB_CullInverted() ? vk.tris_mirror_debug_pipeline : vk.tris_debug_pipeline;
 	}
 
 	vk_bind_pipeline( pipeline );
@@ -515,7 +553,7 @@ static void ProjectDlightTexture( void ) {
 			// re-bind index buffer for later fog pass
 			rebindIndex = qtrue;
 		}
-		pipeline = vk.dlight_pipelines[dl->additive > 0 ? 1 : 0][tess.shader->cullType][tess.shader->polygonOffset];
+		pipeline = vk.dlight_pipelines[dl->additive > 0 ? 1 : 0][RB_EffectiveCull( tess.shader->cullType )][tess.shader->polygonOffset];
 		vk_bind_pipeline( pipeline );
 		vk_bind_index_ext( numIndexes, hitIndexes );
 		vk_bind_geometry( TESS_RGBA0 | TESS_ST0 );
@@ -556,7 +594,7 @@ Blends a fog texture on top of everything else
 */
 #ifdef USE_VULKAN
 static void RB_FogPass( qboolean rebindIndex ) {
-	uint32_t pipeline = vk.fog_pipelines[tess.shader->fogPass - 1][tess.shader->cullType][tess.shader->polygonOffset];
+	uint32_t pipeline = vk.fog_pipelines[tess.shader->fogPass - 1][RB_EffectiveCull( tess.shader->cullType )][tess.shader->polygonOffset];
 #ifdef USE_FOG_ONLY
 	int fog_stage;
 
@@ -1012,7 +1050,7 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 			GL_Bind( tr.whiteImage ); // replace diffuse texture with a white one thus effectively render only lightmap
 		}
 
-		if ( backEnd.viewParms.portalView == PV_MIRROR ) {
+		if ( RB_CullInverted() ) {
 			pipeline = pStage->vk_mirror_pipeline[fog_stage];
 		} else {
 			pipeline = pStage->vk_pipeline[fog_stage];
@@ -1034,7 +1072,7 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 		vk_draw_geometry( tess.depthRange, qtrue );
 
 		if ( pStage->depthFragment ) {
-			if ( backEnd.viewParms.portalView == PV_MIRROR )
+			if ( RB_CullInverted() )
 				pipeline = pStage->vk_mirror_pipeline_df;
 			else
 				pipeline = pStage->vk_pipeline_df;
@@ -1213,14 +1251,7 @@ void VK_LightingPass( void )
 	if ( uniform_offset == ~0 )
 		return; // no space left...
 
-	cull = tess.shader->cullType;
-	if ( backEnd.viewParms.portalView == PV_MIRROR ) {
-		switch ( cull ) {
-			case CT_FRONT_SIDED: cull = CT_BACK_SIDED; break;
-			case CT_BACK_SIDED: cull = CT_FRONT_SIDED; break;
-			default: break;
-		}
-	}
+	cull = RB_EffectiveCull( tess.shader->cullType );
 
 	abs_light = /* (pStage->stateBits & GLS_ATEST_BITS) && */ (cull == CT_TWO_SIDED) ? 1 : 0;
 
