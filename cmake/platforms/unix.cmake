@@ -10,6 +10,7 @@ if(EMSCRIPTEN)
     list(APPEND SYSTEM_PLATFORM_SOURCES ${SOURCE_DIR}/sys/con_passive.c)
 else()
     list(APPEND SYSTEM_PLATFORM_SOURCES ${SOURCE_DIR}/sys/con_tty.c)
+    list(APPEND CLIENT_PLATFORM_SOURCES ${SOURCE_DIR}/sys/unix_discord.c)
 endif()
 
 if(USE_HTTP)

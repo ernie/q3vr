@@ -14,6 +14,8 @@ if(USE_HTTP)
     list(APPEND CLIENT_PLATFORM_SOURCES ${SOURCE_DIR}/client/cl_http_curl.c)
 endif()
 
+list(APPEND CLIENT_PLATFORM_SOURCES ${SOURCE_DIR}/sys/win_discord.c)
+
 list(APPEND COMMON_LIBRARIES
     ws2_32 # Windows Sockets 2
     winmm  # timeBeginPeriod/timeEndPeriod

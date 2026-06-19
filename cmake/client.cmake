@@ -47,6 +47,16 @@ set(CLIENT_SOURCES
     ${CLIENT_PLATFORM_SOURCES}
 )
 
+# Discord Rich Presence talks to a local Discord client over IPC; there is no
+# such client in a browser, so it is excluded from the Emscripten/web build.
+# (cl_discord.h supplies no-op stubs there, so call sites stay unconditional.)
+if(NOT EMSCRIPTEN)
+    list(APPEND CLIENT_SOURCES
+        ${SOURCE_DIR}/client/cl_discord_proto.c
+        ${SOURCE_DIR}/client/cl_discord.c
+    )
+endif()
+
 add_git_dependency(${SOURCE_DIR}/client/cl_console.c)
 
 # CLIENT_DEFINITIONS is populated by library cmake files (opus.cmake, etc.)

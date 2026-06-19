@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "client.h"
 #include "cl_trinity.h"
 #include "cl_trinity_rconset.h"
+#include "cl_discord.h"
 #include "../qcommon/autoupdate.h"
 #include <limits.h>
 
@@ -2938,6 +2939,8 @@ void CL_Frame ( int msec ) {
 	Con_RunConsole();
 
 	cls.framecount++;
+
+	CL_Discord_Frame();
 }
 
 
@@ -3658,6 +3661,8 @@ void CL_Init( void ) {
 	CL_UpdateGUID( NULL, 0 );
 
 	Com_Printf( "----- Client Initialization Complete -----\n" );
+
+	CL_Discord_Init();
 }
 
 
@@ -3682,6 +3687,8 @@ void CL_Shutdown(char *finalmsg, qboolean disconnect, qboolean quit)
 		return;
 	}
 	recursive = qtrue;
+
+	CL_Discord_Shutdown();
 
 	noGameRestart = quit;
 
