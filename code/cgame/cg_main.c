@@ -42,6 +42,12 @@ int teamColorsModificationCount = -1;
 
 qboolean cg_usingOpenGL = qfalse;
 
+// extension interface: resolved at runtime in CG_Init via the engine's
+// "//trap_GetValue" ROM cvar (mirrors trinity-engine's discovery mechanism)
+qboolean projectDecal = qfalse;		// engine advertises trap_R_ProjectDecal
+int dll_com_trapGetValue;
+int dll_trap_R_ProjectDecal;
+
 void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum );
 void CG_Shutdown( void );
 
@@ -1991,9 +1997,29 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 	// get the gamestate from the client system
 	trap_GetGameState( &cgs.gameState );
 
-	// check version
+	// enhanced blood decals: bootstrap the extension system. The engine
+	// publishes the trap_GetValue syscall number via the "//trap_GetValue" ROM
+	// cvar; with it we discover renderer extensions by name. projectDecal gates
+	// the Modern blood path's engine-decal calls (graceful fallback if absent).
+	{
+		char ext[64];
+		trap_Cvar_VariableStringBuffer( "//trap_GetValue", ext, sizeof( ext ) );
+		if ( ext[0] ) {
+			dll_com_trapGetValue = atoi( ext );
+			if ( trap_GetValue( ext, sizeof( ext ), "trap_R_ProjectDecal" ) ) {
+				dll_trap_R_ProjectDecal = atoi( ext );
+				projectDecal = qtrue;
+			}
+		}
+	}
+
+	// check version: a Trinity server reports GAME_VERSION ("trinity-1"); still
+	// accept a vanilla "baseq3-1" peer. Detect Trinity here (auth-independent),
+	// not via the optional handshake.
 	s = CG_ConfigString( CS_GAME_VERSION );
-	if ( strcmp( s, GAME_VERSION ) ) {
+	if ( !strcmp( s, GAME_VERSION ) ) {
+		cgs.trinity = qtrue;
+	} else if ( strcmp( s, GAME_VERSION_VANILLA ) ) {
 		CG_Error( "Client/Server game mismatch: %s/%s", GAME_VERSION, s );
 	}
 

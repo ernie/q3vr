@@ -2796,6 +2796,10 @@ void Com_Init( char *commandLine ) {
 	com_version = Cvar_Get ("version", s, CVAR_ROM | CVAR_SERVERINFO );
 	Cvar_Get( "com_engine", va( "trinity-vr/%s", Q3VR_VERSION ), CVAR_ROM );
 
+	// single entry point of the extension system: VMs read this to learn the
+	// trap_GetValue syscall number, then discover extensions by name
+	Cvar_Get( "//trap_GetValue", va( "%i", COM_TRAP_GETVALUE ), CVAR_PROTECTED | CVAR_ROM );
+
 	Cvar_Get( "vr_master1", "mp.quakevr.com:27950", 0 );
 	Cvar_Get( "vr_master2", "directory.trinity.run", 0 );
 	Cvar_Get( "vr_master3", MASTER_SERVER_NAME, 0 );

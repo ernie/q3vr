@@ -38,7 +38,7 @@ Out must have space for two more vertexes than in
 #define	SIDE_FRONT	0
 #define	SIDE_BACK	1
 #define	SIDE_ON		2
-static void R_ChopPolyBehindPlane( int numInPoints, vec3_t inPoints[MAX_VERTS_ON_POLY],
+void R_ChopPolyBehindPlane( int numInPoints, vec3_t inPoints[MAX_VERTS_ON_POLY],
 								   int *numOutPoints, vec3_t outPoints[MAX_VERTS_ON_POLY], 
 							vec3_t normal, vec_t dist, vec_t epsilon) {
 	float		dists[MAX_VERTS_ON_POLY+4] = { 0 };
@@ -131,7 +131,7 @@ R_BoxSurfaces_r
 
 =================
 */
-void R_BoxSurfaces_r(mnode_t *node, vec3_t mins, vec3_t maxs, surfaceType_t **list, int listsize, int *listlength, vec3_t dir) {
+void R_BoxSurfaces_r(mnode_t *node, vec3_t mins, vec3_t maxs, surfaceType_t **list, int listsize, int *listlength, vec3_t dir, qboolean radial) {
 
 	int			s, c;
 	msurface_t	*surf;
@@ -145,7 +145,7 @@ void R_BoxSurfaces_r(mnode_t *node, vec3_t mins, vec3_t maxs, surfaceType_t **li
 		} else if (s == 2) {
 			node = node->children[1];
 		} else {
-			R_BoxSurfaces_r(node->children[0], mins, maxs, list, listsize, listlength, dir);
+			R_BoxSurfaces_r(node->children[0], mins, maxs, list, listsize, listlength, dir, radial);
 			node = node->children[1];
 		}
 	}
@@ -171,7 +171,7 @@ void R_BoxSurfaces_r(mnode_t *node, vec3_t mins, vec3_t maxs, surfaceType_t **li
 			s = BoxOnPlaneSide( mins, maxs, &surf->cullinfo.plane );
 			if (s == 1 || s == 2) {
 				*surfViewCount = tr.viewCount;
-			} else if (DotProduct(surf->cullinfo.plane.normal, dir) > -0.5) {
+			} else if (!radial && DotProduct(surf->cullinfo.plane.normal, dir) > -0.5) {
 			// don't add faces that make sharp angles with the projection direction
 				*surfViewCount = tr.viewCount;
 			}
@@ -316,7 +316,7 @@ int R_MarkFragments( int numPoints, const vec3_t *points, const vec3_t projectio
 	numPlanes = numPoints + 2;
 
 	numsurfaces = 0;
-	R_BoxSurfaces_r(tr.world->nodes, mins, maxs, surfaces, 64, &numsurfaces, projectionDir);
+	R_BoxSurfaces_r(tr.world->nodes, mins, maxs, surfaces, 64, &numsurfaces, projectionDir, qfalse);
 	//assert(numsurfaces <= 64);
 	//assert(numsurfaces != 64);
 

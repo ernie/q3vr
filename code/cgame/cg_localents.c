@@ -123,9 +123,24 @@ void CG_BloodTrail( localEntity_t *le ) {
 	int		t2;
 	int		step;
 	vec3_t	newOrigin;
-	vec3_t	end;
-	trace_t	trace;
 	localEntity_t	*blood;
+
+	// Classic blood: sparse expanding puffs behind the gib (the pre-overhaul
+	// trail), with no animated gouts or projected decals.
+	if ( cg_blood.integer < 2 ) {
+		step = 150;
+		t = step * ( ( cg.time - cg.frametime + step ) / step );
+		t2 = step * ( cg.time / step );
+		for ( ; t <= t2; t += step ) {
+			BG_EvaluateTrajectory( &le->pos, t, newOrigin );
+			blood = CG_SmokePuff( newOrigin, vec3_origin,
+				20, 1, 1, 1, 1, 2000, t, 0, 0,
+				cgs.media.bloodTrailShader );
+			blood->leType = LE_FALL_SCALE_FADE;
+			blood->pos.trDelta[2] = 40;
+		}
+		return;
+	}
 
 	// Dense trail of animated blood gouts along the gib's path. Time-based step
 	// ~40ms ≈ one gout every ~10 units at gib speed, so fast gibs lay down a
@@ -151,18 +166,10 @@ void CG_BloodTrail( localEntity_t *le ) {
 		// animation would run on the global clock and visibly restart mid-life.
 		blood->pos.trDelta[2] = -10;	// gentle settle
 
-		// streak blood on a nearby surface beneath the path: trace a short way
-		// down and splat where it meets geometry. A high-arcing gib finds no
-		// surface and leaves nothing under its apex; a low/sliding one paints a
-		// continuous streak.
-		VectorCopy( newOrigin, end );
-		end[2] -= 64;
-		CG_Trace( &trace, newOrigin, NULL, NULL, end, -1, CONTENTS_SOLID );
-		if ( trace.fraction < 1.0f ) {
-			CG_ImpactMark( cgs.media.bloodSplatShader[ rand() & 3 ], trace.endpos,
-				trace.plane.normal, random() * 360, 1, 1, 1, 1, qtrue,
-				12 + random() * 20, qfalse );	// 12-32, denser trail streak
-		}
+		// Radial blood at each step of the gib's path: paints whatever surface is
+		// near the gib right now — the floor under a low arc, or the WALL a gib
+		// skims past (the streak the old downward-only trace could never make).
+		CG_BloodDecal( newOrigin, 16 + random() * 16 );
 	}
 }
 
@@ -177,9 +184,14 @@ void CG_FragmentBounceMark( localEntity_t *le, trace_t *trace ) {
 
 	if ( le->leMarkType == LEMT_BLOOD ) {
 
-		radius = 16 + (rand()&31);
-		CG_ImpactMark( cgs.media.bloodSplatShader[ rand() & 3 ], trace->endpos, trace->plane.normal, random()*360,
-			1,1,1,1, qtrue, radius, qfalse );
+		// Modern: radial projected decal. Classic: legacy single blood mark.
+		if ( cg_blood.integer >= 2 ) {
+			CG_BloodDecal( trace->endpos, 16 + ( rand() & 31 ) );
+		} else {
+			radius = 16 + ( rand() & 31 );
+			CG_ImpactMark( cgs.media.bloodMarkShader, trace->endpos, trace->plane.normal,
+				random() * 360, 1, 1, 1, 1, qtrue, radius, qfalse );
+		}
 	} else if ( le->leMarkType == LEMT_BURN ) {
 
 		radius = 8 + (rand()&15);

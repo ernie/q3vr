@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_types.h"
 
-#define	REF_API_VERSION		8
+#define	REF_API_VERSION		9
 
 //
 // Shutdown codes for renderer shutdown
@@ -131,6 +131,11 @@ typedef struct {
 	qboolean (*inPVS)( const vec3_t p1, const vec3_t p2 );
 
 	void (*TakeVideoFrame)( int h, int w, byte* captureBuffer, byte *encodeBuffer, qboolean motionJpeg );
+
+	// enhanced blood decals: radial projected decal onto nearby world surfaces
+	void	(*ProjectDecal)( const vec3_t origin, float radius, float orientation,
+				qhandle_t hShader, const float rgba[4], int lifeTime );
+	void	(*ClearDecals)( void );
 } refexport_t;
 
 //

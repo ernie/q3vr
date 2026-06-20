@@ -20,6 +20,7 @@ set(RENDERER_VK_SOURCES
     ${SOURCE_DIR}/renderervk/tr_light.c
     ${SOURCE_DIR}/renderervk/tr_main.c
     ${SOURCE_DIR}/renderervk/tr_marks.c
+    ${SOURCE_DIR}/renderervk/tr_decals.c
     ${SOURCE_DIR}/renderervk/tr_mesh.c
     ${SOURCE_DIR}/renderervk/tr_model.c
     ${SOURCE_DIR}/renderervk/tr_model_iqm.c

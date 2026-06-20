@@ -169,9 +169,12 @@ typedef enum {
 	CG_R_HUDBUFFER_START,
 	CG_R_HUDBUFFER_END,
 	CG_R_FINISHBLOOM,
-	CG_GETVALUE,
+	// engine extensions (discovered by name via trap_GetValue, not by fixed
+	// number; append new ones here to keep the ABI stable)
+	CG_R_PROJECTDECAL,
+	CG_TRAP_GETVALUE = COM_TRAP_GETVALUE,
 //	qboolean trap_GetValue( char *value, int valueSize, const char *key );
-//	Engine-side value query (voip_talking, voip_muted, voip_version, voip_channels).
+//	Engine-side value query (voip_*, plus discovered extensions e.g. trap_R_ProjectDecal).
 
 /*
 	CG_LOADCAMERA,

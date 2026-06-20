@@ -1006,6 +1006,10 @@ default values.
 #define CVAR_MODIFIED		0x40000000	// Cvar was modified
 #define CVAR_NONEXISTENT	0x80000000	// Cvar doesn't exist.
 
+// functional gate syscall number: the engine publishes this via the
+// "//trap_GetValue" ROM cvar so VMs can bootstrap extension discovery
+#define COM_TRAP_GETVALUE 700
+
 // Cvar groups for batch modification checking
 typedef enum {
 	CVG_NONE = 0,

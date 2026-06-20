@@ -301,7 +301,11 @@ void	trap_R_FinishBloom( void ) {
 }
 
 qboolean trap_GetValue( char *value, int valueSize, const char *key ) {
-	return syscall( CG_GETVALUE, value, valueSize, key );
+	return syscall( dll_com_trapGetValue, value, valueSize, key );
+}
+
+void trap_R_ProjectDecal( const vec3_t origin, float radius, float orientation, qhandle_t hShader, const float rgba[4], int lifeTime ) {
+	syscall( dll_trap_R_ProjectDecal, origin, PASSFLOAT(radius), PASSFLOAT(orientation), hShader, rgba, lifeTime );
 }
 
 void	trap_R_SetColor( const float *rgba ) {

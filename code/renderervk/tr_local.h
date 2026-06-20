@@ -1816,6 +1816,25 @@ MARKERS, POLYGON PROJECTION ON WORLD POLYGONS
 int R_MarkFragments( int numPoints, const vec3_t *points, const vec3_t projection,
 				   int maxPoints, vec3_t pointBuffer, int maxFragments, markFragment_t *fragmentBuffer );
 
+// enhanced blood decals: shared clipping helpers (tr_marks.c) + the radial
+// decal subsystem (tr_decals.c). MAX_VERTS_ON_POLY must be visible here because
+// the R_ChopPolyBehindPlane prototype uses it as an array dimension.
+void R_BoxSurfaces_r( mnode_t *node, vec3_t mins, vec3_t maxs, surfaceType_t **list,
+		int listsize, int *listlength, vec3_t dir, qboolean radial );
+
+#ifndef MAX_VERTS_ON_POLY
+#define MAX_VERTS_ON_POLY 64
+#endif
+
+void R_ChopPolyBehindPlane( int numInPoints, vec3_t inPoints[MAX_VERTS_ON_POLY],
+		int *numOutPoints, vec3_t outPoints[MAX_VERTS_ON_POLY],
+		vec3_t normal, vec_t dist, vec_t epsilon );
+
+void RE_ProjectDecal( const vec3_t origin, float radius, float orientation,
+		qhandle_t hShader, const float rgba[4], int lifeTime );
+void RE_ClearDecals( void );
+void R_AddDecalSurfaces( void );
+
 
 /*
 ============================================================
@@ -2015,6 +2034,17 @@ typedef enum {
 // the main view, all the 3D icons, etc
 #define	MAX_POLYS		8192
 #define	MAX_POLYVERTS	32768
+
+// enhanced blood decals: dedicated ring buffer, independent of the scene poly pool
+#define MAX_DECAL_FRAGMENTS		4096
+#define MAX_DECAL_VERTS_PER_FRAG	16
+
+typedef struct {
+	srfPoly_t	srf;
+	int			spawnTime;
+	int			lifeTime;
+	byte		baseColor[4];
+} decal_t;
 
 // all of the information needed by the back end must be
 // contained in a backEndData_t

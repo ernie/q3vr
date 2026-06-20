@@ -1164,7 +1164,7 @@ typedef struct {
 // all clients to begin playing instantly
 typedef struct {
 	gameState_t		gameState;			// gamestate from server
-	qboolean		trinityServer;		// qtrue once the trinity handshake is seen (server supports EV_BLOOD etc.)
+	qboolean		trinity;		// qtrue when the server runs the Trinity qagame (CS_GAME_VERSION == GAME_VERSION)
 	glconfig_t		glconfig;			// rendering configuration
 	float			screenXScale;		// derived from glconfig
 	float			screenYScale;
@@ -1589,6 +1589,7 @@ void CG_DamagePlum( vec3_t org, int damage );
 void CG_GibPlayer( vec3_t playerOrigin );
 void CG_BigExplode( vec3_t playerOrigin );
 
+void CG_BloodDecal( const vec3_t origin, float radius );
 void CG_Bleed( vec3_t origin, vec3_t dir, int entityNum, int damage, qboolean directional );
 
 localEntity_t *CG_MakeExplosion( vec3_t origin, vec3_t dir,
@@ -1801,6 +1802,12 @@ void		trap_R_HUDBufferEnd( void );
 void		trap_R_FinishBloom( void );
 
 qboolean	trap_GetValue( char *value, int valueSize, const char *key );
+
+// enhanced blood decals: discovered extension (resolved in CG_Init)
+extern qboolean	projectDecal;
+extern int	dll_com_trapGetValue;
+extern int	dll_trap_R_ProjectDecal;
+void		trap_R_ProjectDecal( const vec3_t origin, float radius, float orientation, qhandle_t hShader, const float rgba[4], int lifeTime );
 
 // The glconfig_t will not change during the life of a cgame.
 // If it needs to change, the entire cgame will be restarted, because

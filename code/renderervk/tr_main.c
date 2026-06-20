@@ -1787,6 +1787,8 @@ static void R_GenerateDrawSurfs( void ) {
 
 	R_AddPolygonSurfaces();
 
+	R_AddDecalSurfaces();
+
 	// set the projection matrix with the minimum zfar
 	// now that we have the world bounded
 	// this needs to be done before entities are

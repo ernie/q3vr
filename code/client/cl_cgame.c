@@ -478,6 +478,7 @@ static void CL_BuildVoipHexMask( const byte *mask, int maskBytes, char *out, int
 	else if ( outSize > 0 )
 		out[outSize - 1] = '\0';
 }
+#endif	// USE_VOIP (CL_BuildVoipHexMask)
 
 /*
 ====================
@@ -488,6 +489,15 @@ and writes the value into the provided buffer.
 ====================
 */
 qboolean CL_GetValue( char *value, int valueSize, const char *key ) {
+
+	// enhanced blood decals: advertise the radial decal trap only when the
+	// active renderer implements it, so the mod can fall back gracefully
+	if ( !Q_stricmp( key, "trap_R_ProjectDecal" ) && re.ProjectDecal ) {
+		Com_sprintf( value, valueSize, "%i", CG_R_PROJECTDECAL );
+		return qtrue;
+	}
+
+#ifdef USE_VOIP
 	if ( !Q_stricmp( key, "voip_talking" ) ) {
 		byte mask[(MAX_CLIENTS + 7) / 8];
 		int self = clc.clientNum;
@@ -541,9 +551,9 @@ qboolean CL_GetValue( char *value, int valueSize, const char *key ) {
 			value[valueSize - 1] = '\0';
 		return qtrue;
 	}
+#endif	// USE_VOIP
 	return qfalse;
 }
-#endif
 
 /*
 ====================
@@ -854,12 +864,12 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_FINISHBLOOM:
 		re.FinishBloom();
 		return 0;
-	case CG_GETVALUE:
-#ifdef USE_VOIP
+	case CG_TRAP_GETVALUE:
 		return CL_GetValue( VMA(1), args[2], VMA(3) );
-#else
-		return qfalse;
-#endif
+
+	case CG_R_PROJECTDECAL:
+		re.ProjectDecal( VMA(1), VMF(2), VMF(3), args[4], VMA(5), args[6] );
+		return 0;
 
 	default:
 	        assert(0);

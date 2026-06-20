@@ -1593,6 +1593,10 @@ void R_Init( void ) {
 
 	R_InitShaders();
 
+	// Drop decals carried over a vid_restart; their shader handles are
+	// stale now that R_InitShaders has rebuilt the shader list.
+	RE_ClearDecals();
+
 	R_InitSkins();
 
 	R_ModelInit();
@@ -1807,6 +1811,9 @@ refexport_t *GetRefAPI ( int apiVersion, refimport_t *rimp ) {
 	re.GetConfig = RE_GetConfig;
 	re.VertexLighting = RE_VertexLighting;
 	re.SyncRender = RE_SyncRender;
+
+	re.ProjectDecal = RE_ProjectDecal;
+	re.ClearDecals = RE_ClearDecals;
 
 	return &re;
 }
