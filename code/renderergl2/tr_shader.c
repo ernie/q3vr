@@ -25,6 +25,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 static char *s_shaderText;
 
+// for extended .shaderx shaders: text at or beyond this offset was loaded from a
+// .shaderx file and may use extended keywords (e.g. the full 24-frame animMap).
+static const char *s_extensionOffset;
+static int s_extendedShader;
+
 // the shader is parsed into these global variables, then copied into
 // dynamically allocated memory if it is valid.
 static	shaderStage_t	stages[MAX_SHADER_STAGES];		
@@ -746,6 +751,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 		else if ( !Q_stricmp( token, "animMap" ) )
 		{
 			int	totalImages = 0;
+			int maxAnimations = s_extendedShader ? MAX_IMAGE_ANIMATIONS : MAX_IMAGE_ANIMATIONS_VQ3;
 
 			token = COM_ParseExt( text, qfalse );
 			if ( !token[0] )
@@ -764,7 +770,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 					break;
 				}
 				num = stage->bundle[0].numImageAnimations;
-				if ( num < MAX_IMAGE_ANIMATIONS ) {
+				if ( num < maxAnimations ) {
 					imgFlags_t flags = IMGFLAG_NONE;
 
 					if (!shader.noMipMaps)
@@ -784,9 +790,9 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 				totalImages++;
 			}
 
-			if ( totalImages > MAX_IMAGE_ANIMATIONS ) {
+			if ( totalImages > maxAnimations ) {
 				ri.Printf( PRINT_WARNING, "WARNING: ignoring excess images for 'animMap' (found %d, max is %d) in shader '%s'\n",
-						totalImages, MAX_IMAGE_ANIMATIONS, shader.name );
+						totalImages, maxAnimations, shader.name );
 			}
 		}
 		else if ( !Q_stricmp( token, "videoMap" ) )
@@ -1756,6 +1762,9 @@ static qboolean ParseShader( const char **text )
 	int s;
 
 	s = 0;
+
+	// extended shaders (from .shaderx) live at/after s_extensionOffset
+	s_extendedShader = ( *text >= s_extensionOffset );
 
 	token = COM_ParseExt( text, qtrue );
 	if ( token[0] != '{' )
@@ -3785,10 +3794,11 @@ a single large text block that can be scanned for shader names
 #define	MAX_SHADER_FILES	4096
 static void ScanAndLoadShaderFiles( void )
 {
-	char **shaderFiles;
+	char **shaderFiles, **shaderxFiles;
 	char *buffers[MAX_SHADER_FILES] = {NULL};
+	char *xbuffers[MAX_SHADER_FILES] = {NULL};
 	const char *p;
-	int numShaderFiles;
+	int numShaderFiles, numShaderxFiles;
 	int i;
 	const char *oldp, *token, *hashMem;
 	char *textEnd;
@@ -3796,11 +3806,13 @@ static void ScanAndLoadShaderFiles( void )
 	char shaderName[MAX_QPATH];
 	int shaderLine;
 
-	long sum = 0, summand;
-	// scan for shader files
+	long sum = 0, summand, xsum = 0;
+	// scan for legacy shader files
 	shaderFiles = ri.FS_ListFiles( "scripts", ".shader", &numShaderFiles );
+	// and extended .shaderx shaders (rend2 always has a programmable pipeline)
+	shaderxFiles = ri.FS_ListFiles( "scripts", ".shaderx", &numShaderxFiles );
 
-	if ( !shaderFiles || !numShaderFiles )
+	if ( (!shaderFiles || !numShaderFiles) && (!shaderxFiles || !numShaderxFiles) )
 	{
 		ri.Printf( PRINT_WARNING, "WARNING: no shader files found\n" );
 		return;
@@ -3808,6 +3820,9 @@ static void ScanAndLoadShaderFiles( void )
 
 	if ( numShaderFiles > MAX_SHADER_FILES ) {
 		numShaderFiles = MAX_SHADER_FILES;
+	}
+	if ( numShaderxFiles > MAX_SHADER_FILES ) {
+		numShaderxFiles = MAX_SHADER_FILES;
 	}
 
 	// load and parse shader files
@@ -3879,12 +3894,67 @@ static void ScanAndLoadShaderFiles( void )
 			sum += summand;		
 	}
 
-	// build single large buffer
-	s_shaderText = ri.Hunk_Alloc( sum + numShaderFiles*2, h_low );
+	// load and validate extended .shaderx files (no .mtr substitution)
+	for ( i = 0; i < numShaderxFiles; i++ )
+	{
+		char filename[MAX_QPATH];
+
+		Com_sprintf( filename, sizeof( filename ), "scripts/%s", shaderxFiles[i] );
+		ri.Printf( PRINT_DEVELOPER, "...loading '%s'\n", filename );
+		summand = ri.FS_ReadFile( filename, (void **)&xbuffers[i] );
+
+		if ( !xbuffers[i] )
+			ri.Error( ERR_DROP, "Couldn't load %s", filename );
+
+		// validate brace structure so one bad file can't corrupt the rest
+		p = xbuffers[i];
+		COM_BeginParseSession(filename);
+		while(1)
+		{
+			token = COM_ParseExt(&p, qtrue);
+
+			if(!*token)
+				break;
+
+			Q_strncpyz(shaderName, token, sizeof(shaderName));
+			shaderLine = COM_GetCurrentParseLine();
+
+			token = COM_ParseExt(&p, qtrue);
+			if(token[0] != '{' || token[1] != '\0')
+			{
+				ri.Printf(PRINT_WARNING, "WARNING: Ignoring shaderx file %s. Shader \"%s\" on line %d missing opening brace",
+							filename, shaderName, shaderLine);
+				if (token[0])
+				{
+					ri.Printf(PRINT_WARNING, " (found \"%s\" on line %d)", token, COM_GetCurrentParseLine());
+				}
+				ri.Printf(PRINT_WARNING, ".\n");
+				ri.FS_FreeFile(xbuffers[i]);
+				xbuffers[i] = NULL;
+				break;
+			}
+
+			if(!SkipBracedSection(&p, 1))
+			{
+				ri.Printf(PRINT_WARNING, "WARNING: Ignoring shaderx file %s. Shader \"%s\" on line %d missing closing brace.\n",
+							filename, shaderName, shaderLine);
+				ri.FS_FreeFile(xbuffers[i]);
+				xbuffers[i] = NULL;
+				break;
+			}
+		}
+
+		if (xbuffers[i])
+			xsum += summand;
+	}
+
+	// build single large buffer: legacy text first, then extended text
+	s_shaderText = ri.Hunk_Alloc( sum + numShaderFiles*2 + xsum + numShaderxFiles*2 + 1, h_low );
 	s_shaderText[ 0 ] = '\0';
 	textEnd = s_shaderText;
- 
+
 	// free in reverse order, so the temp files are all dumped
+	// legacy shaders
 	for ( i = numShaderFiles - 1; i >= 0 ; i-- )
 	{
 		if ( !buffers[i] )
@@ -3896,9 +3966,29 @@ static void ScanAndLoadShaderFiles( void )
 		ri.FS_FreeFile( buffers[i] );
 	}
 
-	COM_Compress( s_shaderText );
+	// text at or beyond this point came from a .shaderx and may use extended
+	// keywords (set before appending the extended text below)
+	s_extensionOffset = textEnd;
+
+	// extended shaders
+	for ( i = numShaderxFiles - 1; i >= 0 ; i-- )
+	{
+		if ( !xbuffers[i] )
+			continue;
+
+		strcat( textEnd, xbuffers[i] );
+		strcat( textEnd, "\n" );
+		textEnd += strlen( textEnd );
+		ri.FS_FreeFile( xbuffers[i] );
+	}
+
+	// NOTE: COM_Compress() intentionally omitted here — it relocates text within
+	// s_shaderText and would invalidate s_extensionOffset. The parser handles the
+	// uncompressed text fine.
 
 	// free up memory
+	if ( shaderxFiles )
+		ri.FS_FreeFileList( shaderxFiles );
 	ri.FS_FreeFileList( shaderFiles );
 
 	Com_Memset(shaderTextHashTableSizes, 0, sizeof(shaderTextHashTableSizes));

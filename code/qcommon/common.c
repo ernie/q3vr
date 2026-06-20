@@ -2760,7 +2760,7 @@ void Com_Init( char *commandLine ) {
 #else
 	com_maxfps = Cvar_Get ("com_maxfps", "144", CVAR_ARCHIVE); // NOW UNUSED
 #endif
-	com_blood = Cvar_Get ("com_blood", "1", CVAR_ARCHIVE);
+	com_blood = Cvar_Get ("com_blood", "2", CVAR_ARCHIVE_ND);
 
 	com_logfile = Cvar_Get ("logfile", "0", CVAR_TEMP );
 

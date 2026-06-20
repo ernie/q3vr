@@ -3724,24 +3724,17 @@ static void UI_Update(const char *name) {
         	}
         }
 	} else if (Q_stricmp(name, "vr_goreLevel") == 0) {
+		// gibs level only (Off/Normal/Extra); blood is the separate com_blood control
 		switch (val) {
 			case 0:
-				trap_Cvar_SetValue( "com_blood", 0);
 				trap_Cvar_SetValue( "cg_gibs", 0);
 				trap_Cvar_SetValue( "cg_megagibs", 0);
 				break;
 			case 1:
-				trap_Cvar_SetValue( "com_blood", 1);
-				trap_Cvar_SetValue( "cg_gibs", 0);
-				trap_Cvar_SetValue( "cg_megagibs", 0);
-				break;
-			case 2:
-				trap_Cvar_SetValue( "com_blood", 1);
 				trap_Cvar_SetValue( "cg_gibs", 1);
 				trap_Cvar_SetValue( "cg_megagibs", 0);
 				break;
-			case 3:
-				trap_Cvar_SetValue( "com_blood", 1);
+			default:
 				trap_Cvar_SetValue( "cg_gibs", 1);
 				trap_Cvar_SetValue( "cg_megagibs", 1);
 				break;

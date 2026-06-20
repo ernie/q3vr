@@ -1223,9 +1223,21 @@ void ClientEndFrame( gentity_t *ent ) {
 		ent->client->damage.team = 0;
 	}
 
-	// send accumulated damage plums
+	// emit accumulated blood (always, broadcast) and damage plums (non-team, when enabled)
 	for ( i = 0; i < ent->client->damagePlumCount; i++ ) {
-		DamagePlum( ent, ent->client->damagePlums[i].origin, ent->client->damagePlums[i].damage );
+		gentity_t *be = G_TempEntity( ent->client->damagePlums[i].woundPos, EV_BLOOD );
+		int g1 = ent->client->damagePlums[i].damage > 127 ? 127 : ent->client->damagePlums[i].damage;
+		// low 7 bits = damage (cap well below the splat cap), high bit = direct hit
+		if ( ent->client->damagePlums[i].directional ) {
+			g1 |= 0x80;
+		}
+		be->s.otherEntityNum = ent->client->damagePlums[i].clientNum;
+		be->s.eventParm = DirToByte( ent->client->damagePlums[i].dir );
+		be->s.generic1 = g1;
+
+		if ( !ent->client->damagePlums[i].sameTeam ) {
+			DamagePlum( ent, ent->client->damagePlums[i].origin, ent->client->damagePlums[i].damage );
+		}
 	}
 	ent->client->damagePlumCount = 0;
 

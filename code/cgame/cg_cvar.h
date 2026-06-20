@@ -111,8 +111,7 @@ CG_CVAR( cg_noVoiceText, "cg_noVoiceText", "0", CVAR_ARCHIVE )
 // but we also reference them here
 CG_CVAR( cg_buildScript, "com_buildScript", "0", 0 )
 CG_CVAR( cg_paused, "cl_paused", "0", CVAR_ROM )
-CG_CVAR( cg_blood, "com_blood", "1", CVAR_ARCHIVE )
-CG_CVAR( cg_bloodParticles, "cg_bloodParticles", "0", CVAR_ARCHIVE )
+CG_CVAR( cg_blood, "com_blood", "2", CVAR_ARCHIVE_ND )	// 0 off, 1 classic, 2 enhanced
 CG_CVAR( cg_damageEffect, "cg_damageEffect", "0", CVAR_ARCHIVE )
 #ifdef MISSIONPACK
 CG_CVAR( cg_currentSelectedPlayer, "cg_currentSelectedPlayer", "0", CVAR_ARCHIVE )

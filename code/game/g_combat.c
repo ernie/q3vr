@@ -1068,23 +1068,37 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			attacker->client->damage.amount += take + asave;
 		}
 #endif
-		if ( !OnSameTeam( targ, attacker ) ) {
-			// accumulate damage per target for damage plums
-			found = qfalse;
-			for ( i = 0; i < attacker->client->damagePlumCount; i++ ) {
-				if ( attacker->client->damagePlums[i].clientNum == targ->s.number ) {
-					attacker->client->damagePlums[i].damage += take + asave;
-					found = qtrue;
-					break;
-				}
+		// accumulate damage per target this frame. Collected unconditionally;
+		// the team/cvar filters are applied at flush (g_active.c) so blood
+		// (always) and damage plums (non-team, when enabled) share one tally.
+		found = qfalse;
+		for ( i = 0; i < attacker->client->damagePlumCount; i++ ) {
+			if ( attacker->client->damagePlums[i].clientNum == targ->s.number ) {
+				attacker->client->damagePlums[i].damage += take + asave;
+				found = qtrue;
+				break;
 			}
-			if ( !found && attacker->client->damagePlumCount < MAX_CLIENTS ) {
-				attacker->client->damagePlums[attacker->client->damagePlumCount].clientNum = targ->s.number;
-				attacker->client->damagePlums[attacker->client->damagePlumCount].damage = take + asave;
-				VectorCopy( targ->r.currentOrigin, attacker->client->damagePlums[attacker->client->damagePlumCount].origin );
-				attacker->client->damagePlums[attacker->client->damagePlumCount].origin[2] += 24;
-				attacker->client->damagePlumCount++;
+		}
+		if ( !found && attacker->client->damagePlumCount < MAX_CLIENTS ) {
+			int p = attacker->client->damagePlumCount;
+			attacker->client->damagePlums[p].clientNum = targ->s.number;
+			attacker->client->damagePlums[p].damage = take + asave;
+			VectorCopy( targ->r.currentOrigin, attacker->client->damagePlums[p].origin );
+			attacker->client->damagePlums[p].origin[2] += 24;
+			if ( point ) {
+				VectorCopy( point, attacker->client->damagePlums[p].woundPos );
+			} else {
+				VectorCopy( targ->r.currentOrigin, attacker->client->damagePlums[p].woundPos );
 			}
+			if ( dir ) {
+				VectorCopy( dir, attacker->client->damagePlums[p].dir );
+			} else {
+				VectorSet( attacker->client->damagePlums[p].dir, 0, 0, 1 );
+			}
+			// splash spreads as omnidirectional; a direct hit's dir is real momentum
+			attacker->client->damagePlums[p].directional = !( dflags & DAMAGE_RADIUS );
+			attacker->client->damagePlums[p].sameTeam = OnSameTeam( targ, attacker );
+			attacker->client->damagePlumCount++;
 		}
 	}
 
@@ -1267,6 +1281,7 @@ qboolean G_RadiusDamage ( vec3_t origin, gentity_t *attacker, float damage, floa
 	vec3_t		mins, maxs;
 	vec3_t		v;
 	vec3_t		dir;
+	vec3_t		woundPoint;
 	int			i, e;
 	qboolean	hitClient = qfalse;
 
@@ -1289,14 +1304,19 @@ qboolean G_RadiusDamage ( vec3_t origin, gentity_t *attacker, float damage, floa
 		if (!ent->takedamage)
 			continue;
 
-		// find the distance from the edge of the bounding box
+		// find the distance from the edge of the bounding box;
+		// woundPoint = blast origin clamped onto the box (closest point on
+		// the body) so splash blood lands on the victim, not the blast wall
 		for ( i = 0 ; i < 3 ; i++ ) {
 			if ( origin[i] < ent->r.absmin[i] ) {
 				v[i] = ent->r.absmin[i] - origin[i];
+				woundPoint[i] = ent->r.absmin[i];
 			} else if ( origin[i] > ent->r.absmax[i] ) {
 				v[i] = origin[i] - ent->r.absmax[i];
+				woundPoint[i] = ent->r.absmax[i];
 			} else {
 				v[i] = 0;
+				woundPoint[i] = origin[i];
 			}
 		}
 
@@ -1318,7 +1338,7 @@ qboolean G_RadiusDamage ( vec3_t origin, gentity_t *attacker, float damage, floa
 				const modeConfig_t *gp = Mode_GetConfig( g_mode.integer );
 				dir[2] += gp->splashZKnockback;
 			}
-			G_Damage (ent, NULL, attacker, dir, origin, (int)points, DAMAGE_RADIUS, mod);
+			G_Damage (ent, NULL, attacker, dir, woundPoint, (int)points, DAMAGE_RADIUS, mod);
 		}
 	}
 

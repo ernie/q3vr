@@ -339,13 +339,29 @@ itemDef {
 	itemDef {
       		name options
 		group grpOptions
-		text "Gore:"
+		text "Blood:"
 		type ITEM_TYPE_MULTI
-		cvar "vr_goreLevel"
-		cvarFloatList { "None" 0 "Blood Only" 1 "Blood & Gibs (Default)" 2 "Extra Gore (Performance Hit)" 3 }
+		cvar "com_blood"
+		cvarFloatList { "Off" 0 "Classic" 1 "Modern" 2 }
 		rect 99 353 256 17
       		textalign ITEM_ALIGN_RIGHT
-      		textalignx 70
+      		textalignx 128
+      		textaligny 17
+		textscale .3
+      		forecolor 1 1 1 1
+      		visible 1
+    		}
+
+	itemDef {
+      		name options
+		group grpOptions
+		text "Gibs:"
+		type ITEM_TYPE_MULTI
+		cvar "vr_goreLevel"
+		cvarFloatList { "Off" 0 "Normal" 1 "Extra" 2 }
+		rect 99 370 256 17
+      		textalign ITEM_ALIGN_RIGHT
+      		textalignx 128
       		textaligny 17
 		textscale .3
       		forecolor 1 1 1 1
@@ -356,13 +372,13 @@ itemDef {
 	itemDef {
       		name options
 		group grpOptions
-		text "Blood Spatter Effect:"
+		text "Damage Effect:"
 		type ITEM_TYPE_MULTI
 		cvar "cg_damageEffect"
 		cvarFloatList { "Classic" 0 "Modern" 1 }
-		rect 99 370 256 17
+		rect 99 387 256 17
       		textalign ITEM_ALIGN_RIGHT
-      		textalignx 70
+      		textalignx 128
       		textaligny 17
 		textscale .3
       		forecolor 1 1 1 1

@@ -60,14 +60,16 @@ GAME OPTIONS MENU
 #define ID_DRAWFFABACKGROUND	136
 #define ID_LASERSIGHT		    137
 #define ID_HOLSTER2D		    138
-#define ID_GORE 			    139
+#define ID_GIBS 			    139
 #define ID_DAMAGEEFFECT		    140
 #define ID_SHOWINHAND		    141
 #define ID_SHOWCONSOLE			142
 #define ID_BACK					143
+#define ID_BLOOD				144
 
 #define	NUM_CROSSHAIRS			10
-#define	NUM_GORE    			4
+#define	NUM_BLOOD				3
+#define	NUM_GIBS				3
 
 
 typedef struct {
@@ -89,7 +91,8 @@ typedef struct {
 	menulist_s			drawteamoverlay;
 	menulist_s			drawffabackground;
 	menuradiobutton_s	holster2d;
-	menulist_s 			gore;
+	menulist_s			blood;
+	menulist_s 			gibs;
 	menulist_s			damageeffect;
 	menuradiobutton_s	showinhand;
 	menuradiobutton_s	showconsole;
@@ -119,12 +122,19 @@ static const char *hudbackground_names[] =
 	NULL
 };
 
-static const char *s_gore[] =
+static const char *s_blood[] =
 {
-	"None",
-	"Blood Only",
-	"Blood & Gibs (Default)",
-	"Extra Gore (Performance Hit)",
+	"Off",
+	"Classic",
+	"Modern",
+	NULL
+};
+
+static const char *s_gibs[] =
+{
+	"Off",
+	"Normal",
+	"Extra",
 	NULL
 };
 
@@ -157,7 +167,8 @@ static void Preferences_SetMenuItems( void ) {
 	s_preferences.drawteamoverlay.curvalue	= Com_Clamp( 0, 3, trap_Cvar_VariableValue( "cg_drawTeamOverlay" ) );
 	s_preferences.drawffabackground.curvalue = Com_Clamp( 0, 1, trap_Cvar_VariableValue( "cg_drawFFABackground" ) );
 	s_preferences.holster2d.curvalue		= trap_Cvar_VariableValue( "cg_weaponSelectorSimple2DIcons" ) != 0;
-	s_preferences.gore.curvalue				= trap_Cvar_VariableValue( "vr_goreLevel" );
+	s_preferences.blood.curvalue			= Com_Clamp( 0, 2, trap_Cvar_VariableValue( "com_blood" ) );
+	s_preferences.gibs.curvalue				= trap_Cvar_VariableValue( "cg_megagibs" ) ? 2 : ( trap_Cvar_VariableValue( "cg_gibs" ) ? 1 : 0 );
 	s_preferences.damageeffect.curvalue		= trap_Cvar_VariableValue( "cg_damageEffect" );
 	s_preferences.showinhand.curvalue		= trap_Cvar_VariableValue( "vr_showItemInHand" ) != 0;
 	s_preferences.showconsole.curvalue		= trap_Cvar_VariableValue( "vr_showConsoleMessages" ) != 0;
@@ -245,30 +256,14 @@ static void Preferences_Event( void* ptr, int notification ) {
 		trap_Cvar_SetValue( "cg_weaponSelectorSimple2DIcons", s_preferences.holster2d.curvalue);
 		break;
 
-	case ID_GORE: {
-		switch ((int)s_preferences.gore.curvalue) {
-			case 0:
-				trap_Cvar_SetValue( "com_blood", 0);
-				trap_Cvar_SetValue( "cg_gibs", 0);
-				trap_Cvar_SetValue( "cg_megagibs", 0);
-				break;
-			case 1:
-				trap_Cvar_SetValue( "com_blood", 1);
-				trap_Cvar_SetValue( "cg_gibs", 0);
-				trap_Cvar_SetValue( "cg_megagibs", 0);
-				break;
-			case 2:
-				trap_Cvar_SetValue( "com_blood", 1);
-				trap_Cvar_SetValue( "cg_gibs", 1);
-				trap_Cvar_SetValue( "cg_megagibs", 0);
-				break;
-			case 3:
-				trap_Cvar_SetValue( "com_blood", 1);
-				trap_Cvar_SetValue( "cg_gibs", 1);
-				trap_Cvar_SetValue( "cg_megagibs", 1);
-				break;
-			}
-		}
+	case ID_BLOOD:
+		trap_Cvar_SetValue( "com_blood", s_preferences.blood.curvalue );
+		break;
+
+	case ID_GIBS:
+		// manages gibs only; blood is the Blood control's job
+		trap_Cvar_SetValue( "cg_gibs", s_preferences.gibs.curvalue >= 1 ? 1 : 0 );
+		trap_Cvar_SetValue( "cg_megagibs", s_preferences.gibs.curvalue >= 2 ? 1 : 0 );
 		break;
 
 	case ID_DAMAGEEFFECT:
@@ -444,7 +439,7 @@ static void Preferences_MenuInit( void ) {
 	s_preferences.framer.width  	   = 256;
 	s_preferences.framer.height  	   = 334;
 
-	y = 72;
+	y = 88;		// nudged down so the (now taller) list centers in the frame
 	s_preferences.crosshair.generic.type		= MTYPE_SPINCONTROL;
 	s_preferences.crosshair.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT|QMF_NODEFAULTINIT|QMF_OWNERDRAW;
 	s_preferences.crosshair.generic.x			= PREFERENCES_X_POS;
@@ -618,22 +613,33 @@ static void Preferences_MenuInit( void ) {
 	s_preferences.showconsole.generic.y	          = y;
 
 	y += BIGCHAR_HEIGHT+2;
-	s_preferences.gore.generic.type		= MTYPE_SPINCONTROL;
-	s_preferences.gore.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
-	s_preferences.gore.generic.x			= PREFERENCES_X_POS - 120;
-	s_preferences.gore.generic.y			= y;
-	s_preferences.gore.generic.name		= "Gore:";
-	s_preferences.gore.generic.callback	= Preferences_Event;
-	s_preferences.gore.generic.id		= ID_GORE;
-	s_preferences.gore.itemnames	        = s_gore;
-	s_preferences.gore.numitems			= NUM_GORE;
+	s_preferences.blood.generic.type		= MTYPE_SPINCONTROL;
+	s_preferences.blood.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_preferences.blood.generic.x			= PREFERENCES_X_POS;
+	s_preferences.blood.generic.y			= y;
+	s_preferences.blood.generic.name		= "Blood:";
+	s_preferences.blood.generic.callback	= Preferences_Event;
+	s_preferences.blood.generic.id			= ID_BLOOD;
+	s_preferences.blood.itemnames			= s_blood;
+	s_preferences.blood.numitems			= NUM_BLOOD;
+
+	y += BIGCHAR_HEIGHT+2;
+	s_preferences.gibs.generic.type		= MTYPE_SPINCONTROL;
+	s_preferences.gibs.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
+	s_preferences.gibs.generic.x			= PREFERENCES_X_POS;
+	s_preferences.gibs.generic.y			= y;
+	s_preferences.gibs.generic.name		= "Gibs:";
+	s_preferences.gibs.generic.callback	= Preferences_Event;
+	s_preferences.gibs.generic.id		= ID_GIBS;
+	s_preferences.gibs.itemnames	        = s_gibs;
+	s_preferences.gibs.numitems			= NUM_GIBS;
 
 	y += BIGCHAR_HEIGHT+2;
 	s_preferences.damageeffect.generic.type		= MTYPE_SPINCONTROL;
 	s_preferences.damageeffect.generic.flags		= QMF_PULSEIFFOCUS|QMF_SMALLFONT;
 	s_preferences.damageeffect.generic.x			= PREFERENCES_X_POS;
 	s_preferences.damageeffect.generic.y			= y;
-	s_preferences.damageeffect.generic.name		= "Blood Spatter Effect:";
+	s_preferences.damageeffect.generic.name		= "Damage Effect:";
 	s_preferences.damageeffect.generic.callback	= Preferences_Event;
 	s_preferences.damageeffect.generic.id		= ID_DAMAGEEFFECT;
 	s_preferences.damageeffect.itemnames	        = s_damageeffect;
@@ -665,7 +671,8 @@ static void Preferences_MenuInit( void ) {
 	Menu_AddItem( &s_preferences.menu, &s_preferences.drawteamoverlay );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.drawffabackground );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.holster2d );
-	Menu_AddItem( &s_preferences.menu, &s_preferences.gore );
+	Menu_AddItem( &s_preferences.menu, &s_preferences.blood );
+	Menu_AddItem( &s_preferences.menu, &s_preferences.gibs );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.damageeffect );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.showinhand );
 	Menu_AddItem( &s_preferences.menu, &s_preferences.showconsole );

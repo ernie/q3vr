@@ -1216,6 +1216,9 @@ static void CG_ServerCommand( void ) {
 
 		Q_strncpyz( hs_nonce, CG_Argv( 1 ), sizeof( hs_nonce ) );
 
+		// only Trinity servers send this; mark so feature paths (e.g. EV_BLOOD) engage
+		cgs.trinityServer = qtrue;
+
 		CG_Printf( "^5Trinity handshake challenge received\n" );
 
 		// Trinity version (read from pk3 at runtime)
