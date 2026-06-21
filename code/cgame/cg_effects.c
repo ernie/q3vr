@@ -643,7 +643,7 @@ void CG_Bleed( vec3_t origin, vec3_t dir, int entityNum, int damage, qboolean di
 		le->leFlags = LEF_PUFF_DONT_SCALE | LEF_NO_MARK;
 		le->leType = LE_BLOOD_PARTICLE;
 		le->startTime = cg.time;
-		le->endTime = cg.time + 700 + random() * 300;
+		le->endTime = cg.time + 300 + random() * 66;
 		le->lifeRate = 1.0f / ( le->endTime - le->startTime );
 
 		le->pos.trType = TR_GRAVITY;
@@ -739,6 +739,12 @@ void CG_LaunchGib( vec3_t origin, vec3_t velocity, qhandle_t hModel ) {
 
 	le->leBounceSoundType = LEBS_BLOOD;
 	le->leMarkType = LEMT_BLOOD;
+
+	// modern: keep trailing blood across bounces (speed-gated in CG_AddFragment)
+	if ( cg_blood.integer >= 2 ) {
+		le->leFlags |= LEF_BLOOD_TRAIL;
+		VectorCopy( origin, le->trailOrigin );
+	}
 }
 
 /*
@@ -785,7 +791,7 @@ static void CG_GibBloodSpray( const vec3_t org ) {
 			le->leFlags = LEF_PUFF_DONT_SCALE | LEF_NO_MARK;
 			le->leType = LE_BLOOD_PARTICLE;
 			le->startTime = cg.time;
-			le->endTime = cg.time + 500 + random() * 400;
+			le->endTime = cg.time + 300 + random() * 66;
 			le->lifeRate = 1.0f / ( le->endTime - le->startTime );
 
 			le->pos.trType = TR_GRAVITY;
@@ -823,13 +829,40 @@ CG_GibPlayer
 Generated a bunch of gibs launching out from the bodies location
 ===================
 */
-#define	GIB_VELOCITY	250
-#define	GIB_JUMP		250
-void CG_GibPlayer( vec3_t playerOrigin ) {
+#define	GIB_VELOCITY	250		// Classic horizontal scatter
+#define	GIB_JUMP		250		// Classic upward floor
+// Modern (com_blood 2): reduced scatter so the inherited killing-blow
+// momentum dominates, giving a weak-vs-rocket throw contrast.
+#define	GIB_VELOCITY_MODERN	120
+#define	GIB_JUMP_MODERN		120
+#define	GIB_INHERIT_SCALE	1.0f	// how much of the hit's momentum gibs carry
+
+// Build one gib's launch velocity: inherited momentum (scaled by k) plus
+// random scatter, with an upward floor. base is the gibbing entity's trDelta.
+static void CG_GibVelocity( const vec3_t base, float k, float scatter, float jump, vec3_t out ) {
+	out[0] = base[0] * k + crandom() * scatter;
+	out[1] = base[1] * k + crandom() * scatter;
+	out[2] = base[2] * k + jump + crandom() * scatter;
+}
+
+void CG_GibPlayer( vec3_t playerOrigin, const vec3_t baseVelocity ) {
 	vec3_t	origin, velocity;
+	float	scatter, jump, k;
 
 	if ( !cg_blood.integer ) {
 		return;
+	}
+
+	// Modern blood inherits the killing blow's momentum (direction + force);
+	// Classic keeps the original fixed, symmetric scatter.
+	if ( cg_blood.integer >= 2 ) {
+		scatter = GIB_VELOCITY_MODERN;
+		jump    = GIB_JUMP_MODERN;
+		k       = GIB_INHERIT_SCALE;
+	} else {
+		scatter = GIB_VELOCITY;
+		jump    = GIB_JUMP;
+		k       = 0.0f;
 	}
 
 	// Modern only: the enhanced gib blood spray. Classic leaves just the gibs.
@@ -838,9 +871,7 @@ void CG_GibPlayer( vec3_t playerOrigin ) {
 	}
 
 	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
+	CG_GibVelocity( baseVelocity, k, scatter, jump, velocity );
 	if ( rand() & 1 ) {
 		CG_LaunchGib( origin, velocity, cgs.media.gibSkull );
 	} else {
@@ -858,63 +889,47 @@ void CG_GibPlayer( vec3_t playerOrigin ) {
 	int i;
 	for (i = 0; i < (1 + (megagibs * 2)); ++i) {
 		VectorCopy(playerOrigin, origin);
-		velocity[0] = crandom() * GIB_VELOCITY;
-		velocity[1] = crandom() * GIB_VELOCITY;
-		velocity[2] = GIB_JUMP + crandom() * GIB_VELOCITY;
+		CG_GibVelocity( baseVelocity, k, scatter, jump, velocity );
 		CG_LaunchGib(origin, velocity, cgs.media.gibAbdomen);
 	}
 
 	for (i = 0; i < (1 + megagibs); ++i) {
 		VectorCopy(playerOrigin, origin);
-		velocity[0] = crandom() * GIB_VELOCITY;
-		velocity[1] = crandom() * GIB_VELOCITY;
-		velocity[2] = GIB_JUMP + crandom() * GIB_VELOCITY;
+		CG_GibVelocity( baseVelocity, k, scatter, jump, velocity );
 		CG_LaunchGib(origin, velocity, cgs.media.gibArm);
 	}
 
 	VectorCopy(playerOrigin, origin);
-	velocity[0] = crandom() * GIB_VELOCITY;
-	velocity[1] = crandom() * GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom() * GIB_VELOCITY;
+	CG_GibVelocity( baseVelocity, k, scatter, jump, velocity );
 	CG_LaunchGib(origin, velocity, cgs.media.gibChest);
 
 	for (i = 0; i < (1 + megagibs); ++i) {
 		VectorCopy(playerOrigin, origin);
-		velocity[0] = crandom() * GIB_VELOCITY;
-		velocity[1] = crandom() * GIB_VELOCITY;
-		velocity[2] = GIB_JUMP + crandom() * GIB_VELOCITY;
+		CG_GibVelocity( baseVelocity, k, scatter, jump, velocity );
 		CG_LaunchGib(origin, velocity, cgs.media.gibFist);
 	}
 
 	for (i = 0; i < (1 + megagibs); ++i) {
 		VectorCopy(playerOrigin, origin);
-		velocity[0] = crandom() * GIB_VELOCITY;
-		velocity[1] = crandom() * GIB_VELOCITY;
-		velocity[2] = GIB_JUMP + crandom() * GIB_VELOCITY;
+		CG_GibVelocity( baseVelocity, k, scatter, jump, velocity );
 		CG_LaunchGib(origin, velocity, cgs.media.gibFoot);
 	}
 
 	for (i = 0; i < (1 + megagibs); ++i) {
 		VectorCopy(playerOrigin, origin);
-		velocity[0] = crandom() * GIB_VELOCITY;
-		velocity[1] = crandom() * GIB_VELOCITY;
-		velocity[2] = GIB_JUMP + crandom() * GIB_VELOCITY;
+		CG_GibVelocity( baseVelocity, k, scatter, jump, velocity );
 		CG_LaunchGib(origin, velocity, cgs.media.gibForearm);
 	}
 
 	for (i = 0; i < (1 + megagibs); ++i) {
 		VectorCopy(playerOrigin, origin);
-		velocity[0] = crandom() * GIB_VELOCITY;
-		velocity[1] = crandom() * GIB_VELOCITY;
-		velocity[2] = GIB_JUMP + crandom() * GIB_VELOCITY;
+		CG_GibVelocity( baseVelocity, k, scatter, jump, velocity );
 		CG_LaunchGib(origin, velocity, cgs.media.gibIntestine);
 	}
 
 	for (i = 0; i < (1 + megagibs); ++i) {
 		VectorCopy(playerOrigin, origin);
-		velocity[0] = crandom() * GIB_VELOCITY;
-		velocity[1] = crandom() * GIB_VELOCITY;
-		velocity[2] = GIB_JUMP + crandom() * GIB_VELOCITY;
+		CG_GibVelocity( baseVelocity, k, scatter, jump, velocity );
 		CG_LaunchGib(origin, velocity, cgs.media.gibLeg);
 	}
 }

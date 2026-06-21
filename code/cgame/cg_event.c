@@ -1313,7 +1313,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		if ( !(es->eFlags & EF_KAMIKAZE) ) {
 			trap_S_StartSound( NULL, es->number, CHAN_BODY, cgs.media.gibSound );
 		}
-		CG_GibPlayer( cent->lerpOrigin );
+		CG_GibPlayer( cent->lerpOrigin, cent->currentState.pos.trDelta );
 
 		if ( clientNum == cg.snap->ps.clientNum ) {
 			trap_HapticEvent("shield_break", 0, 0, 100, 0, 0);
