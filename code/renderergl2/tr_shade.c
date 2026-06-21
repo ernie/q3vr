@@ -83,6 +83,18 @@ static void R_BindAnimatedImageToTMU( textureBundle_t *bundle, int tmu ) {
 		return;
 	}
 
+	// RF_ANIMFRAME: caller drives the frame via refEntity->frame instead of by time.
+	// Keep the index in int (not int64_t) so Windows x86 avoids the 64-bit modulus.
+	if ( backEnd.currentEntity && ( backEnd.currentEntity->e.renderfx & RF_ANIMFRAME ) ) {
+		int frame = backEnd.currentEntity->e.frame;
+		if ( frame < 0 ) {
+			frame = 0;
+		}
+		frame %= bundle->numImageAnimations;
+		GL_BindToTMU( bundle->image[ frame ], tmu );
+		return;
+	}
+
 	// it is necessary to do this messy calc to make sure animations line up
 	// exactly with waveforms of the same frequency
 	index = tess.shaderTime * bundle->imageAnimationSpeed * FUNCTABLE_SIZE;

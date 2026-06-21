@@ -1807,6 +1807,7 @@ qboolean	trap_GetValue( char *value, int valueSize, const char *key );
 
 // enhanced blood decals: discovered extension (resolved in CG_Init)
 extern qboolean	projectDecal;
+extern qboolean	animFrame;
 extern int	dll_com_trapGetValue;
 extern int	dll_trap_R_ProjectDecal;
 void		trap_R_ProjectDecal( const vec3_t origin, float radius, float orientation, qhandle_t hShader, const float rgba[4], int lifeTime );

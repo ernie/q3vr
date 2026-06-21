@@ -497,6 +497,12 @@ qboolean CL_GetValue( char *value, int valueSize, const char *key ) {
 		return qtrue;
 	}
 
+	// Capability flag (no syscall): renderer honors RF_ANIMFRAME.
+	if ( !Q_stricmp( key, "R_animFrame" ) ) {
+		Com_sprintf( value, valueSize, "1" );
+		return qtrue;
+	}
+
 #ifdef USE_VOIP
 	if ( !Q_stricmp( key, "voip_talking" ) ) {
 		byte mask[(MAX_CLIENTS + 7) / 8];

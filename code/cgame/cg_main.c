@@ -45,6 +45,7 @@ qboolean cg_usingOpenGL = qfalse;
 // extension interface: resolved at runtime in CG_Init via the engine's
 // "//trap_GetValue" ROM cvar (mirrors trinity-engine's discovery mechanism)
 qboolean projectDecal = qfalse;		// engine advertises trap_R_ProjectDecal
+qboolean animFrame = qfalse;		// engine indexes animMap by refEntity->frame (RF_ANIMFRAME)
 int dll_com_trapGetValue;
 int dll_trap_R_ProjectDecal;
 
@@ -2009,6 +2010,9 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 			if ( trap_GetValue( ext, sizeof( ext ), "trap_R_ProjectDecal" ) ) {
 				dll_trap_R_ProjectDecal = atoi( ext );
 				projectDecal = qtrue;
+			}
+			if ( trap_GetValue( ext, sizeof( ext ), "R_animFrame" ) ) {
+				animFrame = qtrue;	// gouts play once across their life via RF_ANIMFRAME
 			}
 		}
 	}
