@@ -1810,7 +1810,7 @@ extern qboolean	projectDecal;
 extern qboolean	animFrame;
 extern int	dll_com_trapGetValue;
 extern int	dll_trap_R_ProjectDecal;
-void		trap_R_ProjectDecal( const vec3_t origin, float radius, float orientation, qhandle_t hShader, const float rgba[4], int lifeTime );
+void		trap_R_ProjectDecal( const vec3_t origin, float size, float reach, float orientation, qhandle_t hShader, const float rgba[4], int lifeTime );
 
 // The glconfig_t will not change during the life of a cgame.
 // If it needs to change, the entire cgame will be restarted, because

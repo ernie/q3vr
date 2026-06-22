@@ -1830,7 +1830,7 @@ void R_ChopPolyBehindPlane( int numInPoints, vec3_t inPoints[MAX_VERTS_ON_POLY],
 		int *numOutPoints, vec3_t outPoints[MAX_VERTS_ON_POLY],
 		vec3_t normal, vec_t dist, vec_t epsilon );
 
-void RE_ProjectDecal( const vec3_t origin, float radius, float orientation,
+void RE_ProjectDecal( const vec3_t origin, float size, float reach, float orientation,
 		qhandle_t hShader, const float rgba[4], int lifeTime );
 void RE_ClearDecals( void );
 void R_AddDecalSurfaces( void );
