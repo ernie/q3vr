@@ -4923,6 +4923,9 @@ void CG_DrawActive( void ) {
 	{
 		//If not using true 6DoF, allow some amount of faked positional tracking
 		if (cg.snap->ps.stats[STAT_HEALTH] > 0 &&
+		    // Intermission folds absolute HMD position into vieworg itself; this
+		    // hmdorigin-relative path would fight it and snap back on realign.
+		    cg.snap->ps.pm_type != PM_INTERMISSION &&
 		    //Don't use fake positional if following another player  - this is handled in  the
 		    //VR third person code
 		    !( cg.demoPlayback || CG_IsThirdPersonFollowMode(VRFM_QUERY)))

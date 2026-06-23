@@ -234,7 +234,6 @@ void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 	{
 		// First frame of SP intermission - capture anchor position
 		vr.sp_intermission_active = qtrue;
-		vr.use_6dof = qtrue;
 		// Store yaw for HUD positioning (in degrees)
 		XrQuaternionf q = views[0].pose.orientation;
 		float siny_cosp = 2.0f * (q.w * q.y + q.z * q.x);
@@ -245,7 +244,6 @@ void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 	{
 		// Exiting SP intermission - reset state
 		vr.sp_intermission_active = qfalse;
-		vr.use_6dof = vr.single_player && Cvar_VariableIntegerValue("vr_6dof");
 	}
 
 	// [Input] poll actions, update controller state, issue action commands
