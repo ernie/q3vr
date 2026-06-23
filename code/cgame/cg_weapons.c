@@ -228,7 +228,12 @@ void CG_ConvertFromVR(vec3_t in, vec3_t offset, vec3_t out)
 	VectorSet(vrSpace, in[2], in[0], in[1] );
 
 	vec2_t r;
-	if (!vr->use_6dof)
+	if ( cg.predictedPlayerState.pm_type == PM_INTERMISSION ) {
+		// Match the position offset to the frozen reference the orientation uses,
+		// else clientviewangles drift orbits the camera in MP (use_6dof is false).
+		float angleYaw = cg.refdefViewAngles[YAW] - vr->hmdorientation[YAW];
+		rotateAboutOrigin(vrSpace[0], vrSpace[1], angleYaw, r);
+	} else if (!vr->use_6dof)
 	{
 		//We are not using true 6DoF, so make the appropriate adjustment to the view
 		//angles as we send orientation to the server that includes the weapon angles
