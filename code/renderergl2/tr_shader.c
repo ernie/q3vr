@@ -3953,7 +3953,9 @@ static void ScanAndLoadShaderFiles( void )
 	s_shaderText[ 0 ] = '\0';
 	textEnd = s_shaderText;
 
-	// free in reverse order, so the temp files are all dumped
+	// concatenate first; free the temp buffers separately below in reverse
+	// allocation order (xbuffers were loaded after buffers) or the hunk temp
+	// stack can't unwind ("not the final block").
 	// legacy shaders
 	for ( i = numShaderFiles - 1; i >= 0 ; i-- )
 	{
@@ -3963,7 +3965,6 @@ static void ScanAndLoadShaderFiles( void )
 		strcat( textEnd, buffers[i] );
 		strcat( textEnd, "\n" );
 		textEnd += strlen( textEnd );
-		ri.FS_FreeFile( buffers[i] );
 	}
 
 	// text at or beyond this point came from a .shaderx and may use extended
@@ -3979,7 +3980,16 @@ static void ScanAndLoadShaderFiles( void )
 		strcat( textEnd, xbuffers[i] );
 		strcat( textEnd, "\n" );
 		textEnd += strlen( textEnd );
-		ri.FS_FreeFile( xbuffers[i] );
+	}
+
+	// free temp buffers top-down (xbuffers loaded after buffers)
+	for ( i = numShaderxFiles - 1; i >= 0 ; i-- ) {
+		if ( xbuffers[i] )
+			ri.FS_FreeFile( xbuffers[i] );
+	}
+	for ( i = numShaderFiles - 1; i >= 0 ; i-- ) {
+		if ( buffers[i] )
+			ri.FS_FreeFile( buffers[i] );
 	}
 
 	// NOTE: COM_Compress() intentionally omitted here — it relocates text within
