@@ -134,6 +134,7 @@ const VR_VulkanDeviceInfo* VR_Vulkan_GetDeviceInfo(void)
     info.device = vr_vk.device;
     info.queue = vr_vk.queue;
     info.queueFamilyIndex = vr_vk.queueFamilyIndex;
+    info.swapchainColorspaceEnabled = vr_vk.swapchainColorspaceEnabled;
     return &info;
 }
 
@@ -215,19 +216,44 @@ XrResult VR_Vulkan_CreateInstance(XrInstance xrInstance, XrSystemId systemId)
     // With XR_KHR_vulkan_enable2, we only need to provide our own extensions.
     // The runtime will add any additional required extensions during xrCreateVulkanInstanceKHR.
 
+    uint32_t availExtCount = 0;
+    VkBool32 colorspaceSupported = VK_FALSE;
+    vkEnumerateInstanceExtensionProperties(NULL, &availExtCount, NULL);
+    if (availExtCount > 0) {
+        VkExtensionProperties* availExts = (VkExtensionProperties*)malloc(
+            sizeof(VkExtensionProperties) * availExtCount);
+        if (availExts) {
+            vkEnumerateInstanceExtensionProperties(NULL, &availExtCount, availExts);
+            for (uint32_t i = 0; i < availExtCount; i++) {
+                if (strcmp(availExts[i].extensionName,
+                           VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME) == 0) {
+                    colorspaceSupported = VK_TRUE;
+                    break;
+                }
+            }
+            free(availExts);
+        }
+    }
+
     // Our extensions:
     // - VK_KHR_surface + platform surface for desktop mirror window
+    // - VK_EXT_swapchain_colorspace when available (enables HDR on desktop mirror)
     // - VK_EXT_debug_utils in debug builds
-    const char* extensions[] = {
-        VK_KHR_SURFACE_EXTENSION_NAME,
+    const char* extensions[8];
+    uint32_t extensionCount = 0;
+    extensions[extensionCount++] = VK_KHR_SURFACE_EXTENSION_NAME;
 #ifdef _WIN32
-        VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+    extensions[extensionCount++] = VK_KHR_WIN32_SURFACE_EXTENSION_NAME;
 #endif
+    if (colorspaceSupported) {
+        extensions[extensionCount++] = VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME;
+        fprintf(stdout, "[VRVK] VK_EXT_swapchain_colorspace available; requesting it\n");
+    }
 #ifdef _DEBUG
-        VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+    extensions[extensionCount++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 #endif
-    };
-    uint32_t extensionCount = sizeof(extensions) / sizeof(extensions[0]);
+
+    vr_vk.swapchainColorspaceEnabled = colorspaceSupported;
 
     // Application info
     VkApplicationInfo appInfo = {

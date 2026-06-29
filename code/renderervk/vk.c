@@ -4,6 +4,14 @@
 #include "../vrcommon/vr_clientinfo.h"
 #include "../vrcommon/vr_gameplay.h"  // For VR_Gameplay_ShouldRenderInVirtualScreen
 
+#ifdef _WIN32
+// DisplayConfig API (Win7+) for OS HDR switch detection.
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+#include <windows.h>
+#endif
+
 // VR client state accessible from renderer
 extern vr_clientinfo_t vr;
 
@@ -692,9 +700,11 @@ static void vk_create_swapchain( VkPhysicalDevice physical_device, VkDevice devi
 
 static void vk_create_render_passes( void )
 {
-	VkAttachmentDescription attachments[3]; // color | depth | msaa color
-	VkAttachmentReference colorResolveRef;
+	VkAttachmentDescription attachments[5]; // color | depth | msaa color | emissive resolve | emissive msaa
+	VkAttachmentReference colorResolveRef = { 0 };
+	VkAttachmentReference colorResolveRefs[2];
 	VkAttachmentReference colorRef0;
+	VkAttachmentReference colorRefs[2];
 	VkAttachmentReference depthRef0;
 	VkSubpassDescription subpass;
 	VkSubpassDependency deps[3];
@@ -938,6 +948,67 @@ static void vk_create_render_passes( void )
 			colorResolveRef.attachment = 0;   // Resolve to non-MSAA
 			colorResolveRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			subpass.pResolveAttachments = &colorResolveRef;
+
+			if ( vk.hdrActive )
+			{
+				// emissive resolve target (sampled by the gamma/mirror pass)
+				attachments[3].flags = 0;
+				attachments[3].format = VK_FORMAT_R16G16B16A16_SFLOAT;
+				attachments[3].samples = VK_SAMPLE_COUNT_1_BIT;
+				attachments[3].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+				attachments[3].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+				attachments[3].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+				attachments[3].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+				attachments[3].initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				attachments[3].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+				// msaa emissive render target
+				attachments[4].flags = 0;
+				attachments[4].format = VK_FORMAT_R16G16B16A16_SFLOAT;
+				attachments[4].samples = vkSamples;
+				attachments[4].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+				attachments[4].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // Needed for mainResume
+				attachments[4].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+				attachments[4].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+				attachments[4].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				attachments[4].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+				colorRefs[0] = colorRef0;       // attachment 2 (msaa color)
+				colorRefs[1].attachment = 4;    // msaa emissive render target
+				colorRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				subpass.colorAttachmentCount = 2;
+				subpass.pColorAttachments = colorRefs;
+
+				colorResolveRefs[0] = colorResolveRef; // attachment 0 (color resolve)
+				colorResolveRefs[1].attachment = 3;    // emissive resolve
+				colorResolveRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				subpass.pResolveAttachments = colorResolveRefs;
+
+				desc.attachmentCount = 5;
+			}
+		}
+
+		if ( vk.hdrActive && !vk.msaaActive )
+		{
+			// emissive resolve: rendered directly as 2nd color attachment (no MSAA)
+			attachments[2].flags = 0;
+			attachments[2].format = VK_FORMAT_R16G16B16A16_SFLOAT;
+			attachments[2].samples = VK_SAMPLE_COUNT_1_BIT;
+			attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			// mirror the color attachment so the shared post-bloom pass can LOAD it
+			attachments[2].initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			attachments[2].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			colorRefs[0] = colorRef0;
+			colorRefs[1].attachment = 2;
+			colorRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			subpass.colorAttachmentCount = 2;
+			subpass.pColorAttachments = colorRefs;
+
+			desc.attachmentCount = 3;
 		}
 
 		VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.main ) );
@@ -962,6 +1033,20 @@ static void vk_create_render_passes( void )
 			attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		}
 
+		if ( vk.hdrActive )
+		{
+			// Preserve emissive energy accumulated in the main pass
+			if ( vk.msaaActive )
+			{
+				attachments[3].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // emissive resolve
+				attachments[4].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // msaa emissive
+			}
+			else
+			{
+				attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // emissive resolve
+			}
+		}
+
 		VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.mainResume ) );
 		SET_OBJECT_NAME( vk.render_pass.mainResume, "render pass - XR main resume (multiview)", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
 		ri.Printf( PRINT_ALL, "Created mainResume render pass: %p\n", (void*)vk.render_pass.mainResume );
@@ -969,6 +1054,8 @@ static void vk_create_render_passes( void )
 		// Reset for non-MSAA passes
 		subpass.pResolveAttachments = NULL;
 		colorRef0.attachment = 0;
+		subpass.colorAttachmentCount = 1;
+		subpass.pColorAttachments = &colorRef0;
 
 		// Gamma pass: outputs to XR swapchain (uses UNORM format to bypass automatic sRGB conversion)
 		// The gamma shader outputs sRGB-encoded values directly
@@ -1067,6 +1154,45 @@ static void vk_create_render_passes( void )
 			desc.dependencyCount = 2;
 			desc.pDependencies = deps;
 			subpass.pDepthStencilAttachment = &depthRef0;
+		}
+
+		if ( vk.hdrActive )
+		{
+			if ( vk.msaaActive )
+			{
+				// Keep the emitter energy the main pass accumulated
+				attachments[3].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;  // emissive resolve
+				attachments[3].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+				attachments[4].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;  // msaa emissive
+				attachments[4].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+				colorRefs[0] = colorRef0;       // attachment 2 (msaa color)
+				colorRefs[1].attachment = 4;    // msaa emissive render target
+				colorRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				subpass.colorAttachmentCount = 2;
+				subpass.pColorAttachments = colorRefs;
+
+				colorResolveRefs[0] = colorResolveRef; // attachment 0 (color resolve)
+				colorResolveRefs[1].attachment = 3;    // emissive resolve
+				colorResolveRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				subpass.pResolveAttachments = colorResolveRefs;
+
+				desc.attachmentCount = 5;
+			}
+			else
+			{
+				// Emissive resolve: LOAD what main wrote, STORE for gamma/mirror pass
+				attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+				attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+				colorRefs[0] = colorRef0;
+				colorRefs[1].attachment = 2;
+				colorRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+				subpass.colorAttachmentCount = 2;
+				subpass.pColorAttachments = colorRefs;
+
+				desc.attachmentCount = 3;
+			}
 		}
 
 		VK_CHECK( qvkCreateRenderPass( device, &desc, NULL, &vk.render_pass.post_bloom ) );
@@ -1410,6 +1536,9 @@ static qboolean used_instance_extension( const char *ext )
 	if ( Q_stricmp( ext, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME ) == 0 )
 		return qtrue;
 
+	if ( Q_stricmp( ext, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME ) == 0 )
+		return qtrue;
+
 	return qfalse;
 }
 
@@ -1458,6 +1587,10 @@ static void create_instance( void )
 
 		if ( Q_stricmp( ext, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME ) == 0 ) {
 			flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+		}
+
+		if ( Q_stricmp( ext, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME ) == 0 ) {
+			vk.hdrColorspaceExt = qtrue;
 		}
 
 		ri.Printf(PRINT_DEVELOPER, "instance extension: %s\n", ext);
@@ -1573,6 +1706,13 @@ static VkFormat get_hdr_format( VkFormat base_format )
 		return base_format;
 	}
 
+	if ( vk.hdrActive ) {
+		// UNORM keeps the framebuffer clamped to [0,1], which Q3's
+		// destination-dependent blends (e.g. GL_ONE_MINUS_DST_COLOR) require.
+		// HDR >1.0 headroom is reconstructed in the mirror encode via overbright.
+		return VK_FORMAT_R16G16B16A16_UNORM;
+	}
+
 	switch ( r_hdr->integer ) {
 		case -1: return VK_FORMAT_B4G4R4A4_UNORM_PACK16;
 		case 1: return VK_FORMAT_R16G16B16A16_UNORM;
@@ -1681,6 +1821,110 @@ static void get_present_format( int present_bits, VkFormat *bgr, VkFormat *rgb )
 }
 
 
+typedef enum {
+	OSHDR_UNKNOWN = 0,	// could not determine (non-Windows, old OS, or query failed)
+	OSHDR_ON,		// an HDR-capable output has the OS HDR switch on
+	OSHDR_OFF,		// HDR-capable output present but the OS HDR switch is off
+	OSHDR_UNSUPPORTED	// no HDR-capable output found
+} osHdrState_t;
+
+#ifdef _WIN32
+// These info-types are enum values (not macros), absent from some MinGW headers.
+// Private structs match the documented Windows layouts.
+//
+// Type 9 "advancedColorEnabled" fires on wide-gamut SDR too (false positive when
+// the HDR switch is off). Type 13 adds activeColorMode (SDR=0, WCG=1, HDR=2);
+// prefer it, fall back to type 9 on systems without it.
+#define TR_DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO	9
+#define TR_DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2	15
+#define TR_ADVANCED_COLOR_MODE_HDR			2
+typedef struct {
+	DISPLAYCONFIG_DEVICE_INFO_HEADER	header;
+	UINT32					value;	// bit 0 supported, bit 1 enabled
+	UINT32					colorEncoding;
+	UINT32					bitsPerColorChannel;
+} trAdvancedColorInfo_t;
+
+typedef struct {
+	DISPLAYCONFIG_DEVICE_INFO_HEADER	header;
+	UINT32					value;	// bit 4 HDR supported, bit 5 HDR user-enabled
+	UINT32					colorEncoding;
+	UINT32					bitsPerColorChannel;
+	UINT32					activeColorMode;
+} trAdvancedColorInfo2_t;
+
+static osHdrState_t vk_query_os_hdr_state( void )
+{
+	UINT32 numPath = 0, numMode = 0;
+	DISPLAYCONFIG_PATH_INFO *paths;
+	DISPLAYCONFIG_MODE_INFO *modes;
+	osHdrState_t result = OSHDR_UNSUPPORTED;
+	UINT32 i;
+
+	if ( GetDisplayConfigBufferSizes( QDC_ONLY_ACTIVE_PATHS, &numPath, &numMode ) != ERROR_SUCCESS || numPath == 0 )
+		return OSHDR_UNKNOWN;
+
+	paths = (DISPLAYCONFIG_PATH_INFO*)ri.Malloc( numPath * sizeof( *paths ) );
+	modes = (DISPLAYCONFIG_MODE_INFO*)ri.Malloc( ( numMode ? numMode : 1 ) * sizeof( *modes ) );
+
+	if ( QueryDisplayConfig( QDC_ONLY_ACTIVE_PATHS, &numPath, paths, &numMode, modes, NULL ) != ERROR_SUCCESS ) {
+		ri.Free( paths );
+		ri.Free( modes );
+		return OSHDR_UNKNOWN;
+	}
+
+	for ( i = 0; i < numPath; i++ ) {
+		trAdvancedColorInfo2_t info2;
+		trAdvancedColorInfo_t info;
+
+		// Preferred: type 13 separates HDR from wide-gamut SDR.
+		Com_Memset( &info2, 0, sizeof( info2 ) );
+		info2.header.type = (DISPLAYCONFIG_DEVICE_INFO_TYPE)TR_DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2;
+		info2.header.size = sizeof( info2 );
+		info2.header.adapterId = paths[i].targetInfo.adapterId;
+		info2.header.id = paths[i].targetInfo.id;
+		if ( DisplayConfigGetDeviceInfo( &info2.header ) == ERROR_SUCCESS ) {
+			ri.Printf( PRINT_DEVELOPER, "...OS HDR query (path %u): type-13 value 0x%02x, activeColorMode %u\n",
+				(unsigned)i, (unsigned)info2.value, (unsigned)info2.activeColorMode );
+			if ( info2.value & 0x10 ) {	// HDR supported
+				if ( info2.activeColorMode == TR_ADVANCED_COLOR_MODE_HDR ) {
+					result = OSHDR_ON;
+					break;
+				}
+				result = OSHDR_OFF;
+			}
+			continue;
+		}
+
+		// Fallback for systems without type 13.
+		Com_Memset( &info, 0, sizeof( info ) );
+		info.header.type = (DISPLAYCONFIG_DEVICE_INFO_TYPE)TR_DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO;
+		info.header.size = sizeof( info );
+		info.header.adapterId = paths[i].targetInfo.adapterId;
+		info.header.id = paths[i].targetInfo.id;
+		if ( DisplayConfigGetDeviceInfo( &info.header ) == ERROR_SUCCESS && ( info.value & 0x1 ) ) {
+			ri.Printf( PRINT_DEVELOPER, "...OS HDR query (path %u): type-9 value 0x%02x\n",
+				(unsigned)i, (unsigned)info.value );
+			if ( info.value & 0x2 ) {
+				result = OSHDR_ON;
+				break;
+			}
+			result = OSHDR_OFF;
+		}
+	}
+
+	ri.Free( paths );
+	ri.Free( modes );
+	return result;
+}
+#else
+static osHdrState_t vk_query_os_hdr_state( void )
+{
+	return OSHDR_UNKNOWN;
+}
+#endif
+
+
 static qboolean vk_select_surface_format( VkPhysicalDevice physical_device, VkSurfaceKHR surface )
 {
 	VkFormat base_bgr, base_rgb;
@@ -1712,6 +1956,8 @@ static qboolean vk_select_surface_format( VkPhysicalDevice physical_device, VkSu
 		ext_bgr = base_bgr;
 		ext_rgb = base_rgb;
 	}
+
+	vk.hdrActive = qfalse;
 
 	if ( format_count == 1 && candidates[0].format == VK_FORMAT_UNDEFINED ) {
 		// special case that means we can choose any format
@@ -1748,6 +1994,33 @@ static qboolean vk_select_surface_format( VkPhysicalDevice physical_device, VkSu
 				if ( ( candidates[i].format == ext_bgr || candidates[i].format == ext_rgb ) && candidates[i].colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR ) {
 					vk.present_format = candidates[i];
 					break;
+				}
+			}
+		}
+
+		if ( r_hdrDisplay->integer && r_fbo->integer ) {
+			if ( !vk.hdrColorspaceExt ) {
+				ri.Printf( PRINT_ALL, "...HDR requested but VK_EXT_swapchain_colorspace is unavailable; using SDR\n" );
+			} else {
+				vk.hdrOsState = vk_query_os_hdr_state();
+				if ( vk.hdrOsState != OSHDR_OFF && vk.hdrOsState != OSHDR_UNSUPPORTED ) {
+					uint32_t h;
+					for ( h = 0; h < format_count; h++ ) {
+						if ( candidates[h].format == VK_FORMAT_R16G16B16A16_SFLOAT &&
+							candidates[h].colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT ) {
+							vk.present_format = candidates[h];
+							vk.hdrActive = qtrue;
+							ri.Printf( PRINT_ALL, "...HDR output: scRGB linear FP16 (EXTENDED_SRGB_LINEAR)\n" );
+							break;
+						}
+					}
+					if ( !vk.hdrActive ) {
+						ri.Printf( PRINT_ALL, "...HDR requested but no scRGB FP16 surface; using SDR\n" );
+					}
+				} else if ( vk.hdrOsState == OSHDR_OFF ) {
+					ri.Printf( PRINT_ALL, "...HDR requested but the OS HDR switch is off; using SDR\n" );
+				} else {
+					ri.Printf( PRINT_ALL, "...HDR requested but no HDR-capable display found; using SDR\n" );
 				}
 			}
 		}
@@ -1856,6 +2129,7 @@ static void init_vulkan_library( void )
 	vk.device = xrDevice->device;
 	vk.queue_family_index = xrDevice->queueFamilyIndex;
 	vk_instance = xrDevice->instance;
+	vk.hdrColorspaceExt = xrDevice->swapchainColorspaceEnabled ? qtrue : qfalse;
 
 	ri.Printf( PRINT_ALL, "[VK] Using VR-provided Vulkan device\n" );
 
@@ -1904,6 +2178,7 @@ static void init_vulkan_library( void )
 	}
 
 	// Set up surface formats for desktop swapchain
+	vk.hdrOsState = OSHDR_UNKNOWN;
 	if ( !vk_select_surface_format( vk.physical_device, vk_surface ) ) {
 		ri.Error( ERR_FATAL, "Error selecting surface format for desktop mirror" );
 		return;
@@ -2385,6 +2660,12 @@ void vk_update_attachment_descriptors( void ) {
 
 		qvkUpdateDescriptorSets( vk.device, 1, &desc, 0, NULL );
 
+		// emissive: placeholder (color_image_view) when inactive; gamma_fs always declares set 1
+		info.imageView = vk.hdrActive ? vk.emissive_image_view : vk.color_image_view;
+		desc.dstSet = vk.emissive_descriptor;
+		desc.dstBinding = 0;
+		qvkUpdateDescriptorSets( vk.device, 1, &desc, 0, NULL );
+
 		// screenmap
 		sd.gl_mag_filter = sd.gl_min_filter = GL_LINEAR;
 		sd.max_lod_1_0 = qfalse;
@@ -2470,6 +2751,7 @@ void vk_init_descriptors( void )
 		alloc.pSetLayouts = &vk.set_layout_sampler;
 
 		VK_CHECK( qvkAllocateDescriptorSets( vk.device, &alloc, &vk.color_descriptor ) );
+		VK_CHECK( qvkAllocateDescriptorSets( vk.device, &alloc, &vk.emissive_descriptor ) );
 
 		if ( r_bloom->integer )
 		{
@@ -3456,6 +3738,18 @@ static void vk_create_attachments( void )
 		create_color_attachment( glConfig.vidWidth, glConfig.vidHeight, VK_SAMPLE_COUNT_1_BIT, vk.color_format,
 			usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, &vk.color_image, &vk.color_image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, qfalse );
 
+		if ( vk.hdrActive ) {
+			// resolved 2-layer multiview emissive layer, sampled by the gamma/mirror pass
+			create_color_attachment( glConfig.vidWidth, glConfig.vidHeight, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R16G16B16A16_SFLOAT,
+				usage, &vk.emissive_image, &vk.emissive_image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, qfalse );
+
+			if ( vk.msaaActive ) {
+				create_color_attachment( glConfig.vidWidth, glConfig.vidHeight, vkSamples, VK_FORMAT_R16G16B16A16_SFLOAT,
+					VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, &vk.emissive_image_msaa, &vk.emissive_image_view_msaa,
+					VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, qtrue );
+			}
+		}
+
 		// screenmap-msaa
 		if ( vk.screenMapSamples > VK_SAMPLE_COUNT_1_BIT ) {
 			create_color_attachment( vk.screenMapWidth, vk.screenMapHeight, vk.screenMapSamples, vk.color_format,
@@ -3508,7 +3802,7 @@ static void vk_create_attachments( void )
 
 static void vk_create_framebuffers( void )
 {
-	VkImageView attachments[3];
+	VkImageView attachments[5]; // color | depth | msaa color | emissive resolve | emissive msaa
 	VkFramebufferCreateInfo desc;
 	uint32_t n;
 
@@ -3543,13 +3837,28 @@ static void vk_create_framebuffers( void )
 					desc.attachmentCount = 3;
 					attachments[2] = vk.msaa_image_view;
 				}
+				if ( vk.hdrActive )
+				{
+					// same attachment order the main/post-bloom render passes declare
+					if ( vk.msaaActive )
+					{
+						attachments[3] = vk.emissive_image_view;      // resolve
+						attachments[4] = vk.emissive_image_view_msaa; // msaa render target
+						desc.attachmentCount = 5;
+					}
+					else
+					{
+						attachments[2] = vk.emissive_image_view;      // resolve
+						desc.attachmentCount = 3;
+					}
+				}
 				VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.framebuffers.main ) );
 				SET_OBJECT_NAME( vk.framebuffers.main, "framebuffer - main (multiview)", VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
 
 				// Post-bloom framebuffer - same attachments as main for pipeline compatibility
 				// Post_bloom render pass must match RENDER_PASS_MAIN attachment structure
 				desc.renderPass = vk.render_pass.post_bloom;
-				// Keep same attachmentCount as main (2 for non-MSAA, 3 for MSAA)
+				// match main's attachmentCount
 				VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.framebuffers.post_bloom ) );
 				SET_OBJECT_NAME( vk.framebuffers.post_bloom, "framebuffer - post_bloom (multiview)", VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT );
 			}
@@ -3800,46 +4109,6 @@ static void vk_destroy_pipelines( qboolean resetCount );
 static qboolean vk_reallocate_xr_fbo_descriptors( void );
 static void vk_destroy_hud_buffer( void );
 
-static void vk_restart_swapchain( const char *funcname, VkResult res )
-{
-	uint32_t i;
-
-#ifdef _DEBUG
-	ri.Printf( PRINT_WARNING, "%s(%s): restarting swapchain...\n", funcname, vk_result_string( res ) );
-#else
-	ri.Printf(PRINT_WARNING, "%s(): restarting swapchain...\n", funcname );
-#endif
-
-	vk_wait_idle();
-
-	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
-		qvkResetCommandBuffer( vk.tess[i].command_buffer, 0 );
-	}
-
-#ifdef USE_UPLOAD_QUEUE
-	qvkResetCommandBuffer( vk.staging_command_buffer, 0 );
-#endif
-
-	vk_destroy_pipelines( qfalse );
-	vk_destroy_framebuffers();
-	vk_destroy_render_passes();
-	vk_destroy_attachments();
-	vk_destroy_swapchain();
-	vk_destroy_sync_primitives();
-
-	vk_select_surface_format( vk.physical_device, vk_surface );
-	setup_surface_formats( vk.physical_device );
-
-	vk_create_sync_primitives();
-	vk_create_swapchain( vk.physical_device, vk.device, vk_surface, vk.present_format, &vk.swapchain, qfalse );
-	vk_create_attachments();
-	vk_create_render_passes();
-	vk_create_framebuffers();
-
-	vk_update_attachment_descriptors();
-
-	vk_update_post_process_pipelines();
-}
 
 
 static void vk_set_render_scale( void )
@@ -3877,6 +4146,14 @@ static void vk_set_render_scale( void )
 		vk.windowAdjusted = qtrue;
 	}
 
+}
+
+
+// vr_vk.xrColorManaged is only set inside VR_VK_CreateSession; earlier callers read a stale false.
+// Call after GLimp_InitVR(), which triggers session creation.
+void vk_sync_xr_color_state( void )
+{
+	vk.xrColorManaged = vr_vk.xrColorManaged ? qtrue : qfalse;
 }
 
 
@@ -4175,7 +4452,7 @@ void vk_initialize( void )
 		uint32_t i, maxSets;
 
 		pool_size[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		pool_size[0].descriptorCount = MAX_DRAWIMAGES + 1 + 1 + 1 + VK_NUM_BLOOM_PASSES * 2; // color, screenmap, bloom descriptors
+		pool_size[0].descriptorCount = MAX_DRAWIMAGES + 1 + 1 + 1 + 1 + VK_NUM_BLOOM_PASSES * 2; // color, emissive, screenmap, bloom descriptors
 
 		pool_size[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 		pool_size[1].descriptorCount = NUM_COMMAND_BUFFERS;
@@ -4216,9 +4493,10 @@ void vk_initialize( void )
 		VkPipelineLayoutCreateInfo desc;
 		VkPushConstantRange push_range;
 
+		// vertex stage: 128 bytes for 2 x mat4 per-eye MVP matrices (Q3VR multiview)
 		push_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 		push_range.offset = 0;
-		push_range.size = 64; // 16 floats
+		push_range.size = 128;
 
 		// standard pipelines
 		set_layouts[0] = vk.set_layout_uniform; // fog/dlight parameters
@@ -4226,9 +4504,6 @@ void vk_initialize( void )
 		set_layouts[2] = vk.set_layout_sampler; // lightmap / fog-only
 		set_layouts[3] = vk.set_layout_sampler; // blend
 		set_layouts[4] = vk.set_layout_sampler; // collapsed fog texture
-
-		// Q3VR: Main pipeline uses 128-byte push constants for per-eye MVP matrices
-		push_range.size = 128; // 2 x mat4 = 2 per-eye MVP matrices
 
 		desc.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		desc.pNext = NULL;
@@ -4282,7 +4557,7 @@ void vk_initialize( void )
 		desc.setLayoutCount = 1;
 		desc.pSetLayouts = set_layouts;
 		desc.pushConstantRangeCount = 1;
-		desc.pPushConstantRanges = &push_range;  // 128-byte push constants for MVP matrices
+		desc.pPushConstantRanges = &push_range;  // 128-byte vertex push constants for MVP matrices
 
 		VK_CHECK( qvkCreatePipelineLayout( vk.device, &desc, NULL, &vk.pipeline_layout_virtual_screen ) );
 
@@ -4393,6 +4668,20 @@ static void vk_destroy_attachments( void )
 		qvkDestroyImageView( vk.device, vk.color_image_view, NULL );
 		vk.color_image = VK_NULL_HANDLE;
 		vk.color_image_view = VK_NULL_HANDLE;
+	}
+
+	if ( vk.emissive_image ) {
+		qvkDestroyImage( vk.device, vk.emissive_image, NULL );
+		qvkDestroyImageView( vk.device, vk.emissive_image_view, NULL );
+		vk.emissive_image = VK_NULL_HANDLE;
+		vk.emissive_image_view = VK_NULL_HANDLE;
+	}
+
+	if ( vk.emissive_image_msaa ) {
+		qvkDestroyImage( vk.device, vk.emissive_image_msaa, NULL );
+		qvkDestroyImageView( vk.device, vk.emissive_image_view_msaa, NULL );
+		vk.emissive_image_msaa = VK_NULL_HANDLE;
+		vk.emissive_image_view_msaa = VK_NULL_HANDLE;
 	}
 
 	if ( vk.msaa_image ) {
@@ -5157,6 +5446,7 @@ void vk_create_post_process_pipelines( void )
 	VkPipelineMultisampleStateCreateInfo multisample_state;
 	VkPipelineColorBlendStateCreateInfo blend_state;
 	VkPipelineColorBlendAttachmentState attachment_blend_state;
+	VkPipelineColorBlendAttachmentState blend_attachments[2];
 	VkGraphicsPipelineCreateInfo create_info;
 	VkViewport viewport;
 	VkRect2D scissor;
@@ -5475,6 +5765,17 @@ void vk_create_post_process_pipelines( void )
 		attachment_blend_state.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
 		attachment_blend_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
 
+		// post_bloom carries the emissive attachment when HDR is active; blend.frag must not write it
+		blend_attachments[0] = attachment_blend_state;
+		if ( vk.hdrActive ) {
+			Com_Memset( &blend_attachments[1], 0, sizeof( blend_attachments[1] ) );
+			blend_attachments[1].colorWriteMask = 0;
+			blend_state.attachmentCount = 2;
+		} else {
+			blend_state.attachmentCount = 1;
+		}
+		blend_state.pAttachments = blend_attachments;
+
 		create_info.layout = vk.pipeline_layout_blend;
 		create_info.renderPass = vk.render_pass.post_bloom;
 
@@ -5547,8 +5848,8 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	VkShaderModule *vs_module = NULL;
 	VkShaderModule *fs_module = NULL;
 	//int32_t vert_spec_data[1]; // clippping
-	floatint_t frag_spec_data[12]; // 0:alpha-test-func, 1:alpha-test-value, 2:depth-fragment, 3:alpha-to-coverage, 4:color_mode, 5:abs_light, 6:multitexture mode, 7:discard mode, 8: ident.color, 9 - ident.alpha, 10 - acff, 11 - force_opaque_alpha (HUD 3D)
-	VkSpecializationMapEntry spec_entries[13];
+	floatint_t frag_spec_data[13]; // 0:alpha-test-func, 1:alpha-test-value, 2:depth-fragment, 3:alpha-to-coverage, 4:color_mode, 5:abs_light, 6:multitexture mode, 7:discard mode, 8: ident.color, 9 - ident.alpha, 10 - acff, 11 - force_opaque_alpha (HUD 3D), 12 - emissiveEnabled (HDR)
+	VkSpecializationMapEntry spec_entries[14];
 	//VkSpecializationInfo vert_spec_info;
 	VkSpecializationInfo frag_spec_info;
 	VkPipelineVertexInputStateCreateInfo vertex_input_state;
@@ -5559,6 +5860,7 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	VkPipelineDepthStencilStateCreateInfo depth_stencil_state;
 	VkPipelineColorBlendStateCreateInfo blend_state;
 	VkPipelineColorBlendAttachmentState attachment_blend_state;
+	VkPipelineColorBlendAttachmentState blend_attachments[2];
 	VkPipelineDynamicStateCreateInfo dynamic_state;
 	VkDynamicState dynamic_state_array[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 	VkGraphicsPipelineCreateInfo create_info;
@@ -5959,6 +6261,10 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	spec_entries[12].offset = 11 * sizeof( int32_t );
 	spec_entries[12].size = sizeof( int32_t );
 
+	spec_entries[13].constantID = 12; // emissiveEnabled (HDR emissive layer)
+	spec_entries[13].offset = 12 * sizeof( int32_t );
+	spec_entries[13].size = sizeof( int32_t );
+
 	// For non-blended HUD render pass stages, force alpha=1.0
 	// This ensures 3D models (player heads, weapon icons) are fully opaque
 	if (renderPassIndex == RENDER_PASS_HUD && !(state_bits & (GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS))) {
@@ -5967,9 +6273,18 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		frag_spec_data[11].i = 0;
 	}
 
-	frag_spec_info.mapEntryCount = 12;
+	// HDR: generic surface stages emit to the emissive layer (location 1) when flagged for the
+	// 2-color-attachment main/post_bloom subpass; the spec constant gates the shader write
+	if ( ( renderPassIndex == RENDER_PASS_MAIN || renderPassIndex == RENDER_PASS_POST_BLOOM )
+		&& vk.hdrActive && def->shader_type >= TYPE_GENERIC_BEGIN ) {
+		frag_spec_data[12].i = def->emissive;
+	} else {
+		frag_spec_data[12].i = 0;
+	}
+
+	frag_spec_info.mapEntryCount = 13;
 	frag_spec_info.pMapEntries = spec_entries + 1;
-	frag_spec_info.dataSize = sizeof( int32_t ) * 12;
+	frag_spec_info.dataSize = sizeof( int32_t ) * 13;
 	frag_spec_info.pData = &frag_spec_data[0];
 	shader_stages[1].pSpecializationInfo = &frag_spec_info;
 
@@ -6489,8 +6804,31 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	blend_state.flags = 0;
 	blend_state.logicOpEnable = VK_FALSE;
 	blend_state.logicOp = VK_LOGIC_OP_COPY;
-	blend_state.attachmentCount = 1;
-	blend_state.pAttachments = &attachment_blend_state;
+
+	blend_attachments[0] = attachment_blend_state;
+
+	if ( ( renderPassIndex == RENDER_PASS_MAIN || renderPassIndex == RENDER_PASS_POST_BLOOM ) && vk.hdrActive ) {
+		VkPipelineColorBlendAttachmentState em;
+		Com_Memset( &em, 0, sizeof( em ) );
+		// emissive layer is always additive accumulation
+		em.blendEnable = VK_TRUE;
+		em.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+		em.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+		em.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		em.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		em.colorBlendOp = VK_BLEND_OP_ADD;
+		em.alphaBlendOp = VK_BLEND_OP_ADD;
+		// only emissive-flagged generic surface stages write the emissive layer; everything else masks it off
+		if ( def->shader_type >= TYPE_GENERIC_BEGIN && def->emissive )
+			em.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+		else
+			em.colorWriteMask = 0;
+		blend_attachments[1] = em;
+		blend_state.attachmentCount = 2;
+	} else {
+		blend_state.attachmentCount = 1;
+	}
+	blend_state.pAttachments = blend_attachments;
 	blend_state.blendConstants[0] = 0.0f;
 	blend_state.blendConstants[1] = 0.0f;
 	blend_state.blendConstants[2] = 0.0f;
@@ -7428,7 +7766,7 @@ static void vk_begin_render_pass( VkRenderPass renderPass, VkFramebuffer frameBu
 void vk_begin_main_render_pass( qboolean clear )
 {
 	VkRenderPassBeginInfo render_pass_begin_info;
-	VkClearValue clear_values[3];  // [0] = resolve/color, [1] = depth, [2] = MSAA color (if active)
+	VkClearValue clear_values[5];  // [0]=resolve/color, [1]=depth, [2]=MSAA color, [3]=emissive resolve, [4]=emissive msaa
 	VkRenderPass renderPass;
 	VkFramebuffer frameBuffer;
 
@@ -7483,12 +7821,12 @@ void vk_begin_main_render_pass( qboolean clear )
 #ifndef USE_REVERSED_DEPTH
 		clear_values[1].depthStencil.depth = 1.0f;
 #endif
-		if ( vk.msaaActive  ) {
-			// MSAA mode: 3 attachments (resolve, depth, MSAA color)
-			render_pass_begin_info.clearValueCount = 3;
+		if ( vk.msaaActive ) {
+			// MSAA: [0]=resolve, [1]=depth, [2]=MSAA color; with HDR: +[3]=emissive resolve, [4]=emissive msaa
+			render_pass_begin_info.clearValueCount = vk.hdrActive ? 5 : 3;
 		} else {
-			// Non-MSAA mode: 2 attachments (color, depth)
-			render_pass_begin_info.clearValueCount = 2;
+			// Non-MSAA: [0]=color, [1]=depth; with HDR: +[2]=emissive resolve
+			render_pass_begin_info.clearValueCount = vk.hdrActive ? 3 : 2;
 		}
 		render_pass_begin_info.pClearValues = clear_values;
 		vk_world.dirty_depth_attachment = 0;
@@ -8390,9 +8728,11 @@ static qboolean vk_create_desktop_mirror_resources( void )
 	// because we need the image views to pre-bind the descriptors.
 
 	// 5. Create render pass (non-multiview, for desktop swapchain)
-	// Always use sRGB format so we get consistent gamma behavior regardless of swapchain format
-	// This allows creating sRGB views of UNORM swapchain images (format-compatible)
-	VkFormat desktopMirrorFormat = vk_get_srgb_format( vk.present_format.format );
+	// In HDR the swapchain is scRGB FP16: use it raw (no sRGB view, no auto-encode).
+	// In SDR keep the sRGB view so the gamma-corrected output is encoded on write.
+	VkFormat desktopMirrorFormat = vk.hdrActive
+		? vk.present_format.format
+		: vk_get_srgb_format( vk.present_format.format );
 
 	Com_Memset( &attachment, 0, sizeof( attachment ) );
 	attachment.format = desktopMirrorFormat;
@@ -8424,7 +8764,6 @@ static qboolean vk_create_desktop_mirror_resources( void )
 	SET_OBJECT_NAME( vk.desktopMirrorRenderPass, "Desktop mirror render pass", VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT );
 
 	// 7. Create image views and framebuffers for each desktop swapchain image
-	// Use sRGB views of swapchain images for consistent gamma handling
 	vk.desktopMirrorSwapViews = ri.Malloc( vk.swapchain_image_count * sizeof( VkImageView ) );
 	vk.desktopMirrorFramebuffers = ri.Malloc( vk.swapchain_image_count * sizeof( VkFramebuffer ) );
 	Com_Memset( vk.desktopMirrorSwapViews, 0, vk.swapchain_image_count * sizeof( VkImageView ) );
@@ -8435,7 +8774,7 @@ static qboolean vk_create_desktop_mirror_resources( void )
 		viewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		viewCI.image = vk.swapchain_images[i];
 		viewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		viewCI.format = desktopMirrorFormat;  // sRGB view for consistent gamma
+		viewCI.format = desktopMirrorFormat;  // FP16 raw when HDR active, sRGB view otherwise
 		viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		viewCI.subresourceRange.baseMipLevel = 0;
 		viewCI.subresourceRange.levelCount = 1;
@@ -8460,12 +8799,20 @@ static qboolean vk_create_desktop_mirror_resources( void )
 	Com_Memset( &pushRange, 0, sizeof( pushRange ) );
 	pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushRange.offset = 0;
-	pushRange.size = 28;  // offset(8) + scale(8) + texCrop(8) + eyeLayer(4)
+	pushRange.size = 13 * sizeof(float);  // offset(8) + scale(8) + texCrop(8) + eyeLayer(4) + hdr fields(24)
+
+	// set 0 = SDR source (eye swapchain / virtual screen); set 1 = scene base
+	// (color_descriptor); set 2 = emissive (emissive_descriptor) for HDR reconstruction.
+	VkDescriptorSetLayout mirrorSetLayouts[3] = {
+		vk.set_layout_sampler,
+		vk.set_layout_sampler,
+		vk.set_layout_sampler,
+	};
 
 	Com_Memset( &layoutInfo, 0, sizeof( layoutInfo ) );
 	layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	layoutInfo.setLayoutCount = 1;
-	layoutInfo.pSetLayouts = &vk.set_layout_sampler;
+	layoutInfo.setLayoutCount = 3;
+	layoutInfo.pSetLayouts = mirrorSetLayouts;
 	layoutInfo.pushConstantRangeCount = 1;
 	layoutInfo.pPushConstantRanges = &pushRange;
 
@@ -8627,6 +8974,16 @@ static void vk_drain_rendering_semaphore( void )
 		qvkQueueSubmit( vk.queue, 1, &submit_info, VK_NULL_HANDLE );
 		vk.renderingCompleteSemSignaled = qfalse;
 	}
+}
+
+
+static float vk_hdr_paper_white( void )
+{
+	if ( r_hdrPaperWhite->value > 0.0f )
+		return r_hdrPaperWhite->value;
+	// auto: BT.2408 HLG reference white at the panel peak (r_hdrPeak)
+	double sysgamma = 1.2 + 0.42 * log10( r_hdrPeak->value / 1000.0 );
+	return (float)( r_hdrPeak->value * pow( 0.264964, sysgamma ) );
 }
 
 
@@ -8890,6 +9247,12 @@ void vk_present_desktop_mirror( void )
 				float scaleX, scaleY;
 				float texCropX, texCropY;
 				int32_t eyeLayer;
+				int32_t hdrMode;
+				float hdrGamma;
+				float hdrObScale;
+				float paperWhite;
+				float hdrPeak;
+				float hdrHighlight;
 			} pushConstants;
 
 			float srcAspect = (float)srcWidth / (float)srcHeight;
@@ -8951,9 +9314,16 @@ void vk_present_desktop_mirror( void )
 					partScissor.extent.height = dstHeight;
 					qvkCmdSetScissor( vk.desktopBlitCmd, 0, 1, &partScissor );
 
-					// Use 2D_ARRAY descriptor with sampler2DArray shader
-					qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-						vk.desktopMirrorPipelineLayout, 0, 1, &vk.xr.colorArrayDescriptors[colorIndex], 0, NULL );
+					// sets 1/2 bound to satisfy the layout; unused on this SDR/flat path.
+					{
+						VkDescriptorSet mirrorSets[3] = {
+							vk.xr.colorArrayDescriptors[colorIndex],
+							vk.color_descriptor,
+							vk.emissive_descriptor,
+						};
+						qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+							vk.desktopMirrorPipelineLayout, 0, 3, mirrorSets, 0, NULL );
+					}
 
 					pushConstants.offsetX = 0.0f;
 					pushConstants.offsetY = 0.0f;
@@ -8962,6 +9332,12 @@ void vk_present_desktop_mirror( void )
 					pushConstants.texCropX = texCropX;
 					pushConstants.texCropY = texCropY;
 					pushConstants.eyeLayer = eye;  // Select layer in 2D_ARRAY
+					pushConstants.hdrMode = vk.hdrActive ? 2 : 0;
+					pushConstants.hdrGamma = 1.0f;
+					pushConstants.hdrObScale = 1.0f;
+					pushConstants.paperWhite = vk.hdrActive ? vk_hdr_paper_white() : 200.0f;
+					pushConstants.hdrPeak = 1000.0f;
+					pushConstants.hdrHighlight = 1.0f;
 
 					qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 						VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
@@ -8971,9 +9347,16 @@ void vk_present_desktop_mirror( void )
 				// Single eye (left=0, right=1)
 				int eye = ( contentType == 1 ) ? 1 : 0;
 
-				// Use 2D_ARRAY descriptor with sampler2DArray shader
-				qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					vk.desktopMirrorPipelineLayout, 0, 1, &vk.xr.colorArrayDescriptors[colorIndex], 0, NULL );
+				// sets 1/2 bound to satisfy the layout; unused on this SDR/flat path.
+				{
+					VkDescriptorSet mirrorSets[3] = {
+						vk.xr.colorArrayDescriptors[colorIndex],
+						vk.color_descriptor,
+						vk.emissive_descriptor,
+					};
+					qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+						vk.desktopMirrorPipelineLayout, 0, 3, mirrorSets, 0, NULL );
+				}
 
 				pushConstants.offsetX = 0.0f;
 				pushConstants.offsetY = 0.0f;
@@ -8982,6 +9365,12 @@ void vk_present_desktop_mirror( void )
 				pushConstants.texCropX = texCropX;
 				pushConstants.texCropY = texCropY;
 				pushConstants.eyeLayer = eye;  // Select layer in 2D_ARRAY
+				pushConstants.hdrMode = vk.hdrActive ? 2 : 0;
+				pushConstants.hdrGamma = 1.0f;
+				pushConstants.hdrObScale = 1.0f;
+				pushConstants.paperWhite = vk.hdrActive ? vk_hdr_paper_white() : 200.0f;
+				pushConstants.hdrPeak = 1000.0f;
+				pushConstants.hdrHighlight = 1.0f;
 
 				qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 					VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
@@ -9044,10 +9433,17 @@ void vk_present_desktop_mirror( void )
 			qvkCmdBeginRenderPass( vk.desktopBlitCmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE );
 		}
 
-		// Bind pipeline and virtual screen descriptor
+		// sets 1/2 bound to satisfy the layout; unused on this SDR/flat path.
 		qvkCmdBindPipeline( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.desktopMirrorPipeline );
-		qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-			vk.desktopMirrorPipelineLayout, 0, 1, &vk.xr.virtualScreenMirrorDescriptor, 0, NULL );
+		{
+			VkDescriptorSet mirrorSets[3] = {
+				vk.xr.virtualScreenMirrorDescriptor,
+				vk.color_descriptor,
+				vk.emissive_descriptor,
+			};
+			qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+				vk.desktopMirrorPipelineLayout, 0, 3, mirrorSets, 0, NULL );
+		}
 
 		// Set viewport/scissor
 		{
@@ -9076,6 +9472,12 @@ void vk_present_desktop_mirror( void )
 				float scaleX, scaleY;
 				float texCropX, texCropY;
 				int32_t eyeLayer;
+				int32_t hdrMode;
+				float hdrGamma;
+				float hdrObScale;
+				float paperWhite;
+				float hdrPeak;
+				float hdrHighlight;
 			} pushConstants;
 
 			const float targetAspect = 4.0f / 3.0f;
@@ -9099,6 +9501,12 @@ void vk_present_desktop_mirror( void )
 			pushConstants.texCropX = 1.0f;  // Virtual screen always shows full texture
 			pushConstants.texCropY = 1.0f;
 			pushConstants.eyeLayer = 0;  // Virtual screen is single layer, sample layer 0
+			pushConstants.hdrMode = vk.hdrActive ? 2 : 0;
+			pushConstants.hdrGamma = 1.0f;
+			pushConstants.hdrObScale = 1.0f;
+			pushConstants.paperWhite = vk.hdrActive ? vk_hdr_paper_white() : 200.0f;
+			pushConstants.hdrPeak = 1000.0f;
+			pushConstants.hdrHighlight = 1.0f;
 
 			qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 				VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
@@ -9122,17 +9530,19 @@ void vk_present_desktop_mirror( void )
 			}
 		}
 
-		// Check if we have descriptors for this swapchain image
-		if ( xrColorIndex >= MAX_SWAPCHAIN_IMAGES ||
-		     vk.xr.colorArrayDescriptors[xrColorIndex] == VK_NULL_HANDLE ) {
+		// Check if we have descriptors for this swapchain image (HDR skips this; uses scene FBO instead)
+		if ( !vk.hdrActive && ( xrColorIndex >= MAX_SWAPCHAIN_IMAGES ||
+		     vk.xr.colorArrayDescriptors[xrColorIndex] == VK_NULL_HANDLE ) ) {
 			goto finish_desktop_mirror;
 		}
 
-		// Transition XR swapchain to SHADER_READ_ONLY for sampling
-		record_image_layout_transition( vk.desktopBlitCmd, vk.xr.colorInfo->images[xrColorIndex],
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
+		if ( !vk.hdrActive ) {
+			// SDR: source is the XR swapchain image; transition it for sampling.
+			record_image_layout_transition( vk.desktopBlitCmd, vk.xr.colorInfo->images[xrColorIndex],
+				VK_IMAGE_ASPECT_COLOR_BIT,
+				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
+		}
 
 		// Transition desktop swapchain to COLOR_ATTACHMENT_OPTIMAL for rendering
 		record_image_layout_transition( vk.desktopBlitCmd, dstImage,
@@ -9166,8 +9576,17 @@ void vk_present_desktop_mirror( void )
 		}
 
 		qvkCmdBindPipeline( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.desktopMirrorPipeline );
-		qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-			vk.desktopMirrorPipelineLayout, 0, 1, &vk.xr.colorArrayDescriptors[xrColorIndex], 0, NULL );
+		// set 0 = SDR source (eye swapchain), unused in HDR but kept valid; sets 1/2 =
+		// scene base + emissive, sampled by the HDR (hdrMode==1) reconstruction.
+		{
+			VkDescriptorSet mirrorSets[3] = {
+				vk.hdrActive ? vk.color_descriptor : vk.xr.colorArrayDescriptors[xrColorIndex],
+				vk.color_descriptor,
+				vk.emissive_descriptor,
+			};
+			qvkCmdBindDescriptorSets( vk.desktopBlitCmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+				vk.desktopMirrorPipelineLayout, 0, 3, mirrorSets, 0, NULL );
+		}
 
 		// Calculate viewport/scissor for the destination
 		{
@@ -9189,12 +9608,18 @@ void vk_present_desktop_mirror( void )
 			qvkCmdSetScissor( vk.desktopBlitCmd, 0, 1, &scissor );
 		}
 
-		// Push constants structure: offset(8) + scale(8) + texCrop(8) + eyeLayer(4)
+		// Push constants structure: offset(8) + scale(8) + texCrop(8) + eyeLayer(4) + hdr fields(24)
 		struct {
 			float offsetX, offsetY;
 			float scaleX, scaleY;
 			float texCropX, texCropY;
 			int32_t eyeLayer;
+			int32_t hdrMode;
+			float hdrGamma;
+			float hdrObScale;
+			float paperWhite;
+			float hdrPeak;
+			float hdrHighlight;
 		} pushConstants;
 
 		// Calculate letterbox/pillarbox (fit) or crop (fill) parameters
@@ -9246,6 +9671,22 @@ void vk_present_desktop_mirror( void )
 			pushConstants.texCropX = texCropX;
 			pushConstants.texCropY = texCropY;
 			pushConstants.eyeLayer = 0;
+			pushConstants.hdrMode = 0;
+			pushConstants.hdrGamma = 1.0f;
+			pushConstants.hdrObScale = 1.0f;
+			pushConstants.paperWhite = 200.0f;
+			pushConstants.hdrPeak = 1000.0f;
+			pushConstants.hdrHighlight = 1.0f;
+			if ( vk.hdrActive ) {
+				float peakNits = r_hdrPeak->value;
+				pushConstants.eyeLayer = 0;
+				pushConstants.hdrMode = 1;
+				pushConstants.hdrGamma = 1.0f / r_gamma->value;
+				pushConstants.hdrObScale = (float)( 1 << tr.overbrightBits );
+				pushConstants.paperWhite = vk_hdr_paper_white();
+				pushConstants.hdrPeak = peakNits;
+				pushConstants.hdrHighlight = r_hdrHighlight->value;
+			}
 			qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 				VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
 			qvkCmdDraw( vk.desktopBlitCmd, 3, 1, 0, 0 );
@@ -9298,6 +9739,21 @@ void vk_present_desktop_mirror( void )
 			pushConstants.texCropX = texCropX;
 			pushConstants.texCropY = texCropY;
 			pushConstants.eyeLayer = ( contentType == 1 ) ? 1 : 0;
+			pushConstants.hdrMode = 0;
+			pushConstants.hdrGamma = 1.0f;
+			pushConstants.hdrObScale = 1.0f;
+			pushConstants.paperWhite = 200.0f;
+			pushConstants.hdrPeak = 1000.0f;
+			pushConstants.hdrHighlight = 1.0f;
+			if ( vk.hdrActive ) {
+				float peakNits = r_hdrPeak->value;
+				pushConstants.hdrMode = 1;
+				pushConstants.hdrGamma = 1.0f / r_gamma->value;
+				pushConstants.hdrObScale = (float)( 1 << tr.overbrightBits );
+				pushConstants.paperWhite = vk_hdr_paper_white();
+				pushConstants.hdrPeak = peakNits;
+				pushConstants.hdrHighlight = r_hdrHighlight->value;
+			}
 			qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 				VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
 			qvkCmdDraw( vk.desktopBlitCmd, 3, 1, 0, 0 );
@@ -9307,11 +9763,13 @@ void vk_present_desktop_mirror( void )
 		// Render pass finalLayout transitions to PRESENT_SRC_KHR
 		dstLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-		// Transition XR swapchain back to COLOR_ATTACHMENT_OPTIMAL for OpenXR
-		record_image_layout_transition( vk.desktopBlitCmd, vk.xr.colorInfo->images[xrColorIndex],
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0, 0 );
+		if ( !vk.hdrActive ) {
+			// SDR: transition XR swapchain back to COLOR_ATTACHMENT_OPTIMAL for OpenXR
+			record_image_layout_transition( vk.desktopBlitCmd, vk.xr.colorInfo->images[xrColorIndex],
+				VK_IMAGE_ASPECT_COLOR_BIT,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0, 0 );
+		}
 	}
 
 finish_desktop_mirror:
@@ -11979,8 +12437,10 @@ static VR_VK_SwapchainInfo s_colorSwapchainInfo;
  */
 static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depthFormat )
 {
-	VkAttachmentDescription attachments[3];  // [0] = resolve/color, [1] = depth, [2] = MSAA color (if active)
+	VkAttachmentDescription attachments[5];  // [0] = resolve/color, [1] = depth, [2] = MSAA color, [3] = emissive resolve, [4] = emissive msaa (HDR)
 	VkAttachmentReference colorRef, depthRef, colorResolveRef;
+	VkAttachmentReference colorRefs[2];        // [0] = color, [1] = emissive (HDR 2nd color attachment)
+	VkAttachmentReference colorResolveRefs[2]; // [0] = color resolve, [1] = emissive resolve (HDR MSAA)
 	VkSubpassDescription subpass;
 	VkSubpassDependency deps[2];
 	VkRenderPassCreateInfo desc;
@@ -12071,6 +12531,41 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 
 		attachmentCount = 3;
 
+		if ( vk.hdrActive ) {
+			// Mirror vk_create_render_passes' emissive-aware MSAA main pass:
+			// [3] = emissive resolve (single-sample), [4] = emissive MSAA render target.
+			attachments[3].format = VK_FORMAT_R16G16B16A16_SFLOAT;
+			attachments[3].samples = VK_SAMPLE_COUNT_1_BIT;
+			attachments[3].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			attachments[3].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			attachments[3].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			attachments[3].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			attachments[3].initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			attachments[3].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			attachments[4].format = VK_FORMAT_R16G16B16A16_SFLOAT;
+			attachments[4].samples = vkSamples;
+			attachments[4].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			attachments[4].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // Needed for mainResume
+			attachments[4].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			attachments[4].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			attachments[4].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			attachments[4].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+			colorRefs[0] = colorRef;        // attachment 2 (msaa color)
+			colorRefs[1].attachment = 4;    // msaa emissive render target
+			colorRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			subpass.colorAttachmentCount = 2;
+			subpass.pColorAttachments = colorRefs;
+
+			colorResolveRefs[0] = colorResolveRef; // attachment 0 (color resolve)
+			colorResolveRefs[1].attachment = 3;    // emissive resolve
+			colorResolveRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			subpass.pResolveAttachments = colorResolveRefs;
+
+			attachmentCount = 5;
+		}
+
 		ri.Printf( PRINT_ALL, "Recreating main render pass with MSAA (%d samples)\n", vkSamples );
 	} else {
 		// Non-MSAA mode: 2 attachments
@@ -12115,6 +12610,27 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 		subpass.pDepthStencilAttachment = &depthRef;
 
 		attachmentCount = 2;
+
+		if ( vk.hdrActive ) {
+			// Mirror vk_create_render_passes' emissive-aware non-MSAA main pass:
+			// [2] = emissive resolve rendered directly as the 2nd color attachment.
+			attachments[2].format = VK_FORMAT_R16G16B16A16_SFLOAT;
+			attachments[2].samples = VK_SAMPLE_COUNT_1_BIT;
+			attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			attachments[2].initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			attachments[2].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			colorRefs[0] = colorRef;        // attachment 0 (color)
+			colorRefs[1].attachment = 2;    // emissive
+			colorRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			subpass.colorAttachmentCount = 2;
+			subpass.pColorAttachments = colorRefs;
+
+			attachmentCount = 3;
+		}
 	}
 
 	// Subpass dependencies - includes depth stages for mainResume which uses
@@ -12181,6 +12697,17 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	}
+
+	if ( vk.hdrActive ) {
+		// Preserve emissive energy accumulated in the main pass; initialLayouts set above
+		// in the main branch are non-UNDEFINED, as LOAD_OP_LOAD requires.
+		if ( vk.msaaActive ) {
+			attachments[3].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // emissive resolve
+			attachments[4].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // msaa emissive
+		} else {
+			attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD; // emissive resolve
+		}
 	}
 
 	// mainResume uses same deps as main (both now include depth synchronization)
@@ -12348,7 +12875,7 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 	// These were created with the initial render pass in vk_create_framebuffers()
 	// but must be recreated now that render passes have changed
 	{
-		VkImageView attachments[3];
+		VkImageView attachments[5]; // color | depth | msaa color | emissive resolve | emissive msaa
 		VkFramebufferCreateInfo desc;
 
 		// Destroy old framebuffers
@@ -12376,6 +12903,18 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 		if ( vk.msaaActive ) {
 			attachments[2] = vk.msaa_image_view;
 			desc.attachmentCount = 3;
+		}
+
+		if ( vk.hdrActive ) {
+			// Same attachment order the recreated main/post_bloom render passes declare
+			if ( vk.msaaActive ) {
+				attachments[3] = vk.emissive_image_view;      // resolve
+				attachments[4] = vk.emissive_image_view_msaa; // msaa render target
+				desc.attachmentCount = 5;
+			} else {
+				attachments[2] = vk.emissive_image_view;      // resolve
+				desc.attachmentCount = 3;
+			}
 		}
 
 		VK_CHECK( qvkCreateFramebuffer( vk.device, &desc, NULL, &vk.framebuffers.main ) );

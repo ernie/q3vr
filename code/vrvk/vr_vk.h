@@ -37,6 +37,12 @@ typedef struct {
     // Multiview support (required for stereo rendering)
     VR_Bool multiviewSupported;
     uint32_t maxMultiviewViewCount;
+
+    // XR_FB_color_space: Rec709 declared to the headset runtime
+    VR_Bool xrColorManaged;
+
+    // VK_EXT_swapchain_colorspace enabled on the instance (needed for HDR desktop mirror)
+    VkBool32 swapchainColorspaceEnabled;
 } VR_VulkanState;
 
 // Global VR Vulkan state
@@ -71,6 +77,7 @@ typedef struct {
     VkDevice device;
     VkQueue queue;
     uint32_t queueFamilyIndex;
+    VkBool32 swapchainColorspaceEnabled;  // VK_EXT_swapchain_colorspace enabled on the instance
 } VR_VulkanDeviceInfo;
 
 // Get the XR-created Vulkan device for renderer initialization

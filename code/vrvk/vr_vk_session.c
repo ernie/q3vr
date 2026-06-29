@@ -45,7 +45,37 @@ XrResult VR_VK_CreateSession(XrInstance instance, XrSystemId systemId, XrSession
 	sessionCreateInfo.createFlags = 0;
 	sessionCreateInfo.systemId = systemId;
 
-	return xrCreateSession(instance, &sessionCreateInfo, session);
+	XrResult result = xrCreateSession(instance, &sessionCreateInfo, session);
+	if (XR_SUCCEEDED(result)) {
+		// Declare Rec.709; prevents wide-gamut panels (e.g. Quest Pro QD-OLED) from
+		// over-saturating sRGB content as P3. No-op where XR_FB_color_space is absent.
+		PFN_xrEnumerateColorSpacesFB pfnEnumerate = NULL;
+		PFN_xrSetColorSpaceFB pfnSet = NULL;
+		xrGetInstanceProcAddr(instance, "xrEnumerateColorSpacesFB", (PFN_xrVoidFunction*)&pfnEnumerate);
+		xrGetInstanceProcAddr(instance, "xrSetColorSpaceFB", (PFN_xrVoidFunction*)&pfnSet);
+		if (pfnEnumerate && pfnSet) {
+			uint32_t count = 0;
+			if (XR_SUCCEEDED(pfnEnumerate(*session, 0, &count, NULL)) && count > 0) {
+				XrColorSpaceFB spaces[16];
+				if (count > 16) count = 16;
+				if (XR_SUCCEEDED(pfnEnumerate(*session, count, &count, spaces))) {
+					uint32_t i;
+					qboolean have709 = qfalse;
+					for (i = 0; i < count; i++) {
+						if (spaces[i] == XR_COLOR_SPACE_REC709_FB) { have709 = qtrue; break; }
+					}
+					if (have709 && XR_SUCCEEDED(pfnSet(*session, XR_COLOR_SPACE_REC709_FB))) {
+						vr_vk.xrColorManaged = VR_TRUE;
+						fprintf(stdout, "[OpenXR] headset color space: Rec709 (color-managed)\n");
+					}
+				}
+			}
+		}
+		if (!vr_vk.xrColorManaged) {
+			fprintf(stdout, "[OpenXR] XR_FB_color_space unavailable; using runtime default color space\n");
+		}
+	}
+	return result;
 }
 
 // VR_Graphics interface implementation

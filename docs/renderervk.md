@@ -144,6 +144,21 @@ renderervk implements a 4-pass Gaussian blur bloom with configurable extraction 
 
 Unlike renderergl2's full HDR pipeline with tone mapping and auto-exposure, renderervk's HDR is purely about framebuffer precision. For VR, `r_hdr 0` with `r_dither 1` often provides the best balance.
 
+### Desktop Mirror HDR Output
+
+| Cvar | Default | Description |
+|------|---------|-------------|
+| `r_hdrDisplay` | 0 | Enable scRGB FP16 HDR output on the desktop mirror window |
+| `r_hdrPeak` | 1000 | Display peak brightness in nits (range 250–10000). Sets the highlight ceiling and feeds auto paper-white |
+| `r_hdrPaperWhite` | 0 | SDR-white brightness in nits. 0 = auto (BT.2408 reference white derived from `r_hdrPeak`) |
+| `r_hdrHighlight` | 1.0 | Highlight push into the overbright headroom (range 0.5–4.0). 1.0 = natural roll-off |
+
+When `r_hdrDisplay 1`, the desktop mirror window outputs scRGB-linear FP16 (extended headroom above 1.0), requiring a Windows HDR-capable display. The headset view is unaffected — OpenXR has no HDR luminance path, so the headset always receives standard Rec.709 output from the gamma pass.
+
+**Emissive highlights (desktop mirror)**
+
+Additive 3D emitters (weapons, projectiles, effects) are captured during the main render pass into a separate multiview FP16 layer (`vk.emissive_image`). In `desktopmirror.frag` (`hdrMode==1`), this layer is sampled alongside the pre-overbright scene base to restore channels that were clipped to the UNORM ceiling in the eye swapchain. The result is hue-preserving highlight roll-off toward the panel peak (`r_hdrPeak` nits), so bright muzzle flashes and plasma bolts appear genuinely above paper-white on an HDR display. Active only with `r_hdrDisplay 1`; the headset view and the SDR mirror (`r_hdrDisplay 0`) are byte-identical to the pre-feature output.
+
 ### MSAA (Multisample Anti-Aliasing)
 
 | Cvar | Default | Description |
@@ -188,6 +203,7 @@ For supersampling, set `r_renderWidth` and `r_renderHeight` higher than display 
 | Cvar | Default | Description |
 |------|---------|-------------|
 | `r_hdr` | 0 | HDR precision (-1=4-bit, 0=8-bit, 1=16-bit) |
+| `r_hdrDisplay` | 0 | scRGB FP16 HDR on desktop mirror (0=SDR, 1=HDR) |
 | `r_bloom` | 0 | Enable bloom |
 | `r_bloom_threshold` | 0.6 | Extraction threshold |
 | `r_bloom_threshold_mode` | 0 | 0=channel, 1=average, 2=luma |

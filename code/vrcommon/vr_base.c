@@ -72,6 +72,12 @@ static void VR_BuildExtensionList(void)
 	{
 		requiredExtensionNames[numRequiredExtensions++] = "XR_KHR_vulkan_swapchain_format_list";
 	}
+	// Color-accurate wide gamut where the runtime supports it (Meta yes, SteamVR no).
+	if (numRequiredExtensions < MAX_REQUIRED_EXTENSIONS &&
+		VR_HasInstanceExtension("XR_FB_color_space"))
+	{
+		requiredExtensionNames[numRequiredExtensions++] = "XR_FB_color_space";
+	}
 #endif
 }
 

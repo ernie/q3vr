@@ -42,7 +42,7 @@
 #define USE_DEDICATED_ALLOCATION
 #endif
 //#define MIN_IMAGE_ALIGN (128*1024)
-#define MAX_ATTACHMENTS_IN_POOL (8+VK_NUM_BLOOM_PASSES*2) // depth + msaa + msaa-resolve + depth-resolve + screenmap.msaa + screenmap.resolve + screenmap.depth + bloom_extract + blur pairs
+#define MAX_ATTACHMENTS_IN_POOL (10+VK_NUM_BLOOM_PASSES*2) // depth + msaa + msaa-resolve + depth-resolve + screenmap.msaa + screenmap.resolve + screenmap.depth + bloom_extract + emissive-resolve + emissive-msaa + blur pairs
 
 #define VK_DESC_STORAGE      0
 #define VK_DESC_UNIFORM      0
@@ -204,6 +204,7 @@ typedef struct {
 	int allow_discard;
 	int acff; // none, rgb, rgba, alpha
 	int stencil_mark; // mark pixels with stencil bit 0x80 (for shadow exclusion)
+	int emissive; // emit this stage to the HDR emissive layer (location 1) when hdrActive
 	struct {
 		byte rgb;
 		byte alpha;
@@ -257,6 +258,9 @@ typedef struct vkUniform_s {
 // After calling this function we get fully functional vulkan subsystem.
 // Q3VR is XR-only: pulls Vulkan device from VR layer via ri.VR_Vulkan_GetDeviceInfo()
 void vk_initialize( void );
+
+// Call after GLimp_InitVR(); vr_vk.xrColorManaged is not set until XR session creation.
+void vk_sync_xr_color_state( void );
 
 // Called after initialization or renderer restart
 void vk_init_descriptors( void );
@@ -503,6 +507,12 @@ typedef struct {
 	VkSemaphore renderingCompleteSem;   // Signals when XR rendering is done, waited by desktop blit
 	qboolean renderingCompleteSemSignaled;  // True if renderingCompleteSem was signaled this frame
 
+	// HDR display output (desktop mirror scRGB FP16) + headset wide-gamut
+	qboolean hdrColorspaceExt;   // VK_EXT_swapchain_colorspace instance ext present
+	qboolean hdrActive;          // mirror negotiated scRGB FP16 this run
+	qboolean xrColorManaged;     // headset XR_FB_color_space set to Rec709
+	int      hdrOsState;         // osHdrState_t: OS HDR switch state (Windows)
+
 	VkSampler linearSampler;  // Linear filtering, clamp to edge
 
 	// Desktop mirror shader-based rendering (gamma-correct path)
@@ -548,9 +558,15 @@ typedef struct {
 	VkPipelineLayout pipeline_layout_virtual_screen; // virtual screen (sampler + 128-byte push constants)
 
 	VkDescriptorSet color_descriptor;
+	VkDescriptorSet emissive_descriptor;
 
 	VkImage color_image;
 	VkImageView color_image_view;
+
+	VkImage emissive_image;
+	VkImageView emissive_image_view;
+	VkImage emissive_image_msaa;
+	VkImageView emissive_image_view_msaa;
 
 	VkImage bloom_image[1+VK_NUM_BLOOM_PASSES*2];
 	VkImageView bloom_image_view[1+VK_NUM_BLOOM_PASSES*2];

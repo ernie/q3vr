@@ -1078,6 +1078,17 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 			pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
 		}
 
+		{
+			const uint32_t blend = pStage->stateBits & ( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS );
+			const qboolean additive = ( blend == ( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE ) );
+			if ( vk.hdrActive && additive && !backEnd.projection2D ) {
+				Vk_Pipeline_Def def;
+				vk_get_pipeline_def( pipeline, &def );
+				def.emissive = 1;
+				pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
+			}
+		}
+
 		vk_bind_pipeline( pipeline );
 		vk_bind_geometry( tess_flags );
 		vk_draw_geometry( tess.depthRange, qtrue );

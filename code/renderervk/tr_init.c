@@ -98,6 +98,10 @@ cvar_t	*r_vbo;
 #endif
 cvar_t	*r_fbo;
 cvar_t	*r_hdr;
+cvar_t	*r_hdrDisplay;
+cvar_t	*r_hdrPeak;
+cvar_t	*r_hdrPaperWhite;
+cvar_t	*r_hdrHighlight;
 cvar_t	*r_bloom;
 cvar_t	*r_bloom_threshold;
 cvar_t	*r_bloom_intensity;
@@ -608,6 +612,9 @@ static void InitOpenGL( void )
 	// This must happen after Vulkan is fully initialized so the XR session
 	// can use the VR-created Vulkan device
 	ri.GLimp_InitVR();
+
+	// vr_vk.xrColorManaged is set inside VR_VK_CreateSession; sync it after GLimp_InitVR().
+	vk_sync_xr_color_state();
 
 	tr.inited = qtrue;
 }
@@ -1812,6 +1819,21 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_fbo, "Framebuffer objects (always enabled in Q3VR)." );
 	r_hdr = ri.Cvar_Get( "r_hdr", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_SetDescription(r_hdr, "Enables high dynamic range frame buffer texture format.\n -1: 4-bit, for testing purposes, heavy color banding, might not work on all systems\n  0: 8 bit, default, moderate color banding with multi-stage shaders\n  1: 16 bit, enhanced blending precision, no color banding, might decrease performance on AMD / Intel GPUs\n" );
+	r_hdrDisplay = ri.Cvar_Get( "r_hdrDisplay", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	ri.Cvar_SetDescription( r_hdrDisplay, "True HDR output (scRGB FP16) on the desktop mirror window. Requires the Vulkan renderer, an HDR monitor, and (Windows) the OS HDR switch on. Takes effect after a \\vid_restart." );
+
+	r_hdrPeak = ri.Cvar_Get( "r_hdrPeak", "1000", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_hdrPeak, 250, 10000, qfalse );
+	ri.Cvar_SetDescription( r_hdrPeak, "Desktop HDR display peak brightness in nits. Match your monitor's spec. Sets the highlight ceiling and feeds auto paper-white." );
+
+	r_hdrPaperWhite = ri.Cvar_Get( "r_hdrPaperWhite", "0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_hdrPaperWhite, 0, 1000, qfalse );
+	ri.Cvar_SetDescription( r_hdrPaperWhite, "Desktop HDR SDR-white brightness in nits. 0 = auto (BT.2408 reference white from r_hdrPeak)." );
+
+	r_hdrHighlight = ri.Cvar_Get( "r_hdrHighlight", "1.0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_hdrHighlight, 0.5, 4.0, qfalse );
+	ri.Cvar_SetDescription( r_hdrHighlight, "Desktop HDR highlight push into the overbright headroom. 1.0 = natural." );
+
 	r_bloom = ri.Cvar_Get( "r_bloom", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_bloom, 0, 1, qtrue );
 	ri.Cvar_SetDescription(r_bloom, "Enables bloom post-processing effect.");
