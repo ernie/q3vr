@@ -26,6 +26,7 @@ layout(push_constant) uniform PushConstants {
 	float hdrHighlight;// multiplier on the >1.0 headroom
 	float hdrSaturation;
 	float hdrSaturationFull;
+	float hdrSoftKnee;
 } pc;
 
 layout(location = 0) in vec2 texCoord;
@@ -48,7 +49,7 @@ vec3 sRGBtoLinear(vec3 c) {
 vec3 hdrReconstruct( vec3 base, vec3 emissive,
                      float gamma, float obScale,
                      float paperWhite, float hdrPeak, float hdrHighlight,
-                     float hdrSaturation, float hdrSaturationFull )
+                     float hdrSaturation, float hdrSaturationFull, float hdrSoftKnee )
 {
 	// Restore only where an additive emitter exceeded SDR white AND the color
 	// buffer is still clipped there. The emissive term excludes bloom, which
@@ -68,6 +69,10 @@ vec3 hdrReconstruct( vec3 base, vec3 emissive,
 	if ( m > 1.0 )
 	{
 		float peak = max( hdrPeak / paperWhite, 1.0 );
+		// Ramp the highlight treatment in across a soft shoulder above 1.0 so its slope
+		// is continuous at the onset; a hard switch at m==1 reads as a fixed-intensity
+		// Mach band (the "kick into overbright"). Full strength past the shoulder.
+		float onset = hdrSoftKnee > 0.0 ? smoothstep( 1.0, 1.0 + hdrSoftKnee, m ) : 1.0;
 		float luma = dot( lin, vec3( 0.2126, 0.7152, 0.0722 ) );
 		float deficit = ( m - luma ) / m;
 		// Gate on em (float emissive intensity) so only real emitters bleed, not
@@ -75,11 +80,11 @@ vec3 hdrReconstruct( vec3 base, vec3 emissive,
 		// (blue crosses early) and intensity t (any hot core whitens), capped by
 		// hdrSaturation.
 		float t = smoothstep( 0.0, hdrSaturationFull, em );
-		float toWhite = ( 1.0 - hdrSaturation ) * t * max( deficit, t );
+		float toWhite = ( 1.0 - hdrSaturation ) * t * max( deficit, t ) * onset;
 		lin = mix( lin, vec3( m ), toWhite );
 		float boosted = 1.0 + (m - 1.0) * hdrHighlight;
 		float rolled = peak * boosted / (peak - 1.0 + boosted); // soft asymptote at peak
-		lin *= rolled / m;
+		lin *= mix( 1.0, rolled / m, onset );
 	}
 
 	return lin * (paperWhite / 80.0);
@@ -98,7 +103,7 @@ void main() {
 		vec3 emissive  = texture(emissiveTexture, vec3(texCoord, float(pc.eyeLayer))).rgb;
 		outColor = vec4( hdrReconstruct( sceneBase, emissive, pc.hdrGamma, pc.hdrObScale,
 			pc.paperWhite, pc.hdrPeak, pc.hdrHighlight, pc.hdrSaturation,
-			pc.hdrSaturationFull ), 1.0 );
+			pc.hdrSaturationFull, pc.hdrSoftKnee ), 1.0 );
 		return;
 	}
 

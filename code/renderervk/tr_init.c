@@ -104,6 +104,7 @@ cvar_t	*r_hdrPaperWhite;
 cvar_t	*r_hdrHighlight;
 cvar_t	*r_hdrSaturation;
 cvar_t	*r_hdrSaturationFull;
+cvar_t	*r_hdrSoftKnee;
 cvar_t	*r_bloom;
 cvar_t	*r_bloom_threshold;
 cvar_t	*r_bloom_intensity;
@@ -1845,6 +1846,11 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_hdrSaturationFull, 0.5, 3.0, qfalse );
 	ri.Cvar_SetDescription( r_hdrSaturationFull,
 		"Emitter intensity (emissive layer) at which a highlight reaches its maximum bleed toward white in HDR -- how white that actually is depends on r_hdrSaturation (only 0 is fully white). Most emitters peak near 1.5, so this is the main position knob; lower makes bright cores reach max bleed sooner. 1.5 = balanced." );
+
+	r_hdrSoftKnee = ri.Cvar_Get( "r_hdrSoftKnee", "1.0", CVAR_ARCHIVE_ND );
+	ri.Cvar_CheckRange( r_hdrSoftKnee, 0.0, 2.0, qfalse );
+	ri.Cvar_SetDescription( r_hdrSoftKnee,
+		"How gradually the HDR highlight treatment (path-to-white plus roll-off) eases in above paper-white. The value is a width in paper-white units: the effect ramps from nothing at 1x to full at (1 + this)x paper-white. 0 = a hard kick at paper-white (a slope discontinuity that reads as a band); 1.0 = full effect by twice paper-white (default)." );
 
 	r_bloom = ri.Cvar_Get( "r_bloom", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_bloom, 0, 1, qtrue );
