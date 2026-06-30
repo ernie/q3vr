@@ -75,6 +75,7 @@ typedef enum {
 
 	TYPE_SINGLE_TEXTURE_LIGHTING,
 	TYPE_SINGLE_TEXTURE_LIGHTING_LINEAR,
+	TYPE_SINGLE_TEXTURE_LIGHTING_OVERBRIGHT,
 
 	TYPE_SINGLE_TEXTURE_DF,
 
@@ -655,6 +656,7 @@ typedef struct {
 			VkShaderModule ident1[2][2][2]; // tx[0,1], env0[0,1] fog[0,1]
 			VkShaderModule fixed[2][2][2];  // tx[0,1], env0[0,1] fog[0,1]
 			VkShaderModule light[2];        // fog[0,1]
+			VkShaderModule overbright_vert;
 		} vert;
 		struct {
 			VkShaderModule gen0_df;
@@ -663,6 +665,7 @@ typedef struct {
 			VkShaderModule fixed[2][2];  // tx[0,1], fog[0,1]
 			VkShaderModule ent[1][2];    // tx[0], fog[0,1]
 			VkShaderModule light[2][2];  // linear[0,1] fog[0,1]
+			VkShaderModule overbright_frag;
 		} frag;
 
 		VkShaderModule color_fs;
