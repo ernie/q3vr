@@ -250,6 +250,7 @@ typedef struct vkUniform_s {
 #define TESS_ENT0  (1024) // uniform with ent.color[0]
 #define TESS_ENT1  (2048) // uniform with ent.color[1]
 #define TESS_ENT2  (4096) // uniform with ent.color[2]
+#define TESS_OVERBRIGHT (8192) // upload tess.svars.overbright to binding 5 (lightingDiffuse HDR)
 //
 // Initialization.
 //

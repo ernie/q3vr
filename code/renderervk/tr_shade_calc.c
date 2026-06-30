@@ -1242,6 +1242,7 @@ static void RB_CalcDiffuseColor_scalar( unsigned char *colors )
 	vec3_t			directedLight;
 	int				numVertexes;
 	float			overbright;
+	float			r, g, b, obr;
 
 	ent = backEnd.currentEntity;
 	ambientLightInt = ent->ambientLightInt;
@@ -1267,39 +1268,51 @@ static void RB_CalcDiffuseColor_scalar( unsigned char *colors )
 		if ( incoming <= 0 ) {
 			if ( overbright == 1.0f ) {
 				*(int *)&colors[i*4] = ambientLightInt;
+				tess.svars.overbright[i] = 1.0f;
 			} else {
-				j = myftol( ambientLight[0] * overbright );
+				r = ambientLight[0] * overbright;
+				g = ambientLight[1] * overbright;
+				b = ambientLight[2] * overbright;
+				obr = r > g ? ( r > b ? r : b ) : ( g > b ? g : b );
+				j = myftol( r );
 				if ( j > 255 ) j = 255;
 				colors[i*4+0] = j;
-				j = myftol( ambientLight[1] * overbright );
+				j = myftol( g );
 				if ( j > 255 ) j = 255;
 				colors[i*4+1] = j;
-				j = myftol( ambientLight[2] * overbright );
+				j = myftol( b );
 				if ( j > 255 ) j = 255;
 				colors[i*4+2] = j;
 				colors[i*4+3] = 255;
+				tess.svars.overbright[i] = obr > 255.0f ? obr / 255.0f : 1.0f;
 			}
 			continue;
 		}
-		j = myftol( ( ambientLight[0] + incoming * directedLight[0] ) * overbright );
+		r = ( ambientLight[0] + incoming * directedLight[0] ) * overbright;
+		g = ( ambientLight[1] + incoming * directedLight[1] ) * overbright;
+		b = ( ambientLight[2] + incoming * directedLight[2] ) * overbright;
+		obr = r > g ? ( r > b ? r : b ) : ( g > b ? g : b );
+
+		j = myftol( r );
 		if ( j > 255 ) {
 			j = 255;
 		}
 		colors[i*4+0] = j;
 
-		j = myftol( ( ambientLight[1] + incoming * directedLight[1] ) * overbright );
+		j = myftol( g );
 		if ( j > 255 ) {
 			j = 255;
 		}
 		colors[i*4+1] = j;
 
-		j = myftol( ( ambientLight[2] + incoming * directedLight[2] ) * overbright );
+		j = myftol( b );
 		if ( j > 255 ) {
 			j = 255;
 		}
 		colors[i*4+2] = j;
 
 		colors[i*4+3] = 255;
+		tess.svars.overbright[i] = obr > 255.0f ? obr / 255.0f : 1.0f;
 	}
 }
 
