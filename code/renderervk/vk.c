@@ -1,3 +1,12 @@
+#ifdef _WIN32
+// DisplayConfig OS-HDR query needs Win7 headers; set before tr_local.h, which pins
+// _WIN32_WINNT to 0x0501 via q_platform.h and would hide these types on MSVC/old MinGW.
+#undef _WIN32_WINNT
+#undef WINVER
+#define _WIN32_WINNT 0x0601
+#define WINVER 0x0601
+#endif
+
 #include "tr_local.h"
 #include "vk.h"
 #include "../vrvk/vr_vk.h"  // For VR_VulkanDeviceInfo (pull model)
@@ -5,10 +14,6 @@
 #include "../vrcommon/vr_gameplay.h"  // For VR_Gameplay_ShouldRenderInVirtualScreen
 
 #ifdef _WIN32
-// DisplayConfig API (Win7+) for OS HDR switch detection.
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0601
-#endif
 #include <windows.h>
 #endif
 
