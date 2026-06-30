@@ -8799,7 +8799,7 @@ static qboolean vk_create_desktop_mirror_resources( void )
 	Com_Memset( &pushRange, 0, sizeof( pushRange ) );
 	pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushRange.offset = 0;
-	pushRange.size = 13 * sizeof(float);  // offset(8) + scale(8) + texCrop(8) + eyeLayer(4) + hdr fields(24)
+	pushRange.size = 15 * sizeof(float);  // offset(8) + scale(8) + texCrop(8) + eyeLayer(4) + hdr fields(32)
 
 	// set 0 = SDR source (eye swapchain / virtual screen); set 1 = scene base
 	// (color_descriptor); set 2 = emissive (emissive_descriptor) for HDR reconstruction.
@@ -9253,6 +9253,8 @@ void vk_present_desktop_mirror( void )
 				float paperWhite;
 				float hdrPeak;
 				float hdrHighlight;
+				float hdrSaturation;
+				float hdrSaturationFull;
 			} pushConstants;
 
 			float srcAspect = (float)srcWidth / (float)srcHeight;
@@ -9478,6 +9480,8 @@ void vk_present_desktop_mirror( void )
 				float paperWhite;
 				float hdrPeak;
 				float hdrHighlight;
+				float hdrSaturation;
+				float hdrSaturationFull;
 			} pushConstants;
 
 			const float targetAspect = 4.0f / 3.0f;
@@ -9608,7 +9612,7 @@ void vk_present_desktop_mirror( void )
 			qvkCmdSetScissor( vk.desktopBlitCmd, 0, 1, &scissor );
 		}
 
-		// Push constants structure: offset(8) + scale(8) + texCrop(8) + eyeLayer(4) + hdr fields(24)
+		// Push constants structure: offset(8) + scale(8) + texCrop(8) + eyeLayer(4) + hdr fields(32)
 		struct {
 			float offsetX, offsetY;
 			float scaleX, scaleY;
@@ -9620,6 +9624,8 @@ void vk_present_desktop_mirror( void )
 			float paperWhite;
 			float hdrPeak;
 			float hdrHighlight;
+			float hdrSaturation;
+			float hdrSaturationFull;
 		} pushConstants;
 
 		// Calculate letterbox/pillarbox (fit) or crop (fill) parameters
@@ -9686,6 +9692,8 @@ void vk_present_desktop_mirror( void )
 				pushConstants.paperWhite = vk_hdr_paper_white();
 				pushConstants.hdrPeak = peakNits;
 				pushConstants.hdrHighlight = r_hdrHighlight->value;
+				pushConstants.hdrSaturation = r_hdrSaturation->value;
+				pushConstants.hdrSaturationFull = r_hdrSaturationFull->value;
 			}
 			qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 				VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
@@ -9753,6 +9761,8 @@ void vk_present_desktop_mirror( void )
 				pushConstants.paperWhite = vk_hdr_paper_white();
 				pushConstants.hdrPeak = peakNits;
 				pushConstants.hdrHighlight = r_hdrHighlight->value;
+				pushConstants.hdrSaturation = r_hdrSaturation->value;
+				pushConstants.hdrSaturationFull = r_hdrSaturationFull->value;
 			}
 			qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 				VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
