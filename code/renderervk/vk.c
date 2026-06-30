@@ -3202,7 +3202,7 @@ static void vk_alloc_persistent_pipelines( void )
 	// skybox
 	{
 		Com_Memset(&def, 0, sizeof(def));
-		def.shader_type = TYPE_SIGNLE_TEXTURE_FIXED_COLOR;
+		def.shader_type = TYPE_SINGLE_TEXTURE_FIXED_COLOR;
 		def.color.rgb = tr.identityLightByte;
 		def.color.alpha = tr.identityLightByte;
 		def.face_culling = CT_FRONT_SIDED;
@@ -3220,7 +3220,7 @@ static void vk_alloc_persistent_pipelines( void )
 		Com_Memset(&def, 0, sizeof(def));
 		def.polygon_offset = qfalse;
 		def.state_bits = 0;
-		def.shader_type = TYPE_SIGNLE_TEXTURE;
+		def.shader_type = TYPE_SINGLE_TEXTURE;
 		def.shadow_phase = SHADOW_EDGES;
 
 		for (i = 0; i < 2; i++) {
@@ -3236,7 +3236,7 @@ static void vk_alloc_persistent_pipelines( void )
 		def.face_culling = CT_FRONT_SIDED;
 		def.polygon_offset = qfalse;
 		def.state_bits = GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO | GLS_DEPTHTEST_DISABLE;
-		def.shader_type = TYPE_SIGNLE_TEXTURE;
+		def.shader_type = TYPE_SINGLE_TEXTURE;
 		def.mirror = qfalse;
 		def.shadow_phase = SHADOW_FS_QUAD;
 		def.primitives = TRIANGLE_STRIP;
@@ -3260,7 +3260,7 @@ static void vk_alloc_persistent_pipelines( void )
 #endif
 
 		Com_Memset(&def, 0, sizeof(def));
-		def.shader_type = TYPE_SIGNLE_TEXTURE;
+		def.shader_type = TYPE_SINGLE_TEXTURE;
 		def.mirror = qfalse;
 
 		for ( i = 0; i < 2; i++ ) {
@@ -3275,12 +3275,12 @@ static void vk_alloc_persistent_pipelines( void )
 #ifdef USE_FOG_ONLY
 					def.shader_type = TYPE_FOG_ONLY;
 #else
-					def.shader_type = TYPE_SIGNLE_TEXTURE;
+					def.shader_type = TYPE_SINGLE_TEXTURE;
 #endif
 					def.state_bits = fog_state;
 					vk.fog_pipelines[ i ][ j ][ k ] = vk_find_pipeline_ext( 0, &def, qtrue );
 
-					def.shader_type = TYPE_SIGNLE_TEXTURE;
+					def.shader_type = TYPE_SINGLE_TEXTURE;
 					def.state_bits = dlight_state;
 #ifdef USE_LEGACY_DLIGHTS
 #ifdef USE_PMLIGHT
@@ -3295,7 +3295,7 @@ static void vk_alloc_persistent_pipelines( void )
 
 #ifdef USE_PMLIGHT
 		def.state_bits = GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL;
-		//def.shader_type = TYPE_SIGNLE_TEXTURE_LIGHTING;
+		//def.shader_type = TYPE_SINGLE_TEXTURE_LIGHTING;
 		for (i = 0; i < 3; i++) { // cullType
 			def.face_culling = i;
 			for ( j = 0; j < 2; j++ ) { // polygonOffset
@@ -3304,9 +3304,9 @@ static void vk_alloc_persistent_pipelines( void )
 					def.fog_stage = k; // fogStage
 					for ( l = 0; l < 2; l++ ) {
 						def.abs_light = l;
-						def.shader_type = TYPE_SIGNLE_TEXTURE_LIGHTING;
+						def.shader_type = TYPE_SINGLE_TEXTURE_LIGHTING;
 						vk.dlight_pipelines_x[i][j][k][l] = vk_find_pipeline_ext( 0, &def, qfalse );
-						def.shader_type = TYPE_SIGNLE_TEXTURE_LIGHTING_LINEAR;
+						def.shader_type = TYPE_SINGLE_TEXTURE_LIGHTING_LINEAR;
 						vk.dlight1_pipelines_x[i][j][k][l] = vk_find_pipeline_ext( 0, &def, qfalse );
 					}
 				}
@@ -3328,7 +3328,7 @@ static void vk_alloc_persistent_pipelines( void )
 	{
 		Com_Memset( &def, 0, sizeof( def ) );
 		def.state_bits = GLS_DEFAULT;
-		def.shader_type = TYPE_SIGNLE_TEXTURE;
+		def.shader_type = TYPE_SINGLE_TEXTURE;
 		def.face_culling = CT_TWO_SIDED;
 		def.primitives = LINE_LIST;
 		if ( vk.wideLines )
@@ -3396,7 +3396,7 @@ static void vk_alloc_persistent_pipelines( void )
 	{
 		Com_Memset(&def, 0, sizeof(def));
 		def.state_bits = GLS_DEPTHMASK_TRUE;
-		def.shader_type = TYPE_SIGNLE_TEXTURE;
+		def.shader_type = TYPE_SINGLE_TEXTURE;
 		def.primitives = LINE_LIST;
 		vk.normals_debug_pipeline = vk_find_pipeline_ext( 0, &def, qfalse );
 	}
@@ -3405,13 +3405,13 @@ static void vk_alloc_persistent_pipelines( void )
 	{
 		Com_Memset(&def, 0, sizeof(def));
 		def.state_bits = GLS_DEPTHMASK_TRUE | GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE;
-		def.shader_type = TYPE_SIGNLE_TEXTURE;
+		def.shader_type = TYPE_SINGLE_TEXTURE;
 		vk.surface_debug_pipeline_solid = vk_find_pipeline_ext( 0, &def, qfalse );
 	}
 	{
 		Com_Memset(&def, 0, sizeof(def));
 		def.state_bits = GLS_POLYMODE_LINE | GLS_DEPTHMASK_TRUE | GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE;
-		def.shader_type = TYPE_SIGNLE_TEXTURE;
+		def.shader_type = TYPE_SINGLE_TEXTURE;
 		def.primitives = LINE_LIST;
 		vk.surface_debug_pipeline_outline = vk_find_pipeline_ext( 0, &def, qfalse );
 	}
@@ -3420,7 +3420,7 @@ static void vk_alloc_persistent_pipelines( void )
 	{
 		Com_Memset(&def, 0, sizeof(def));
 		def.state_bits = GLS_DEPTHTEST_DISABLE | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
-		def.shader_type = TYPE_SIGNLE_TEXTURE;
+		def.shader_type = TYPE_SINGLE_TEXTURE;
 		def.primitives = TRIANGLE_STRIP;
 		vk.images_debug_pipeline = vk_find_pipeline_ext( 0, &def, qfalse );
 
@@ -5875,58 +5875,58 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 
 	switch ( def->shader_type ) {
 
-		case TYPE_SIGNLE_TEXTURE_LIGHTING:
+		case TYPE_SINGLE_TEXTURE_LIGHTING:
 			vs_module = &vk.modules.vert.light[0];
 			fs_module = &vk.modules.frag.light[0][0];
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_LIGHTING_LINEAR:
+		case TYPE_SINGLE_TEXTURE_LIGHTING_LINEAR:
 			vs_module = &vk.modules.vert.light[0];
 			fs_module = &vk.modules.frag.light[1][0];
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_DF:
+		case TYPE_SINGLE_TEXTURE_DF:
 			state_bits |= GLS_DEPTHMASK_TRUE;
 			vs_module = &vk.modules.vert.ident1[0][0][0];
 			fs_module = &vk.modules.frag.gen0_df;
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_FIXED_COLOR:
+		case TYPE_SINGLE_TEXTURE_FIXED_COLOR:
 			vs_module = &vk.modules.vert.fixed[0][0][0];
 			fs_module = &vk.modules.frag.fixed[0][0];
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_FIXED_COLOR_ENV:
+		case TYPE_SINGLE_TEXTURE_FIXED_COLOR_ENV:
 			vs_module = &vk.modules.vert.fixed[0][1][0];
 			fs_module = &vk.modules.frag.fixed[0][0];
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_ENT_COLOR:
+		case TYPE_SINGLE_TEXTURE_ENT_COLOR:
 			vs_module = &vk.modules.vert.fixed[0][0][0];
 			fs_module = &vk.modules.frag.ent[0][0];
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_ENT_COLOR_ENV:
+		case TYPE_SINGLE_TEXTURE_ENT_COLOR_ENV:
 			vs_module = &vk.modules.vert.fixed[0][1][0];
 			fs_module = &vk.modules.frag.ent[0][0];
 			break;
 
-		case TYPE_SIGNLE_TEXTURE:
+		case TYPE_SINGLE_TEXTURE:
 			vs_module = &vk.modules.vert.gen[0][0][0][0];
 			fs_module = &vk.modules.frag.gen[0][0][0];
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_ENV:
+		case TYPE_SINGLE_TEXTURE_ENV:
 			vs_module = &vk.modules.vert.gen[0][0][1][0];
 			fs_module = &vk.modules.frag.gen[0][0][0];
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_IDENTITY:
+		case TYPE_SINGLE_TEXTURE_IDENTITY:
 			vs_module = &vk.modules.vert.ident1[0][0][0];
 			fs_module = &vk.modules.frag.ident1[0][0];
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_IDENTITY_ENV:
+		case TYPE_SINGLE_TEXTURE_IDENTITY_ENV:
 			vs_module = &vk.modules.vert.ident1[0][1][0];
 			fs_module = &vk.modules.frag.ident1[0][0];
 			break;
@@ -6054,7 +6054,7 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		switch ( def->shader_type ) {
 			case TYPE_FOG_ONLY:
 			case TYPE_DOT:
-			case TYPE_SIGNLE_TEXTURE_DF:
+			case TYPE_SINGLE_TEXTURE_DF:
 			case TYPE_COLOR_BLACK:
 			case TYPE_COLOR_WHITE:
 			case TYPE_COLOR_GREEN:
@@ -6110,8 +6110,8 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 
 	// abs lighting
 	switch ( def->shader_type ) {
-		case TYPE_SIGNLE_TEXTURE_LIGHTING:
-		case TYPE_SIGNLE_TEXTURE_LIGHTING_LINEAR:
+		case TYPE_SINGLE_TEXTURE_LIGHTING:
+		case TYPE_SINGLE_TEXTURE_LIGHTING_LINEAR:
 			frag_spec_data[5].i = def->abs_light ? 1 : 0;
 		default:
 			break;
@@ -6308,17 +6308,17 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 			push_attr( 0, 0, VK_FORMAT_R32G32B32A32_SFLOAT );
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_DF:
-		case TYPE_SIGNLE_TEXTURE_IDENTITY:
-		case TYPE_SIGNLE_TEXTURE_FIXED_COLOR:
-		case TYPE_SIGNLE_TEXTURE_ENT_COLOR:
+		case TYPE_SINGLE_TEXTURE_DF:
+		case TYPE_SINGLE_TEXTURE_IDENTITY:
+		case TYPE_SINGLE_TEXTURE_FIXED_COLOR:
+		case TYPE_SINGLE_TEXTURE_ENT_COLOR:
 			push_bind( 0, sizeof( vec4_t ) );					// xyz array
 			push_bind( 2, sizeof( vec2_t ) );					// st0 array
 			push_attr( 0, 0, VK_FORMAT_R32G32B32A32_SFLOAT );
 			push_attr( 2, 2, VK_FORMAT_R32G32_SFLOAT );
 			break;
 
-		case TYPE_SIGNLE_TEXTURE:
+		case TYPE_SINGLE_TEXTURE:
 			push_bind( 0, sizeof( vec4_t ) );					// xyz array
 			push_bind( 1, sizeof( color4ub_t ) );				// color array
 			push_bind( 2, sizeof( vec2_t ) );					// st0 array
@@ -6327,7 +6327,7 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 			push_attr( 2, 2, VK_FORMAT_R32G32_SFLOAT );
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_ENV:
+		case TYPE_SINGLE_TEXTURE_ENV:
 			push_bind( 0, sizeof( vec4_t ) );					// xyz array
 			push_bind( 1, sizeof( color4ub_t ) );				// color array
 			//push_bind( 2, sizeof( vec2_t ) );					// st0 array
@@ -6338,17 +6338,17 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 			push_attr( 5, 5, VK_FORMAT_R32G32B32A32_SFLOAT );
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_IDENTITY_ENV:
-		case TYPE_SIGNLE_TEXTURE_FIXED_COLOR_ENV:
-		case TYPE_SIGNLE_TEXTURE_ENT_COLOR_ENV:
+		case TYPE_SINGLE_TEXTURE_IDENTITY_ENV:
+		case TYPE_SINGLE_TEXTURE_FIXED_COLOR_ENV:
+		case TYPE_SINGLE_TEXTURE_ENT_COLOR_ENV:
 			push_bind( 0, sizeof( vec4_t ) );					// xyz array
 			push_bind( 5, sizeof( vec4_t ) );					// normals
 			push_attr( 0, 0, VK_FORMAT_R32G32B32A32_SFLOAT );
 			push_attr( 5, 5, VK_FORMAT_R32G32B32A32_SFLOAT );
 			break;
 
-		case TYPE_SIGNLE_TEXTURE_LIGHTING:
-		case TYPE_SIGNLE_TEXTURE_LIGHTING_LINEAR:
+		case TYPE_SINGLE_TEXTURE_LIGHTING:
+		case TYPE_SINGLE_TEXTURE_LIGHTING_LINEAR:
 			push_bind( 0, sizeof( vec4_t ) );					// xyz array
 			push_bind( 1, sizeof( vec2_t ) );					// st0 array
 			push_bind( 2, sizeof( vec4_t ) );					// normals array
@@ -6707,7 +6707,7 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	Com_Memset(&attachment_blend_state, 0, sizeof(attachment_blend_state));
 	attachment_blend_state.blendEnable = (state_bits & (GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS)) ? VK_TRUE : VK_FALSE;
 
-	if (def->shadow_phase == SHADOW_EDGES || def->shader_type == TYPE_SIGNLE_TEXTURE_DF)
+	if (def->shadow_phase == SHADOW_EDGES || def->shader_type == TYPE_SINGLE_TEXTURE_DF)
 		attachment_blend_state.colorWriteMask = 0;
 	else
 		attachment_blend_state.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
