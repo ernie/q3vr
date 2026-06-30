@@ -1825,9 +1825,9 @@ static void R_Register( void )
 	r_hdrDisplay = ri.Cvar_Get( "r_hdrDisplay", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_SetDescription( r_hdrDisplay, "True HDR output (scRGB FP16) on the desktop mirror window. Requires the Vulkan renderer, an HDR monitor, and (Windows) the OS HDR switch on. Takes effect after a \\vid_restart." );
 
-	r_hdrPeak = ri.Cvar_Get( "r_hdrPeak", "1000", CVAR_ARCHIVE_ND );
+	r_hdrPeak = ri.Cvar_Get( "r_hdrPeak", "400", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_hdrPeak, 250, 10000, qfalse );
-	ri.Cvar_SetDescription( r_hdrPeak, "Desktop HDR display peak brightness in nits. Match your monitor's spec. Sets the highlight ceiling and feeds auto paper-white." );
+	ri.Cvar_SetDescription( r_hdrPeak, "Desktop HDR peak brightness in nits. Match your monitor's HDR spec tier as a starting point, or get a precise value by calibrating your display in the flatscreen engine. Sets the highlight ceiling and feeds auto paper-white." );
 
 	r_hdrPaperWhite = ri.Cvar_Get( "r_hdrPaperWhite", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_hdrPaperWhite, 0, 1000, qfalse );
