@@ -1,3 +1,78 @@
+# Trinity VR
+
+Trinity VR is the PCVR client (Windows, OpenXR/SteamVR) for the Trinity Quake III
+Arena ecosystem — a fork of [RippeR37's Quake 3 VR](https://github.com/RippeR37/q3vr)
+(itself based on [ioquake3](https://github.com/ioquake/ioq3) and Team Beef's
+[ioq3quest](https://github.com/Team-Beef-Studios/ioq3quest)) with the
+[Trinity](https://github.com/ernie/trinity) mod and Trinity engine features compiled
+in. It plays crossplay with the flatscreen
+[Trinity Engine](https://github.com/ernie/trinity-engine) and
+[Trinity Quest](https://github.com/ernie/trinity-quest) clients on Trinity servers,
+where the [Trinity Tracker](https://github.com/ernie/trinity-tracker) platform tracks
+match stats and streams matches to the web.
+
+## Features beyond q3vr
+
+### Crossplay with Trinity servers
+
+Connects to Trinity flatscreen dedicated servers and plays crossplay with flatscreen
+and Trinity Quest players. The client packs head and torso orientation into 32-bit
+usercmds and reads `vr_support` from serverinfo to negotiate the extended protocol.
+See [VR_PROTOCOL.md](https://github.com/ernie/trinity/blob/main/docs/VR_PROTOCOL.md)
+for the specification.
+
+### Trinity mod integration
+
+The Trinity mod's VR features — head and torso tracking, an orbital follow camera for
+spectating and demo playback, Quake Live-style damage indicators, and visual
+enhancements — are compiled directly into the client, because flatscreen QVMs would
+replace the VR-specific function implementations.
+
+### HDR desktop mirror + Rec.709 headset color
+
+On an HDR display, the desktop mirror window can output true HDR (scRGB linear FP16)
+for brighter highlights and more lifelike color. **This applies to the mirror window
+only** — the headset itself uses Rec.709 color management (`XR_COLOR_SPACE_REC709_FB`),
+which keeps wide-gamut Quest/QD-OLED panels from over-saturating the game's content.
+There is no in-game HDR menu in VR; enable the mirror's HDR by setting `r_hdrDisplay 1`
+and `r_hdrPeak` (your panel's calibrated peak in nits) in `autoexec.cfg`. The full
+`r_hdr*` cvar set matches Trinity Engine — see its
+[README](https://github.com/ernie/trinity-engine#hdr-display-output).
+
+### Improved stencil shadows
+
+The same z-fail stencil shadow rework as Trinity Engine (`cg_shadows 2`): welded
+silhouettes, capped volumes, configurable `r_shadowDistance` (default `256`), and BSP
+clipping (`r_shadowClip`/`r_shadowClipPenetration`/`r_shadowClipExtension`). Heavier
+than blob shadows, but capable PCVR hardware handles it well.
+
+### Modern blood
+
+Damage-scaled blood (`com_blood 2`, the default): blood gouts and gib spray that grow
+with the hit, lingering trails, and splats painted onto nearby walls and floors. `1` is
+classic sprite blood, `0` off.
+
+### TrinityVision demo playback
+
+Plays back TrinityVision (`.tvd`) demos recorded by Trinity servers.
+
+## The Trinity Ecosystem
+
+- **[Trinity](https://github.com/ernie/trinity)** — the unified Quake III Arena / Team
+  Arena game mod (server-side support for VR clients; flatscreen feature parity where
+  possible).
+- **[Trinity Engine](https://github.com/ernie/trinity-engine)** — the flatscreen engine
+  (dedicated servers, demo playback), forked from Quake3e.
+- **[Trinity VR](https://github.com/ernie/trinity-vr)** — this project. PCVR client.
+- **[Trinity Quest](https://github.com/ernie/trinity-quest)** — Meta Quest standalone VR
+  client.
+- **[Trinity Tracker](https://github.com/ernie/trinity-tracker)** — statistics and server
+  administration platform.
+
+---
+
+_The following is the original q3vr README, preserved for reference._
+
 # [Quake 3 VR](https://ripper37.github.io/q3vr)
 
 **Quake 3 VR** (a.k.a. `q3vr`) is a PCVR port of Quake 3 Arena game based on:
