@@ -7540,6 +7540,12 @@ void vk_bind_geometry( uint32_t flags )
 			vk_bind_attr(4, sizeof( vec2_t ), tess.svars.texcoordPtr[2]);
 		}
 
+		// binding 5; must follow the lower-numbered binds because vk_bind_attr sets
+		// bind_count from the last (highest) index it sees, not the max of all of them
+		if ( flags & TESS_OVERBRIGHT ) {
+			vk_bind_attr( 5, sizeof( float ), tess.svars.overbright );
+		}
+
 		if ( flags & TESS_NNN ) {
 			vk_bind_attr(5, sizeof(tess.normal[0]), tess.normal);
 		}
