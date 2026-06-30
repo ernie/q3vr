@@ -6834,7 +6834,10 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 		// the model), additive emitters accumulate, and alpha-blended surfaces --
 		// including 2D drawn over the scene -- attenuate the emissive they cover
 		VkPipelineColorBlendAttachmentState em = attachment_blend_state;
-		if ( ( def->shader_type >= TYPE_GENERIC_BEGIN && def->emissive )
+		// every gen_frag-derived type (and overbright) writes out_emissive, so any can
+		// occlude/attenuate it -- 2D and opaque included, not just emitters. LIGHTING
+		// types excluded: trinity-vr's light_frag does not write out_emissive.
+		if ( def->shader_type >= TYPE_GENERIC_BEGIN
 			|| def->shader_type == TYPE_SINGLE_TEXTURE_LIGHTING_OVERBRIGHT )
 			em.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 		else

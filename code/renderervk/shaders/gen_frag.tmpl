@@ -504,7 +504,9 @@ void main() {
 	// light-grid HDR: recover the over-white lit color the byte clamp threw away
 	out_emissive = vec4( base.rgb * frag_overbright, 1.0 );
 #else
-	out_emissive = base * float(emissiveEnabled);
+	// alpha 1.0 so 2D/alpha surfaces over the scene attenuate the emissive they cover
+	// (it blends with its own source alpha); emitters are ONE/ONE so alpha is moot.
+	out_emissive = vec4( base.rgb * float(emissiveEnabled), 1.0 );
 #endif
 #endif
 }
