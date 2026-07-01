@@ -656,7 +656,7 @@ typedef struct {
 			VkShaderModule ident1[2][2][2]; // tx[0,1], env0[0,1] fog[0,1]
 			VkShaderModule fixed[2][2][2];  // tx[0,1], env0[0,1] fog[0,1]
 			VkShaderModule light[2];        // fog[0,1]
-			VkShaderModule overbright_vert;
+			VkShaderModule overbright_vert[2]; // fog[0,1]
 		} vert;
 		struct {
 			VkShaderModule gen0_df;
@@ -665,7 +665,7 @@ typedef struct {
 			VkShaderModule fixed[2][2];  // tx[0,1], fog[0,1]
 			VkShaderModule ent[1][2];    // tx[0], fog[0,1]
 			VkShaderModule light[2][2];  // linear[0,1] fog[0,1]
-			VkShaderModule overbright_frag;
+			VkShaderModule overbright_frag[2]; // fog[0,1]
 		} frag;
 
 		VkShaderModule color_fs;

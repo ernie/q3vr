@@ -1067,10 +1067,11 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 			pipeline = pStage->vk_pipeline[fog_stage];
 		}
 
-		// mark entity model pixels with stencil bit 0x80 so shadows skip them
-		// only for RT_MODEL — sprites and other transparent entities must not
-		// mark stencil or their transparent areas will block shadow visibility
-		if ( r_shadows->integer == 2 && backEnd.currentEntity != &tr.worldEntity
+		// mark entity model pixels with stencil bit 0x80 so shadows skip them.
+		// RT_MODEL only — transparent sprites would block shadow visibility;
+		// fogged entities excluded — their shadow volumes are never added
+		if ( r_shadows->integer == 2 && tess.fogNum == 0
+			&& backEnd.currentEntity != &tr.worldEntity
 			&& backEnd.currentEntity->e.reType == RT_MODEL ) {
 			Vk_Pipeline_Def def;
 			vk_get_pipeline_def( pipeline, &def );
@@ -1099,7 +1100,8 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 			else
 				pipeline = pStage->vk_pipeline_df;
 
-			if ( r_shadows->integer == 2 && backEnd.currentEntity != &tr.worldEntity
+			if ( r_shadows->integer == 2 && tess.fogNum == 0
+				&& backEnd.currentEntity != &tr.worldEntity
 				&& backEnd.currentEntity->e.reType == RT_MODEL ) {
 				Vk_Pipeline_Def def;
 				vk_get_pipeline_def( pipeline, &def );

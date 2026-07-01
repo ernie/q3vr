@@ -104,6 +104,8 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} vert_tx0
     COMMAND ${GLSLANG_VALIDATOR} -S vert -V --target-env vulkan1.1 -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_vert.tmpl -DUSE_OVERBRIGHT
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} vert_tx0_overbright
+    COMMAND ${GLSLANG_VALIDATOR} -S vert -V --target-env vulkan1.1 -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_vert.tmpl -DUSE_OVERBRIGHT -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} vert_tx0_overbright_fog
     COMMAND ${GLSLANG_VALIDATOR} -S vert -V --target-env vulkan1.1 -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_vert.tmpl -DUSE_FOG
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} vert_tx0_fog
     COMMAND ${GLSLANG_VALIDATOR} -S vert -V --target-env vulkan1.1 -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_vert.tmpl -DUSE_ENV
@@ -196,6 +198,8 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0
     COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_OVERBRIGHT
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_overbright
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_OVERBRIGHT -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_overbright_fog
     COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_FOG
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_fog
 
