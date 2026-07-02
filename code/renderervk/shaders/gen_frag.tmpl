@@ -110,7 +110,11 @@ layout (constant_id = 10) const int acff = 0; // NONE, RGB, RGBA, ALPHA
 
 layout (constant_id = 11) const int force_opaque_alpha = 0; // HUD 3D: force alpha=1.0
 
-layout (constant_id = 12) const int emissiveEnabled = 0; // HDR: emit this stage to the emissive layer
+#ifndef USE_DF
+layout(push_constant) uniform EmissivePC {
+	layout(offset = 64) float u_emissiveFactor;
+};
+#endif
 
 void main() {
 #ifdef USE_FOG
@@ -504,9 +508,8 @@ void main() {
 	// light-grid HDR: recover the over-white lit color the byte clamp threw away
 	out_emissive = vec4( base.rgb * frag_overbright, 1.0 );
 #else
-	// alpha 1.0 so 2D/alpha surfaces over the scene attenuate the emissive they cover
-	// (it blends with its own source alpha); emitters are ONE/ONE so alpha is moot.
-	out_emissive = vec4( base.rgb * float(emissiveEnabled), 1.0 );
+	// emissiveFactor: 0 = off, +1 = additive, -1 = alpha-additive (weight by alpha).
+	out_emissive = vec4( base.rgb * abs( u_emissiveFactor ) * ( u_emissiveFactor < 0.0 ? base.a : 1.0 ), 1.0 );
 #endif
 #endif
 }

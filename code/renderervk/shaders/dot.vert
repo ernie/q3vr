@@ -1,8 +1,10 @@
 #version 450
 
-// 128 bytes
+// 64 bytes. This pipeline uses vk.pipeline_layout_storage (SSBO only, no
+// ViewTransform/eyeProj UBO binding), so it stays mono: the caller pushes the
+// complete final transform directly (no separate per-eye projection stage).
 layout(push_constant) uniform Transform {
-	mat4 mvp;
+	mat4 u_mv;
 };
 
 layout(set = 0, binding = 0) buffer SSBO {
@@ -18,6 +20,6 @@ out gl_PerVertex {
 
 void main() {
 	sampled = 0;
-	gl_Position = mvp * vec4(in_position, 1.0);
+	gl_Position = u_mv * vec4(in_position, 1.0);
 	gl_PointSize = 1.0;
 }

@@ -1079,14 +1079,21 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 			pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
 		}
 
-		{
-			const uint32_t blend = pStage->stateBits & ( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS );
-			const qboolean additive = ( blend == ( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE ) );
-			if ( vk.hdrActive && additive && !backEnd.projection2D ) {
-				Vk_Pipeline_Def def;
-				vk_get_pipeline_def( pipeline, &def );
-				def.emissive = 1;
-				pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
+		if ( vk.hdrActive ) {
+			// Additive stages (dst ONE) feed the HDR emissive layer: src ONE writes
+			// color directly; src SRC_ALPHA is flagged negative so the shader
+			// alpha-weights it to match the color attachment.
+			const uint32_t src = pStage->stateBits & GLS_SRCBLEND_BITS;
+			const uint32_t dst = pStage->stateBits & GLS_DSTBLEND_BITS;
+			if ( dst == GLS_DSTBLEND_ONE && !backEnd.projection2D ) {
+				if ( src == GLS_SRCBLEND_SRC_ALPHA )
+					vk.cmd->emissive_factor = -1.0f;
+				else if ( src == GLS_SRCBLEND_ONE )
+					vk.cmd->emissive_factor = 1.0f;
+				else
+					vk.cmd->emissive_factor = 0.0f;
+			} else {
+				vk.cmd->emissive_factor = 0.0f;
 			}
 		}
 
@@ -1108,6 +1115,9 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 				def.stencil_mark = 1;
 				pipeline = vk_find_pipeline_ext( 0, &def, qtrue );
 			}
+
+			if ( vk.hdrActive )
+				vk.cmd->emissive_factor = 0.0f;
 
 			vk_bind_pipeline( pipeline );
 			vk_draw_geometry( tess.depthRange, qtrue );
@@ -1165,6 +1175,8 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 	}
 	if ( tess_flags ) // fog-only shaders?
 		vk_bind_geometry( tess_flags );
+	if ( vk.hdrActive )
+		vk.cmd->emissive_factor = 0.0f;
 #endif
 }
 
@@ -1239,6 +1251,25 @@ uint32_t VK_PushUniform( const vkUniform_t *uni ) {
 	vk_reset_descriptor( VK_DESC_UNIFORM );
 	vk_update_descriptor( VK_DESC_UNIFORM, vk.cmd->uniform_descriptor );
 	vk_update_descriptor_offset( VK_DESC_UNIFORM, vk.cmd->uniform_read_offset );
+
+	return offset;
+}
+
+
+uint32_t VK_PushEyeProj( void ) {
+	const uint32_t size = sizeof( float ) * 32;
+	const uint32_t offset = PAD( vk.cmd->vertex_buffer_offset, vk.uniform_alignment );
+
+	if ( offset + size > vk.geometry_buffer_size )
+		return ~0U;
+
+	Com_Memcpy( vk.cmd->vertex_buffer_ptr + offset, vk_view_eyeproj, size );
+	vk.cmd->vertex_buffer_offset = offset + PAD( size, vk.uniform_alignment );
+	vk.cmd->eyeproj_offset = offset;
+
+	// dirty set 0 so the next vk_bind_descriptor_sets rebinds with new offsets
+	vk_reset_descriptor( VK_DESC_UNIFORM );
+	vk_update_descriptor( VK_DESC_UNIFORM, vk.cmd->uniform_descriptor );
 
 	return offset;
 }

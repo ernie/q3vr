@@ -12,10 +12,14 @@
 #define USE_CL1
 #endif
 
-// Per-eye MVP matrices via push constants (128 bytes = 2 x mat4)
-// MVP is precomputed on CPU: mvp[eye] = proj[eye] * view[eye] * model
+// Mono modelview via push constants (64 bytes); per-eye projection lives in
+// the ViewTransform UBO (set 0, binding 1), populated once per view.
 layout(push_constant) uniform Transform {
-	mat4 mvp[2];
+	mat4 u_mv;              // mono modelview (V_head x M)
+};
+
+layout(set = 0, binding = 1) uniform ViewTransform {
+	mat4 eyeProj[2];        // P_eye x E'_eye per view; equal slots when mono
 };
 
 // Lighting/Fog UBO at set 0, binding 0 (standard layout, no shift needed)
@@ -100,8 +104,8 @@ out gl_PerVertex {
 };
 
 void main() {
-	// Per-eye MVP from push constants - precomputed on CPU
-	gl_Position = mvp[gl_ViewIndex] * vec4(in_position, 1.0);
+	// Mono modelview (push constant) x per-eye projection (UBO)
+	gl_Position = eyeProj[gl_ViewIndex] * (u_mv * vec4(in_position, 1.0));
 
 
 #if defined (USE_CLX_IDENT) || defined (USE_FIXED_COLOR)

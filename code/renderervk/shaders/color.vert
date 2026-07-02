@@ -2,12 +2,16 @@
 #extension GL_EXT_multiview : enable
 
 // Multiview solid color vertex shader for VR stereo rendering
-// Uses precomputed per-eye MVP matrices via push constants
+// Mono modelview via push constants; per-eye projection via ViewTransform UBO
 
-// Per-eye MVP matrices via push constants (128 bytes = 2 x mat4)
-// MVP is precomputed on CPU: mvp[eye] = proj[eye] * view[eye] * model
+// Mono modelview via push constants (64 bytes); per-eye projection lives in
+// the ViewTransform UBO (set 0, binding 1), populated once per view.
 layout(push_constant) uniform Transform {
-	mat4 mvp[2];
+	mat4 u_mv;              // mono modelview (V_head x M)
+};
+
+layout(set = 0, binding = 1) uniform ViewTransform {
+	mat4 eyeProj[2];        // P_eye x E'_eye per view; equal slots when mono
 };
 
 layout(location = 0) in vec3 in_position;
@@ -17,6 +21,6 @@ out gl_PerVertex {
 };
 
 void main() {
-	// Per-eye MVP from push constants - precomputed on CPU
-	gl_Position = mvp[gl_ViewIndex] * vec4(in_position, 1.0);
+	// Mono modelview (push constant) x per-eye projection (UBO)
+	gl_Position = eyeProj[gl_ViewIndex] * (u_mv * vec4(in_position, 1.0));
 }

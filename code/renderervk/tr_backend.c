@@ -573,6 +573,11 @@ static void RB_BeginDrawingView( void ) {
 
 	// we will only draw a sun if there was sky rendered in this view
 	backEnd.skyRenderedThisView = qfalse;
+
+#ifdef USE_VULKAN
+	vk_set_view_eyeproj();
+	VK_PushEyeProj();
+#endif
 }
 
 #ifdef USE_PMLIGHT

@@ -166,8 +166,7 @@ typedef struct {
 	vec3_t		viewOrigin;		// viewParms->or.origin in local coordinates
 	float		modelMatrix[16];
 	float		modelView[16];
-	float		eyeViewMatrix[2][16];
-	float		entityMatrix[16];	// pure entity transform (local-to-world, no view) for multiview stereo
+	float		eyeViewMatrix[2][16];	// world orientation only: per-eye view matrix (R_RotateForViewer)
 } orientationr_t;
 
 //===============================================================================

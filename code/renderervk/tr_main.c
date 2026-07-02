@@ -390,16 +390,8 @@ void R_RotateForEntity( const trRefEntity_t *ent, const viewParms_t *viewParms,
 	glMatrix[11] = 0;
 	glMatrix[15] = 1;
 
-	// Store pure entity matrix for multiview stereo rendering
-	// This is just the entity's local-to-world transform, no view matrix
-	Com_Memcpy( or->entityMatrix, glMatrix, sizeof( or->entityMatrix ) );
-
 	// Build center modelview (for culling and legacy code)
 	myGlMultMatrix( glMatrix, viewParms->world.modelMatrix, or->modelMatrix );
-
-	// Build per-eye modelview matrices for VR stereo rendering
-	myGlMultMatrix( glMatrix, viewParms->world.eyeViewMatrix[0], or->eyeViewMatrix[0] );
-	myGlMultMatrix( glMatrix, viewParms->world.eyeViewMatrix[1], or->eyeViewMatrix[1] );
 
 	// calculate the viewer origin in the model's space
 	// needed for fog, specular, and environment mapping

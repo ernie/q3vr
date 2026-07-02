@@ -205,7 +205,6 @@ typedef struct {
 	int allow_discard;
 	int acff; // none, rgb, rgba, alpha
 	int stencil_mark; // mark pixels with stencil bit 0x80 (for shadow exclusion)
-	int emissive; // emit this stage to the HDR emissive layer (location 1) when hdrActive
 	struct {
 		byte rgb;
 		byte alpha;
@@ -330,6 +329,9 @@ qboolean vk_bloom( void );
 
 qboolean vk_alloc_vbo( const byte *vbo_data, int vbo_size );
 void vk_update_mvp( const float *m );
+extern float vk_view_eyeproj[2][16];
+void vk_set_view_eyeproj( void );
+uint32_t VK_PushEyeProj( void );
 
 uint32_t vk_tess_index( uint32_t numIndexes, const void *src );
 void vk_bind_index_buffer( VkBuffer buffer, uint32_t offset );
@@ -366,6 +368,7 @@ typedef struct vk_tess_s {
 
 	VkDescriptorSet uniform_descriptor;
 	uint32_t		uniform_read_offset;
+	uint32_t		eyeproj_offset;	// dynamic offset for set 0 binding 1 (per-view eyeProj)
 	VkDeviceSize	buf_offset[8];
 	VkDeviceSize	vbo_offset[8];
 
@@ -382,6 +385,8 @@ typedef struct vk_tess_s {
 	VkPipeline			last_pipeline;
 
 	uint32_t num_indexes; // value from most recent vk_bind_index() call
+
+	float		emissive_factor;	// fragment push constant: +1 additive, -1 alpha-additive, 0 otherwise
 
 	VkRect2D scissor_rect;
 } vk_tess_t;

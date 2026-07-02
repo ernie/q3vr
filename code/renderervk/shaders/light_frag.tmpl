@@ -32,6 +32,7 @@ layout(location = 4) in vec2 fog_tex_coord;
 #endif
 
 layout(location = 0) out vec4 out_color;
+layout(location = 1) out vec4 out_emissive; // dynamic light -> HDR emissive layer
 
 layout (constant_id = 0) const int alpha_test_func = 0;
 layout (constant_id = 1) const float alpha_test_value = 0.0;
@@ -131,4 +132,6 @@ void main() {
 	if ( force_opaque_alpha != 0 ) {
 		out_color.a = 1.0;
 	}
+
+	out_emissive = vec4( out_color.rgb, 1.0 );
 }
