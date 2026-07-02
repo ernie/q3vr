@@ -132,6 +132,7 @@ static PFN_vkFreeDescriptorSets							qvkFreeDescriptorSets;
 static PFN_vkFreeMemory									qvkFreeMemory;
 static PFN_vkGetBufferMemoryRequirements				qvkGetBufferMemoryRequirements;
 static PFN_vkGetDeviceQueue								qvkGetDeviceQueue;
+static PFN_vkGetFenceStatus								qvkGetFenceStatus;
 static PFN_vkGetImageMemoryRequirements					qvkGetImageMemoryRequirements;
 static PFN_vkGetImageSubresourceLayout					qvkGetImageSubresourceLayout;
 static PFN_vkInvalidateMappedMemoryRanges				qvkInvalidateMappedMemoryRanges;
@@ -2259,6 +2260,7 @@ static void init_vulkan_library( void )
 	INIT_DEVICE_FUNCTION(vkFreeMemory)
 	INIT_DEVICE_FUNCTION(vkGetBufferMemoryRequirements)
 	INIT_DEVICE_FUNCTION(vkGetDeviceQueue)
+	INIT_DEVICE_FUNCTION(vkGetFenceStatus)
 	INIT_DEVICE_FUNCTION(vkGetImageMemoryRequirements)
 	INIT_DEVICE_FUNCTION(vkGetImageSubresourceLayout)
 	INIT_DEVICE_FUNCTION(vkInvalidateMappedMemoryRanges)
@@ -2423,6 +2425,7 @@ static void deinit_device_functions( void )
 	qvkFreeMemory								= NULL;
 	qvkGetBufferMemoryRequirements				= NULL;
 	qvkGetDeviceQueue							= NULL;
+	qvkGetFenceStatus							= NULL;
 	qvkGetImageMemoryRequirements				= NULL;
 	qvkGetImageSubresourceLayout				= NULL;
 	qvkInvalidateMappedMemoryRanges				= NULL;
@@ -3994,7 +3997,8 @@ static void vk_create_sync_primitives( void ) {
 	VK_CHECK( qvkCreateSemaphore( vk.device, &desc, NULL, &vk.desktopAcquireSem ) );
 	SET_OBJECT_NAME( vk.desktopAcquireSem, "desktop acquire semaphore", VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT );
 
-	// Single fence - wait at START of vk_present_desktop_mirror to ensure previous blit is complete
+	// Single fence - polled at the start of vk_present_desktop_mirror; the mirror
+	// update is skipped (never waited on) while the previous blit is in flight
 	// before reusing command buffer, acquire semaphore, etc.
 	fence_desc.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fence_desc.pNext = NULL;
@@ -6846,16 +6850,17 @@ VkPipeline create_pipeline( const Vk_Pipeline_Def *def, renderPass_t renderPassI
 	blend_attachments[0] = attachment_blend_state;
 
 	if ( ( renderPassIndex == RENDER_PASS_MAIN || renderPassIndex == RENDER_PASS_POST_BLOOM ) && vk.hdrActive ) {
-		// the emissive layer mirrors the color blend so it composites with the same
-		// occlusion the color attachment does: opaque surfaces replace (a nearer
-		// fragment hides the emissive behind it -- fixes lit polygons showing through
-		// the model), additive emitters accumulate, and alpha-blended surfaces --
-		// including 2D drawn over the scene -- attenuate the emissive they cover
+		// the emissive layer mirrors the color blend, so it only needs writes from
+		// stages that add light (emitters, overbright lit models) or that cover an
+		// emitter without depth occlusion (blends attenuate/accumulate, depth-test-
+		// disabled 2D replaces). Opaque depth-tested geometry is masked off: the
+		// layer clears each frame and depth already excludes hidden emitters.
+		// LIGHTING types excluded: trinity-vr's light_frag has no out_emissive.
 		VkPipelineColorBlendAttachmentState em = attachment_blend_state;
-		// every gen_frag-derived type (and overbright) writes out_emissive, so any can
-		// occlude/attenuate it -- 2D and opaque included, not just emitters. LIGHTING
-		// types excluded: trinity-vr's light_frag does not write out_emissive.
-		if ( def->shader_type >= TYPE_GENERIC_BEGIN
+		if ( ( def->shader_type >= TYPE_GENERIC_BEGIN
+				&& ( def->emissive
+					|| ( def->state_bits & ( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS ) )
+					|| ( def->state_bits & GLS_DEPTHTEST_DISABLE ) ) )
 			|| def->shader_type == TYPE_SINGLE_TEXTURE_LIGHTING_OVERBRIGHT )
 			em.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 		else
@@ -9084,8 +9089,13 @@ void vk_present_desktop_mirror( void )
 		return;
 	}
 
-	// Wait for previous blit to finish (fence created signaled so first call passes through)
-	qvkWaitForFences( vk.device, 1, &vk.desktopBlitFence, VK_TRUE, UINT64_MAX );
+	// Never block the VR frame on the previous blit: if it hasn't drained yet,
+	// skip this update and let the spectator hold the previous frame. The fence
+	// is created signaled, so the first call passes through.
+	if ( qvkGetFenceStatus( vk.device, vk.desktopBlitFence ) != VK_SUCCESS ) {
+		vk_drain_rendering_semaphore();
+		return;
+	}
 
 	// Non-blocking acquire so the VR frame is never stalled by desktop vsync.
 	// If no image is available, we skip — spectator sees the previous frame held.
