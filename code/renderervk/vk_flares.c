@@ -268,24 +268,6 @@ FLARE BACK END
 */
 
 
-static float *vk_ortho( float x1, float x2,
-						float y2, float y1,
-						float z1, float z2 ) {
-
-	static float m[16] = { 0 };
-
-	m[0] = 2.0f / (x2 - x1);
-	m[5] = 2.0f / (y2 - y1);
-	m[10] = 1.0f / (z1 - z2);
-	m[12] = -(x2 + x1) / (x2 - x1);
-	m[13] = -(y2 + y1) / (y2 - y1);
-	m[14] = z1 / (z1 - z2);
-	m[15] = 1.0f;
-
-	return m;
-}
-
-
 /*
 ==================
 RB_TestFlare
@@ -294,7 +276,8 @@ RB_TestFlare
 static void RB_TestFlare( flare_t *f ) {
 	qboolean		visible;
 	float			fade;
-	float			*m;
+	float			clipPos[16];
+	vec4_t			eye, clip;
 	uint32_t		offset;
 	int				i;
 
@@ -305,13 +288,20 @@ static void RB_TestFlare( flare_t *f ) {
 	and explicit depth buffer reading may be very slow and require surface conversion.
 
 	So we will use storage buffer and exploit early depth tests by
-	rendering test dot in orthographic projection at projected flare coordinates
-	window-x, window-y and world-z: if test dot is not covered by
-	any world geometry - it will invoke fragment shader which will
-	fill storage buffer at desired location, then we discard fragment.
+	rendering a test dot at the flare's projected position, biased slightly
+	toward the viewer: if the dot is not covered by any world geometry it
+	invokes the fragment shader, which fills the storage buffer at the
+	desired location, then discards the fragment.
 	In next frame we read storage buffer: if there is a non-zero value
 	then our flare WAS visible (as we're working with 1-frame delay),
 	multisampled image will cause multiple fragment shader invocations.
+
+	VR: the probe position must be computed PER EYE with the same eyeProj
+	matrices the scene rendered with — each view's depth buffer is shifted
+	by asymmetric-FOV offset + IPD parallax relative to the mono projection,
+	so a mono-positioned dot samples pixels several degrees away from where
+	the flare actually is in either eye. The two clip-space positions go in
+	the vertex push range; dot.vert selects by gl_ViewIndex.
 */
 
 	// we neeed only single uint32_t but take care of alignment
@@ -329,17 +319,39 @@ static void RB_TestFlare( flare_t *f ) {
 		visible = qfalse;
 	}
 
-	// reset test result in storage buffer
-	// *((uint32_t*)(vk.storage.buffer_ptr + offset)) = 0x00;
+	// reset the test result; this frame's probe fragment sets it again if it
+	// survives the depth test in either view. The reset must live here on the
+	// CPU rather than in dot.vert: multiview gives no cross-view ordering
+	// between vertex and fragment invocations, so a vertex-stage reset in one
+	// view could clobber the other view's pass.
+	*((uint32_t*)(vk.storage.buffer_ptr + offset)) = 0x00;
 
-	m = vk_ortho( backEnd.viewParms.viewportX, backEnd.viewParms.viewportX + backEnd.viewParms.viewportWidth,
-		backEnd.viewParms.viewportY, backEnd.viewParms.viewportY + backEnd.viewParms.viewportHeight, 0, 1 );
-	vk_update_mvp( m );
+	// per-eye probe positions: clip = eyeProj[e] * (worldModelView * origin),
+	// biased toward the viewer — exactly the transform the scene drew with
+	Com_Memset( clipPos, 0, sizeof( clipPos ) );
+	for ( i = 0; i < 2; i++ ) {
+		R_TransformModelToClip( f->origin, backEnd.viewParms.world.modelMatrix,
+			vk_view_eyeproj[i], eye, clip );
+#ifdef USE_REVERSED_DEPTH
+		clip[2] += 0.20f;
+#else
+		clip[2] -= 0.20f;
+#endif
+		Com_Memcpy( clipPos + i * 4, clip, sizeof( vec4_t ) );
+	}
+	// params slot: clip-space extent of ~2 pixels (per unit w) so dot.vert
+	// can expand the probe into a sub-pixel triangle around the pixel center
+	clipPos[8] = 4.0f / (float)vk.renderWidth;
+	clipPos[9] = 4.0f / (float)vk.renderHeight;
+	// dot.vert reads the first 48 bytes of the 64-byte vertex push range as
+	// vec4 clipPos[2] + vec4 params; reuse the matrix push plumbing
+	vk_update_mvp( clipPos );
 
-	tess.xyz[0][0] = f->windowX;
-	tess.xyz[0][1] = f->windowY;
-	tess.xyz[0][2] = -f->drawZ;
-	tess.numVertexes = 1;
+	// three dummy vertices for the probe triangle: the pipeline's vertex
+	// input still binds location 0, but the probe position comes from the
+	// push constants (expanded per-vertex via gl_VertexIndex)
+	Com_Memset( tess.xyz, 0, 3 * sizeof( tess.xyz[0] ) );
+	tess.numVertexes = 3;
 
 #ifdef USE_VBO
 	tess.vboIndex = 0;
@@ -389,9 +401,12 @@ static void RB_RenderFlare( flare_t *f ) {
 	float			size;
 	vec3_t			color;
 	float distance, intensity, factor;
+	float radius;
+	vec3_t			dir, left, up;
 	byte fogFactors[3] = {255, 255, 255};
 	color4ub_t		c;
 
+	// RB_RenderFlares culls drawIntensity == 0 before calling here
 	//if ( f->drawIntensity == 0.0 )
 	//	return;
 
@@ -447,14 +462,50 @@ static void RB_RenderFlare( flare_t *f ) {
 			return;
 	}
 
-	RB_BeginSurface( tr.flareShader, f->fogNum );
-
 	c.rgba[0] = color[0] * fogFactors[0];
 	c.rgba[1] = color[1] * fogFactors[1];
 	c.rgba[2] = color[2] * fogFactors[2];
 	c.rgba[3] = 255;
 
-	RB_AddQuadStamp2( f->windowX - size, f->windowY - size, size * 2, size * 2, 0, 0, 1, 1, c );
+	// falloff/fog can quantize the color to black; an additive black quad
+	// contributes nothing but still pays full depth-test-disabled fill
+	if ( !( c.rgba[0] | c.rgba[1] | c.rgba[2] ) )
+		return;
+
+	// Depth handling: the flare stage pipelines have the depth test disabled
+	// (rebaked in CreateExternalShaders), so the billboard is not swallowed
+	// by the light-fixture surface it sits on. Occlusion is the probe's job.
+	RB_BeginSurface( tr.flareShader, f->fogNum );
+
+	// World-space billboard at the flare origin, sized to subtend the same
+	// screen fraction as the classic window-space quad (`size` pixels of
+	// viewportWidth at `distance`): half-width = 2 * size/W * distance * tanHalfFovX.
+	// The stereo projection is applied per eye by the pipeline, so the corona
+	// gets correct parallax and asymmetric-FOV placement in VR.
+	radius = 2.0f * distance * ( size / backEnd.viewParms.viewportWidth ) / backEnd.viewParms.projectionMatrix[0];
+
+	// Viewer-facing basis: the quad faces the viewer's POSITION (view-plane
+	// alignment tracks head orientation instead and foreshortens at
+	// peripheral gaze angles); in-plane spin follows the view's up vector.
+	VectorSubtract( f->origin, backEnd.viewParms.or.origin, dir );
+	VectorNormalizeFast( dir );
+	CrossProduct( backEnd.viewParms.or.axis[2], dir, left );
+	if ( DotProduct( left, left ) < 0.0001f ) {
+		// sight line parallel to view up: fall back to view left
+		VectorCopy( backEnd.viewParms.or.axis[1], left );
+	} else {
+		VectorNormalizeFast( left );
+	}
+	CrossProduct( dir, left, up );
+
+	VectorScale( left, radius, left );
+	VectorScale( up, radius, up );
+
+	if ( backEnd.viewParms.portalView == PV_MIRROR ) {
+		VectorSubtract( vec3_origin, left, left );
+	}
+
+	RB_AddQuadStamp( f->origin, left, up, c );
 
 	RB_EndSurface();
 }
@@ -480,7 +531,6 @@ void RB_RenderFlares( void ) {
 	flare_t		*f;
 	flare_t		**prev;
 	qboolean	draw;
-	float		*m;
 
 	if ( !r_flares->integer ) {
 		return;
@@ -537,15 +587,12 @@ void RB_RenderFlares( void ) {
 		return;		// none visible
 	}
 
-#ifdef USE_REVERSED_DEPTH
-	m = vk_ortho( backEnd.viewParms.viewportX, backEnd.viewParms.viewportX + backEnd.viewParms.viewportWidth,
-		backEnd.viewParms.viewportY, backEnd.viewParms.viewportY + backEnd.viewParms.viewportHeight, 1.0, 0.0 );
-#else
-	m = vk_ortho( backEnd.viewParms.viewportX, backEnd.viewParms.viewportX + backEnd.viewParms.viewportWidth,
-		backEnd.viewParms.viewportY, backEnd.viewParms.viewportY + backEnd.viewParms.viewportHeight, 0.0, 1.0 );
-#endif
-
-	vk_update_mvp( m );
+	// Flare quads are world-space billboards: push the mono world modelview
+	// (same matrix world surfaces draw with) and let the per-view eyeProj UBO,
+	// still holding this view's per-eye projections, provide the stereo
+	// projection. Window-space ortho must NOT be used here: the generic
+	// pipelines multiply by eyeProj, which garbles pre-projected vertices.
+	vk_update_mvp( backEnd.viewParms.world.modelMatrix );
 
 	for ( f = r_activeFlares ; f ; f = f->next ) {
 		if ( f->frameSceneNum == backEnd.viewParms.frameSceneNum && f->portalView == backEnd.viewParms.portalView && f->drawIntensity ) {

@@ -1346,7 +1346,7 @@ extern Vk_World		vk_world;		// this data is cleared during ref re-init
 //
 extern cvar_t	*r_flareSize;
 extern cvar_t	*r_flareFade;
-extern cvar_t	*r_flareCoeff;			// coefficient for the flare intensity falloff function. 
+extern cvar_t	*r_flareCoeff;			// coefficient for the flare intensity falloff function.
 
 extern cvar_t	*r_railWidth;
 extern cvar_t	*r_railCoreWidth;

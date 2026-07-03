@@ -814,15 +814,16 @@ void RB_DrawSun( float scale, shader_t *shader ) {
 		return;
 	}
 
-	//qglLoadMatrixf( backEnd.viewParms.world.modelMatrix );
-	//qglTranslatef (backEnd.viewParms.or.origin[0], backEnd.viewParms.or.origin[1], backEnd.viewParms.or.origin[2]);
 	{
-		// FIXME: this could be a lot cleaner
-		mat4_t translation, modelmatrix;
+		// The shaders compute P[eye] * V[eye] * M, so u_ModelMatrix must be
+		// model-only. Baking backEnd.viewParms.world.modelMatrix (the mono
+		// view) in here applies the view twice and makes the sun drift with
+		// head motion, locked to neither world nor head. The sun quad lives
+		// in world space around the viewer: translation only.
+		mat4_t translation;
 
 		Mat4Translation( backEnd.viewParms.or.origin, translation );
-		Mat4Multiply( backEnd.viewParms.world.modelMatrix, translation, modelmatrix );
-		GL_SetModelMatrix( modelmatrix );
+		GL_SetModelMatrix( translation );
 	}
 
 	dist = 	backEnd.viewParms.zFar / 1.75;		// div sqrt(3)

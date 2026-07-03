@@ -1253,8 +1253,13 @@ static void RB_SurfaceBad( surfaceType_t *surfType ) {
 
 static void RB_SurfaceFlare(srfFlare_t *surf)
 {
-	if (r_flares->integer)
-		RB_AddFlare(surf, tess.fogNum, surf->origin, surf->color, surf->normal);
+	// Flares are disabled in the GL2 renderer regardless of r_flares:
+	// RB_TestFlare's qglReadPixels depth probe cannot read the layered
+	// OVR_multiview2 FBO, and the window-space quad path predates the
+	// P*V*M shader split. The Vulkan renderer has a working probe and
+	// renders flares. Decision: Ernie, 2026-07-02 — see
+	// docs/superpowers/specs/2026-07-02-flares-rehabilitation-design.md.
+	(void)surf;
 }
 
 void RB_SurfaceVaoMdvMesh(srfVaoMdvMesh_t * surface)

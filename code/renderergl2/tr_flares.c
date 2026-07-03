@@ -279,9 +279,6 @@ void RB_TestFlare( flare_t *f ) {
 	float			screenZ;
 	FBO_t           *oldFbo;
 
-  // Disable flares in VR
-  return;
-
 	backEnd.pc.c_flareTests++;
 
 	// doing a readpixels is as good as doing a glFinish(), so
@@ -476,6 +473,12 @@ void RB_RenderFlares (void) {
 	flare_t		**prev;
 	qboolean	draw;
 	mat4_t    oldmodelmatrix, oldprojection, matrix;
+
+	// Flares are disabled in the GL2 renderer (see RB_SurfaceFlare, which is
+	// the guard that stops accumulation): the depth-readback visibility probe
+	// below cannot work against the layered OVR_multiview2 FBO. Kept
+	// upstream-shaped for diffability rather than rehabilitated.
+	return;
 
 	if ( !r_flares->integer ) {
 		return;
