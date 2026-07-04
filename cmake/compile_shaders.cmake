@@ -90,13 +90,13 @@ add_custom_command(
     COMMAND ${GLSLANG_VALIDATOR} -S vert -V --target-env vulkan1.1 -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_vert.tmpl -DUSE_FOG
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} vert_light_fog
 
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_light
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_light_fog
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl -DUSE_LINE
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl -DUSE_LINE -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_light_line
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl -DUSE_LINE -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl -DUSE_LINE -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_light_line_fog
 
     # Generic vertex shaders - single texture
@@ -194,31 +194,31 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} vert_tx2_cl_env_fog
 
     # Generic fragment shaders - single-texture
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_OVERBRIGHT
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_OVERBRIGHT -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_overbright
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_OVERBRIGHT -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_OVERBRIGHT -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_overbright_fog
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_fog
 
     # Single-texture fragment, identity color
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_ATEST
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_ATEST -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_ident1
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_ATEST -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_ATEST -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_ident1_fog
 
     # Single-texture fragment, fixed color
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_ATEST
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_ATEST -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_fixed
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_ATEST -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_ATEST -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_fixed_fog
 
     # Single-texture fragment, entity color
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ENT_COLOR -DUSE_ATEST
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ENT_COLOR -DUSE_ATEST -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_ent
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ENT_COLOR -DUSE_ATEST -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ENT_COLOR -DUSE_ATEST -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_ent_fog
 
     # Single-texture fragment, depth-fragment
@@ -226,40 +226,101 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_df
 
     # Double-texture fragment
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX1
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX1 -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX1 -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX1 -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_fog
 
     # Double-texture fragment, identity colors
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_TX1
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_TX1 -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_ident1
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_TX1 -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_TX1 -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_ident1_fog
 
     # Double-texture fragment, fixed colors
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_TX1
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_TX1 -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_fixed
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_TX1 -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_TX1 -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_fixed_fog
 
     # Double-texture fragment, non-identical colors
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL1 -DUSE_TX1
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL1 -DUSE_TX1 -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_cl
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL1 -DUSE_TX1 -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL1 -DUSE_TX1 -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_cl_fog
 
     # Triple-texture fragment
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX2
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX2 -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx2
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX2 -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX2 -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx2_fog
 
     # Triple-texture fragment, non-identical colors
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL2 -DUSE_TX2
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL2 -DUSE_TX2 -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx2_cl
-    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL2 -DUSE_TX2 -DUSE_FOG
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL2 -DUSE_TX2 -DUSE_FOG -DUSE_EMISSIVE
     COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx2_cl_fog
+
+    # ========================================================
+    # NO-EMISSIVE FRAGMENT VARIANTS
+    # Same template matrix minus USE_EMISSIVE, for passes without
+    # the emissive attachment (screenmap, HUD, SDR).
+    # ========================================================
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_light_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_light_fog_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl -DUSE_LINE
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_light_line_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/light_frag.tmpl -DUSE_LINE -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_light_line_fog_ne
+
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_OVERBRIGHT
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_overbright_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_OVERBRIGHT -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_overbright_fog_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ATEST -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_fog_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_ATEST
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_ident1_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_ATEST -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_ident1_fog_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_ATEST
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_fixed_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_ATEST -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_fixed_fog_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ENT_COLOR -DUSE_ATEST
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_ent_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_ENT_COLOR -DUSE_ATEST -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx0_ent_fog_ne
+
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX1
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX1 -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_fog_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_TX1
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_ident1_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CLX_IDENT -DUSE_TX1 -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_ident1_fog_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_TX1
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_fixed_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_FIXED_COLOR -DUSE_TX1 -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_fixed_fog_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL1 -DUSE_TX1
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_cl_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL1 -DUSE_TX1 -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx1_cl_fog_ne
+
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX2
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx2_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_TX2 -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx2_fog_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL2 -DUSE_TX2
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx2_cl_ne
+    COMMAND ${GLSLANG_VALIDATOR} -S frag -V -o ${SPIRV_DIR}/temp.spv ${SHADER_DIR}/gen_frag.tmpl -DUSE_CL2 -DUSE_TX2 -DUSE_FOG
+    COMMAND ${CMAKE_COMMAND} -E env "PATH=${CMAKE_BINARY_DIR}" bin2hex ${SPIRV_DIR}/temp.spv +${SHADER_DATA_OUTPUT} frag_tx2_cl_fog_ne
 
     # ========================================================
     # VIRTUAL SCREEN SHADERS (multiview for menu/follow mode)

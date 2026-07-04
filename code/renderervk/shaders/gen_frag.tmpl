@@ -80,7 +80,9 @@ layout(location = 4) in vec2 fog_tex_coord;
 layout(depth_less) out float gl_FragDepth;
 #else
 layout(location = 0) out vec4 out_color;
+#ifdef USE_EMISSIVE
 layout(location = 1) out vec4 out_emissive;
+#endif
 #endif
 
 #ifdef USE_ATEST
@@ -504,12 +506,14 @@ void main() {
 		base.a = 1.0;
 	}
 	out_color = base;
+#ifdef USE_EMISSIVE
 #ifdef USE_OVERBRIGHT
 	// light-grid HDR: recover the over-white lit color the byte clamp threw away
 	out_emissive = vec4( base.rgb * frag_overbright, 1.0 );
 #else
 	// emissiveFactor: 0 = off, +1 = additive, -1 = alpha-additive (weight by alpha).
 	out_emissive = vec4( base.rgb * abs( u_emissiveFactor ) * ( u_emissiveFactor < 0.0 ? base.a : 1.0 ), 1.0 );
+#endif
 #endif
 #endif
 }
