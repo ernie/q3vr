@@ -8495,6 +8495,7 @@ void vk_end_frame( void )
 {
 	VkSubmitInfo submit_info;
 	uint32_t colorIndex;
+	float vsEyeProj[2][16], screenMV[16], floorMV[16];
 	float screenMVP[2][16], floorMVP[2][16];
 	qboolean useVirtualScreen = qfalse;
 	qboolean mirrorEnabled;
@@ -8514,9 +8515,18 @@ void vk_end_frame( void )
 	colorIndex = vk.xr.colorIndex;
 	mirrorEnabled = ( vr_desktopMode && vr_desktopMode->integer != 0 );
 
-	// Query virtual screen state from VR layer (pull model)
+	// Query virtual screen state from VR layer (pull model); recompose the
+	// split transform per eye until the virtual-screen pipelines take the
+	// eyeProj UBO directly
 	if ( ri.VR_GetVirtualScreenState != NULL ) {
-		useVirtualScreen = ri.VR_GetVirtualScreenState( screenMVP, floorMVP );
+		useVirtualScreen = ri.VR_GetVirtualScreenState( vsEyeProj, screenMV, floorMV );
+		if ( useVirtualScreen ) {
+			int e;
+			for ( e = 0; e < 2; e++ ) {
+				myGlMultMatrix( screenMV, vsEyeProj[e], screenMVP[e] );
+				myGlMultMatrix( floorMV, vsEyeProj[e], floorMVP[e] );
+			}
+		}
 	}
 
 	// Post-processing for XR (bloom, gamma) - fboActive always true in VR

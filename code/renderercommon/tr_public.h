@@ -258,10 +258,10 @@ typedef struct {
 	const void* (*VR_Vulkan_GetSwapchainInfo)( void );
 
 	// Virtual screen state query (renderer pulls from VR layer)
-	// Returns qtrue if virtual screen should be rendered, filling in precomputed MVP matrices
-	// screenMVP: per-eye MVP matrices for the virtual screen cylinder
-	// floorMVP: per-eye MVP matrices for the floor grid quad
-	qboolean (*VR_GetVirtualScreenState)( float screenMVP[2][16], float floorMVP[2][16] );
+	// Returns qtrue if virtual screen should be rendered, filling in the split
+	// transform: a shared per-eye eyeProj pair (P_eye * eyeFromHead, XR meter
+	// space) plus one mono model-view (headView * model) per mesh
+	qboolean (*VR_GetVirtualScreenState)( float eyeProj[2][16], float screenModelView[16], float floorModelView[16] );
 } refimport_t;
 
 extern	refimport_t	ri;

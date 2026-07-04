@@ -41,14 +41,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <vulkan/vulkan.h>
 extern const void* VR_Vulkan_GetDeviceInfo(void);
 extern const void* VR_Vulkan_GetSwapchainInfo(void);
-extern qboolean VR_GetVirtualScreenMVP(float screenMVP[2][16], float floorMVP[2][16]);
+extern qboolean VR_GetVirtualScreenMatrices(float eyeProj[2][16], float screenModelView[16], float floorModelView[16]);
 extern void VKimp_Init(glconfig_t *config);
 extern void VKimp_Shutdown(qboolean unloadDLL);
 extern qboolean VK_CreateSurface(void *instance, void *pSurface);
 #else
 static const void* VR_Vulkan_GetDeviceInfo(void) { return NULL; }
 static const void* VR_Vulkan_GetSwapchainInfo(void) { return NULL; }
-static qboolean VR_GetVirtualScreenMVP(float screenMVP[2][16], float floorMVP[2][16]) { return qfalse; }
+static qboolean VR_GetVirtualScreenMatrices(float eyeProj[2][16], float screenModelView[16], float floorModelView[16]) { return qfalse; }
 #endif
 
 #include <SDL.h>
@@ -3225,7 +3225,7 @@ void CL_InitRef( void ) {
 	refImport.VR_Vulkan_GetSwapchainInfo = VR_Vulkan_GetSwapchainInfo;
 
 	// Virtual screen state query - renderer pulls virtual screen MVP matrices
-	refImport.VR_GetVirtualScreenState = VR_GetVirtualScreenMVP;
+	refImport.VR_GetVirtualScreenState = VR_GetVirtualScreenMatrices;
 
 	ret = GetRefAPI( REF_API_VERSION, &refImport );
 

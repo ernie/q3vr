@@ -186,17 +186,21 @@ void VR_VirtualScreen_ResetPosition(void)
 
 /*
 ==================
-VR_GetVirtualScreenMVP
+VR_GetVirtualScreenMatrices
 
 Query function for renderer to pull virtual screen state.
 Returns qtrue if virtual screen should be rendered.
-Fills in precomputed per-eye MVP matrices for screen and floor.
 
-Each MVP array is 2 * 64 bytes = 128 bytes (two mat4 for left/right eyes).
+Returns the split transform: one eyeProj pair (P_eye * eyeFromHead, XR meter
+space) shared by both meshes, plus a mono model-view (headView * model) per
+mesh. Exact factorization of the former per-eye MVPs:
+P_e * V_e * M == (P_e * (V_e * headPose)) * (inverse(headPose) * M).
 ==================
 */
-qboolean VR_GetVirtualScreenMVP(float screenMVP[2][16], float floorMVP[2][16])
+qboolean VR_GetVirtualScreenMatrices(float eyeProj[2][16], float screenModelView[16], float floorModelView[16])
 {
+	int e;
+
 	// Check if we should render the virtual screen
 	if (!VR_Gameplay_ShouldRenderInVirtualScreen())
 	{
@@ -214,6 +218,12 @@ qboolean VR_GetVirtualScreenMVP(float screenMVP[2][16], float floorMVP[2][16])
 	centeredHead.position.z = (left->position.z + right->position.z) * 0.5f;
 	centeredHead.orientation = left->orientation;
 
+	// Head pose as a rigid transform and its inverse (the mono view)
+	XrVector3f unitScale = { 1.0f, 1.0f, 1.0f };
+	XrMatrix4x4f headPoseMat, headView;
+	XrMatrix4x4f_CreateTranslationRotationScale(&headPoseMat, &centeredHead.position, &centeredHead.orientation, &unitScale);
+	XrMatrix4x4f_InvertRigidBody(&headView, &headPoseMat);
+
 	// Build view matrices
 	XrMatrix4x4f view[2];
 	_VR_GetVirtualScreenViewMatrix(&view[0], &left->position, &left->orientation);
@@ -228,36 +238,27 @@ qboolean VR_GetVirtualScreenMVP(float screenMVP[2][16], float floorMVP[2][16])
 		projection[1] = projection[0];
 	}
 
-	// Virtual screen model matrix
-	XrMatrix4x4f screenModel;
-	_VR_GetVirtualScreenModelMatrix(&screenModel, &centeredHead);
+	// eyeProj[e] = P_e * eyeFromHead_e; eyeFromHead maps head space to eye space
+	for (e = 0; e < 2; e++) {
+		XrMatrix4x4f eyeFromHead, ep;
+		XrMatrix4x4f_Multiply(&eyeFromHead, &view[e], &headPoseMat);
+		XrMatrix4x4f_Multiply(&ep, &projection[e], &eyeFromHead);
+		memcpy(eyeProj[e], ep.m, sizeof(ep.m));
+	}
 
-	// Floor model matrix
-	XrMatrix4x4f floorModel;
-	_VR_GetVirtualScreenFloorModelMatrix(&floorModel);
+	// Mono model-views: headView * model
+	{
+		XrMatrix4x4f screenModel, floorModel, mv;
 
-	// Compute MVP = Projection * View * Model for each eye
-	XrMatrix4x4f viewModel, mvp;
+		_VR_GetVirtualScreenModelMatrix(&screenModel, &centeredHead);
+		_VR_GetVirtualScreenFloorModelMatrix(&floorModel);
 
-	// Screen MVP for left eye
-	XrMatrix4x4f_Multiply(&viewModel, &view[0], &screenModel);
-	XrMatrix4x4f_Multiply(&mvp, &projection[0], &viewModel);
-	memcpy(screenMVP[0], mvp.m, 16 * sizeof(float));
+		XrMatrix4x4f_Multiply(&mv, &headView, &screenModel);
+		memcpy(screenModelView, mv.m, sizeof(mv.m));
 
-	// Screen MVP for right eye
-	XrMatrix4x4f_Multiply(&viewModel, &view[1], &screenModel);
-	XrMatrix4x4f_Multiply(&mvp, &projection[1], &viewModel);
-	memcpy(screenMVP[1], mvp.m, 16 * sizeof(float));
-
-	// Floor MVP for left eye
-	XrMatrix4x4f_Multiply(&viewModel, &view[0], &floorModel);
-	XrMatrix4x4f_Multiply(&mvp, &projection[0], &viewModel);
-	memcpy(floorMVP[0], mvp.m, 16 * sizeof(float));
-
-	// Floor MVP for right eye
-	XrMatrix4x4f_Multiply(&viewModel, &view[1], &floorModel);
-	XrMatrix4x4f_Multiply(&mvp, &projection[1], &viewModel);
-	memcpy(floorMVP[1], mvp.m, 16 * sizeof(float));
+		XrMatrix4x4f_Multiply(&mv, &headView, &floorModel);
+		memcpy(floorModelView, mv.m, sizeof(mv.m));
+	}
 
 	return qtrue;
 }
