@@ -1244,8 +1244,11 @@ static void VK_SetLightParams( vkUniform_t *uni, const dlight_t *dl ) {
 uint32_t VK_PushUniform( const vkUniform_t *uni ) {
 	const uint32_t offset = vk.cmd->uniform_read_offset = PAD( vk.cmd->vertex_buffer_offset, vk.uniform_alignment );
 
-	if ( offset + vk.uniform_item_size > vk.geometry_buffer_size )
+	if ( offset + vk.uniform_item_size > vk.geometry_buffer_size ) {
+		// schedule geometry buffer resize
+		vk.geometry_buffer_size_new = log2pad( offset + vk.uniform_item_size, 1 );
 		return ~0U;
+	}
 
 	// push uniform
 	Com_Memcpy( vk.cmd->vertex_buffer_ptr + offset, uni, sizeof( *uni ) );
@@ -1263,8 +1266,11 @@ uint32_t VK_PushEyeProj( void ) {
 	const uint32_t size = sizeof( float ) * 32;
 	const uint32_t offset = PAD( vk.cmd->vertex_buffer_offset, vk.uniform_alignment );
 
-	if ( offset + size > vk.geometry_buffer_size )
+	if ( offset + size > vk.geometry_buffer_size ) {
+		// schedule geometry buffer resize
+		vk.geometry_buffer_size_new = log2pad( offset + size, 1 );
 		return ~0U;
+	}
 
 	Com_Memcpy( vk.cmd->vertex_buffer_ptr + offset, vk_view_eyeproj, size );
 	vk.cmd->vertex_buffer_offset = offset + PAD( size, vk.uniform_alignment );
