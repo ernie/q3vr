@@ -401,7 +401,7 @@ static void end_command_buffer( VkCommandBuffer command_buffer, const char *loca
 
 
 // Forward declaration for virtual screen rendering (defined later in file)
-static void vk_render_virtual_screen( float screenMVP[2][16], float floorMVP[2][16] );
+static void vk_render_virtual_screen( float eyeProj[2][16], float screenMV[16], float floorMV[16] );
 
 // Forward declaration for record_image_layout_transition
 static void record_image_layout_transition( VkCommandBuffer command_buffer, VkImage image, VkImageAspectFlags image_aspect_flags,
@@ -4609,7 +4609,6 @@ void vk_initialize( void )
 		VkDescriptorSetLayout set_layouts[6];
 		VkPipelineLayoutCreateInfo desc;
 		VkPushConstantRange push_ranges[2];
-		VkPushConstantRange push_range_virtual_screen;
 
 		// vertex stage: mono modelview; per-eye projection lives in set 0 binding 1
 		push_ranges[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
@@ -4620,12 +4619,6 @@ void vk_initialize( void )
 		push_ranges[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 		push_ranges[1].offset = 64;
 		push_ranges[1].size = 4;    // float emissiveFactor
-
-		// virtual-screen pipeline layout keeps its own shaders (virtualscreen.vert,
-		// floor_grid.vert) on the old 128-byte 2 x mat4 push - out of scope for the split
-		push_range_virtual_screen.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-		push_range_virtual_screen.offset = 0;
-		push_range_virtual_screen.size = 128;
 
 		// standard pipelines
 		set_layouts[0] = vk.set_layout_uniform; // fog/dlight parameters
@@ -4677,16 +4670,20 @@ void vk_initialize( void )
 
 		VK_CHECK( qvkCreatePipelineLayout( vk.device, &desc, NULL, &vk.pipeline_layout_blend ) );
 
-		// virtual screen pipeline layout: sampler + 128-byte push constants
-		set_layouts[0] = vk.set_layout_sampler;
+		// virtual screen pipeline layout: same split-transform shape as the
+		// standard pipelines (set 0 uniform + eyeProj, set 1 sampler, 64-byte
+		// mono modelview push); the eyeProj content is the virtual screen's
+		// own XR-space pair, pushed at end-frame
+		set_layouts[0] = vk.set_layout_uniform;
+		set_layouts[1] = vk.set_layout_sampler;
 
 		desc.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		desc.pNext = NULL;
 		desc.flags = 0;
-		desc.setLayoutCount = 1;
+		desc.setLayoutCount = 2;
 		desc.pSetLayouts = set_layouts;
 		desc.pushConstantRangeCount = 1;
-		desc.pPushConstantRanges = &push_range_virtual_screen;  // 128-byte vertex push constants for MVP matrices
+		desc.pPushConstantRanges = &push_ranges[0];
 
 		VK_CHECK( qvkCreatePipelineLayout( vk.device, &desc, NULL, &vk.pipeline_layout_virtual_screen ) );
 
@@ -8496,7 +8493,6 @@ void vk_end_frame( void )
 	VkSubmitInfo submit_info;
 	uint32_t colorIndex;
 	float vsEyeProj[2][16], screenMV[16], floorMV[16];
-	float screenMVP[2][16], floorMVP[2][16];
 	qboolean useVirtualScreen = qfalse;
 	qboolean mirrorEnabled;
 	extern cvar_t *vr_desktopMode;
@@ -8515,18 +8511,9 @@ void vk_end_frame( void )
 	colorIndex = vk.xr.colorIndex;
 	mirrorEnabled = ( vr_desktopMode && vr_desktopMode->integer != 0 );
 
-	// Query virtual screen state from VR layer (pull model); recompose the
-	// split transform per eye until the virtual-screen pipelines take the
-	// eyeProj UBO directly
+	// Query virtual screen state from VR layer (pull model)
 	if ( ri.VR_GetVirtualScreenState != NULL ) {
 		useVirtualScreen = ri.VR_GetVirtualScreenState( vsEyeProj, screenMV, floorMV );
-		if ( useVirtualScreen ) {
-			int e;
-			for ( e = 0; e < 2; e++ ) {
-				myGlMultMatrix( screenMV, vsEyeProj[e], screenMVP[e] );
-				myGlMultMatrix( floorMV, vsEyeProj[e], floorMVP[e] );
-			}
-		}
 	}
 
 	// Post-processing for XR (bloom, gamma) - fboActive always true in VR
@@ -8573,7 +8560,7 @@ void vk_end_frame( void )
 		vk_end_render_pass();
 
 		if ( useVirtualScreen ) {
-			vk_render_virtual_screen( screenMVP, floorMVP );
+			vk_render_virtual_screen( vsEyeProj, screenMV, floorMV );
 		}
 	}
 
@@ -12050,7 +12037,8 @@ static void vk_destroy_virtual_screen_pipelines( void )
  * 1. Virtual screen pipeline - textured cylinder with alpha blending
  * 2. Floor grid pipeline - procedural grid with alpha blending
  *
- * Both use multiview for stereo rendering via 128-byte push constants (2x mat4 MVP).
+ * Both use multiview for stereo rendering via the split transform (64-byte
+ * mono modelview push + per-view eyeProj UBO at set 0 binding 1).
  */
 qboolean vk_create_virtual_screen_pipelines( void )
 {
@@ -12200,7 +12188,7 @@ qboolean vk_create_virtual_screen_pipelines( void )
 	create_info.pDepthStencilState = &depth_stencil_state;
 	create_info.pColorBlendState = &blend_state;
 	create_info.pDynamicState = NULL;
-	create_info.layout = vk.pipeline_layout_virtual_screen;  // Sampler + 128-byte push constants
+	create_info.layout = vk.pipeline_layout_virtual_screen;  // set 0 uniform+eyeProj, set 1 sampler, 64-byte push
 	create_info.renderPass = vk.render_pass.virtualScreen;  // Dedicated render pass (no MSAA)
 	create_info.subpass = 0;
 	create_info.basePipelineHandle = VK_NULL_HANDLE;
@@ -12271,10 +12259,12 @@ qboolean vk_create_virtual_screen_pipelines( void )
  * Blits FBO content to virtual screen texture, then draws it as a cylinder.
  *
  * Parameters:
- *   screenMVP - Per-eye MVP matrices for virtual screen cylinder
- *   floorMVP  - Per-eye MVP matrices for floor grid
+ *   eyeProj  - Per-eye projection pair (P_eye * eyeFromHead, XR meter space),
+ *              shared by both meshes via set 0 binding 1
+ *   screenMV - Mono model-view for the virtual screen cylinder/quad
+ *   floorMV  - Mono model-view for the floor grid
  */
-static void vk_render_virtual_screen( float screenMVP[2][16], float floorMVP[2][16] )
+static void vk_render_virtual_screen( float eyeProj[2][16], float screenMV[16], float floorMV[16] )
 {
 	VkXrResources *xr = &vk.xr;
 	uint32_t colorIndex = xr->colorIndex;
@@ -12282,6 +12272,7 @@ static void vk_render_virtual_screen( float screenMVP[2][16], float floorMVP[2][
 	VkImageLayout srcLayout;
 	VkImageBlit blit_region;
 	VkDeviceSize zero_offset = 0;
+	uint32_t eyeproj_offset;
 
 	// Safety checks
 	if ( !xr->initialized || xr->virtualScreenImage == VK_NULL_HANDLE ) {
@@ -12394,6 +12385,18 @@ static void vk_render_virtual_screen( float screenMVP[2][16], float floorMVP[2][
 	// 7. XR swapchain left in TRANSFER_SRC — virtual screen render pass uses
 	// initialLayout=UNDEFINED and will clear+overwrite entirely
 
+	// Route the virtual screen's own eyeProj pair through the standard
+	// set 0 binding 1 machinery; save/restore the view-global so nothing
+	// downstream observes virtual-screen matrices
+	{
+		float saved_eyeproj[2][16];
+
+		Com_Memcpy( saved_eyeproj, vk_view_eyeproj, sizeof( saved_eyeproj ) );
+		Com_Memcpy( vk_view_eyeproj, eyeProj, sizeof( saved_eyeproj ) );
+		eyeproj_offset = VK_PushEyeProj();
+		Com_Memcpy( vk_view_eyeproj, saved_eyeproj, sizeof( saved_eyeproj ) );
+	}
+
 	// 8. Clear XR swapchain and begin render pass for virtual screen drawing
 	// Use virtual screen render pass to draw to XR swapchain with clear
 	vk.renderWidth = xr->width;
@@ -12403,25 +12406,37 @@ static void vk_render_virtual_screen( float screenMVP[2][16], float floorMVP[2][
 	vk_begin_render_pass( vk.render_pass.virtualScreen, xr->framebuffers[colorIndex],
 		qtrue, xr->width, xr->height );
 
-	// 9. Draw floor grid first (behind virtual screen)
-	qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		xr->floorGridPipeline );
-	// Bind dummy descriptor (floor grid shader doesn't use it, but pipeline layout requires set 0)
-	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		vk.pipeline_layout_virtual_screen, 0, 1, &tr.whiteImage->descriptor, 0, NULL );
-	qvkCmdPushConstants( vk.cmd->command_buffer, vk.pipeline_layout_virtual_screen,
-		VK_SHADER_STAGE_VERTEX_BIT, 0, 128, floorMVP );
-	qvkCmdBindVertexBuffers( vk.cmd->command_buffer, 0, 1,
-		&xr->mesh.quadVertexBuffer, &zero_offset );
-	qvkCmdBindIndexBuffer( vk.cmd->command_buffer,
-		xr->mesh.quadIndexBuffer, 0, VK_INDEX_TYPE_UINT16 );
-	qvkCmdDrawIndexed( vk.cmd->command_buffer, xr->mesh.quadIndexCount, 1, 0, 0, 0 );
-
-	// 10. Draw virtual screen (cylinder or flat quad based on vr_virtualScreenShape)
-	{
+	// 9. Draw floor grid and screen mesh; on ring overflow keep the cleared
+	// pass but skip the draws - the resize is scheduled and the ring
+	// self-heals next frame
+	if ( eyeproj_offset != ~0U ) {
+		VkDescriptorSet sets[2];
+		uint32_t offsets[2];
 		VkBuffer vertexBuffer;
 		VkBuffer indexBuffer;
 		uint32_t indexCount;
+
+		// binding 0 (fog/dlight uniform) is statically unused by these
+		// shaders; offset 0 is always in-bounds. binding 1 selects this
+		// frame's virtual-screen eyeProj pair.
+		sets[0] = vk.cmd->uniform_descriptor;
+		sets[1] = tr.whiteImage->descriptor;	// floor grid samples nothing, layout still wants set 1
+		offsets[0] = 0;
+		offsets[1] = eyeproj_offset;
+
+		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			xr->floorGridPipeline );
+		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			vk.pipeline_layout_virtual_screen, 0, 2, sets, 2, offsets );
+		qvkCmdPushConstants( vk.cmd->command_buffer, vk.pipeline_layout_virtual_screen,
+			VK_SHADER_STAGE_VERTEX_BIT, 0, 64, floorMV );
+		qvkCmdBindVertexBuffers( vk.cmd->command_buffer, 0, 1,
+			&xr->mesh.quadVertexBuffer, &zero_offset );
+		qvkCmdBindIndexBuffer( vk.cmd->command_buffer,
+			xr->mesh.quadIndexBuffer, 0, VK_INDEX_TYPE_UINT16 );
+		qvkCmdDrawIndexed( vk.cmd->command_buffer, xr->mesh.quadIndexCount, 1, 0, 0, 0 );
+
+		// 10. Draw virtual screen (cylinder or flat quad based on vr_virtualScreenShape)
 
 		// Select mesh based on shape setting (0 = curved/cylinder, 1 = flat/quad)
 		if ( vr_virtualScreenShape && vr_virtualScreenShape->integer == 1 ) {
@@ -12438,10 +12453,11 @@ static void vk_render_virtual_screen( float screenMVP[2][16], float floorMVP[2][
 
 		qvkCmdBindPipeline( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 			xr->virtualScreenPipeline );
+		// set 0 (and its dynamic offsets) is still bound; swap only the sampler set
 		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-			vk.pipeline_layout_virtual_screen, 0, 1, &xr->virtualScreenDescriptor, 0, NULL );
+			vk.pipeline_layout_virtual_screen, 1, 1, &xr->virtualScreenDescriptor, 0, NULL );
 		qvkCmdPushConstants( vk.cmd->command_buffer, vk.pipeline_layout_virtual_screen,
-			VK_SHADER_STAGE_VERTEX_BIT, 0, 128, screenMVP );
+			VK_SHADER_STAGE_VERTEX_BIT, 0, 64, screenMV );
 		qvkCmdBindVertexBuffers( vk.cmd->command_buffer, 0, 1,
 			&vertexBuffer, &zero_offset );
 		qvkCmdBindIndexBuffer( vk.cmd->command_buffer,

@@ -563,7 +563,7 @@ typedef struct {
 	VkPipelineLayout pipeline_layout_storage;	// flare test shader layout
 	VkPipelineLayout pipeline_layout_post_process;	// post-processing
 	VkPipelineLayout pipeline_layout_blend;		// post-processing
-	VkPipelineLayout pipeline_layout_virtual_screen; // virtual screen (sampler + 128-byte push constants)
+	VkPipelineLayout pipeline_layout_virtual_screen; // virtual screen (set 0 uniform+eyeProj, set 1 sampler, 64-byte mono-MV push)
 
 	VkDescriptorSet color_descriptor;
 	VkDescriptorSet emissive_descriptor;
