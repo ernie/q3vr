@@ -100,6 +100,18 @@ static flare_t	*r_activeFlares, *r_inactiveFlares;
 static float	deferredEyeProj[2][16];
 static float	deferredModelMatrix[16];
 
+// In-world VR HUD sprite deferral: the HUD RT_SPRITE is intercepted in
+// RB_SurfaceSprite during the main view and replayed in post_bloom AFTER the corona
+// (RB_DrawDeferredHud) so opaque HUD pixels composite over the additive corona. All
+// state is captured in the back end at sprite-draw time so the replay uses the exact
+// main-view camera the sprite would have drawn with, independent of r_flares.
+static float		deferredHudEyeProj[2][16];	// main view's per-eye projections
+static float		deferredHudModelMatrix[16];	// main view's mono world modelview
+static vec3_t		deferredHudOrigin;			// world-space sprite center
+static vec3_t		deferredHudLeft, deferredHudUp;	// resolved (aspect/rotation-applied) billboard axes
+static color4ub_t	deferredHudColor;			// e.shaderRGBA
+static int			deferredHudFogNum;
+
 
 /*
 ==================
@@ -715,6 +727,83 @@ void RB_RenderDeferredFlares( void ) {
 	// Restore MVP state so the flare camera can't leak into subsequent 2D: when
 	// projection2D is already set (end-of-frame hook site) this re-pushes the 2D
 	// ortho + eyeProj; otherwise it just restores the mono modelview push.
+	vk_update_mvp( NULL );
+	backEnd.currentEntity = savedEntity;
+}
+
+
+/*
+==================
+RB_CaptureDeferredHud
+
+Called from RB_SurfaceSprite (back end, main view) with the HUD sprite's already-
+resolved world-space billboard. Stashes the geometry plus the exact main-view camera
+(per-eye projections + mono modelview) so the deferred replay is independent of
+r_flares and of whatever view later owns the eyeProj UBO / MVP push.
+==================
+*/
+void RB_CaptureDeferredHud( const vec3_t origin, const vec3_t left, const vec3_t up, color4ub_t color ) {
+	VectorCopy( origin, deferredHudOrigin );
+	VectorCopy( left, deferredHudLeft );
+	VectorCopy( up, deferredHudUp );
+	deferredHudColor = color;
+	deferredHudFogNum = tess.fogNum;
+
+	Com_Memcpy( deferredHudEyeProj, vk_view_eyeproj, sizeof( deferredHudEyeProj ) );
+	Com_Memcpy( deferredHudModelMatrix, backEnd.viewParms.world.modelMatrix, sizeof( deferredHudModelMatrix ) );
+
+	backEnd.hudDeferred = qtrue;
+}
+
+
+/*
+==================
+RB_DrawDeferredHud
+
+Replays the captured in-world HUD sprite in the post_bloom pass, AFTER
+RB_RenderDeferredFlares has drawn the corona. Draws once per frame even
+though two post_bloom hook sites call it. Runs unconditionally of r_flares so the HUD
+still appears when flares are disabled. RF_DEPTHHACK is honoured via DEPTH_RANGE_WEAPON
+against the scene depth buffer, which the post_bloom pass LOADs, so occlusion is
+identical to the main pass; the HUD alpha-blends over the corona.
+==================
+*/
+void RB_DrawDeferredHud( void ) {
+	const trRefEntity_t	*savedEntity;
+
+	if ( !backEnd.hudDeferred )
+		return;
+
+	// checked before consuming so a screenmap pass can't suppress the real replay
+	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP )
+		return;
+
+	// World-space quad needs the 3D camera; never draw once the 2D ortho is active
+	// (mirrors the deferred corona's guard for the end-of-frame fallback site).
+	if ( backEnd.projection2D )
+		return;
+
+	// consume: draw exactly once even though both post_bloom hook sites call us
+	backEnd.hudDeferred = qfalse;
+
+	savedEntity = backEnd.currentEntity;
+	backEnd.currentEntity = &tr.worldEntity;
+	backEnd.or = backEnd.viewParms.world;
+
+	// Re-establish the captured main-view per-eye projections + mono modelview: by
+	// now a later HUD-icon/2D view owns the eyeProj UBO and the MVP push.
+	Com_Memcpy( vk_view_eyeproj, deferredHudEyeProj, sizeof( vk_view_eyeproj ) );
+	VK_PushEyeProj();
+	vk_update_mvp( deferredHudModelMatrix );
+
+	RB_BeginSurface( tr.hudShader, deferredHudFogNum );
+	// RF_DEPTHHACK: same weapon depth range the sprite used in the main pass.
+	tess.depthRange = DEPTH_RANGE_WEAPON;
+	RB_AddQuadStamp( deferredHudOrigin, deferredHudLeft, deferredHudUp, deferredHudColor );
+	RB_EndSurface();
+	tess.depthRange = DEPTH_RANGE_NORMAL; // reset; nothing after should inherit the weapon range
+
+	// Restore MVP so the HUD camera can't leak into subsequent 2D drawing.
 	vk_update_mvp( NULL );
 	backEnd.currentEntity = savedEntity;
 }

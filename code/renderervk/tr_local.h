@@ -1174,6 +1174,7 @@ typedef struct {
 	qboolean screenMapDone;
 	qboolean doneBloom;
 	qboolean doneFlares;	// main-view coronas drawn (deferred, once per frame)
+	qboolean hudDeferred;	// in-world VR HUD sprite captured, awaiting post_bloom replay over the corona
 
 	// VR render target tracking
 	qboolean isDrawingHUD;
@@ -1752,6 +1753,9 @@ void RB_AddFlare( void *surface, int fogNum, vec3_t point, vec3_t color, vec3_t 
 void RB_AddDlightFlares( void );
 void RB_RenderFlares( void );
 void RB_RenderDeferredFlares( void );
+
+void RB_CaptureDeferredHud( const vec3_t origin, const vec3_t left, const vec3_t up, color4ub_t color );
+void RB_DrawDeferredHud( void );
 
 /*
 ============================================================

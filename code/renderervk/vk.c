@@ -8430,6 +8430,9 @@ void vk_end_frame( void )
 		// Fallback deferred-corona site for frames without an RC_FINISHBLOOM
 		// command; doneFlares makes this a no-op once the tr_backend hook ran.
 		RB_RenderDeferredFlares();
+		// Fallback replay of the in-world HUD sprite over the corona; hudDeferred
+		// makes this a no-op once the tr_backend hook already replayed it.
+		RB_DrawDeferredHud();
 
 		// End current render pass before gamma/virtual screen operations
 		vk_end_render_pass();

@@ -1721,6 +1721,9 @@ static const void *RB_FinishBloom( const void *data )
 		vk_bloom();
 	}
 	RB_RenderDeferredFlares();
+	// Replay the in-world VR HUD sprite over the corona: opaque HUD pixels
+	// composite over the additive corona; the corona shows through transparent regions.
+	RB_DrawDeferredHud();
 #endif
 
 	// texture swapping test
@@ -1801,6 +1804,7 @@ static const void *RB_SwapBuffers( const void *data ) {
 #ifdef USE_VULKAN
 	backEnd.doneBloom = qfalse;
 	backEnd.doneFlares = qfalse;
+	backEnd.hudDeferred = qfalse;
 #endif
 
 	return (const void *)(cmd + 1);

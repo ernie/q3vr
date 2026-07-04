@@ -258,6 +258,18 @@ static void RB_SurfaceSprite( void ) {
 		VectorSubtract( vec3_origin, left, left );
 	}
 
+	// Defer the in-world VR HUD sprite (RT_SPRITE + tr.hudShader, main view only)
+	// out of the main draw list: capture its resolved world-space billboard here and
+	// replay it in post_bloom AFTER the deferred flare corona (RB_DrawDeferredHud), so
+	// opaque HUD pixels composite over the additive corona instead of the corona
+	// lightening the HUD. The corona still shows through the HUD's transparent regions.
+	// RF_FIRST_PERSON already excludes this from mirror/portal views, so PV_NONE here.
+	if ( tess.shader == tr.hudShader && backEnd.viewParms.portalView == PV_NONE ) {
+		RB_CaptureDeferredHud( backEnd.currentEntity->e.origin, left, up,
+			backEnd.currentEntity->e.shaderRGBA );
+		return;
+	}
+
 	RB_AddQuadStamp( backEnd.currentEntity->e.origin, left, up, backEnd.currentEntity->e.shaderRGBA );
 }
 
