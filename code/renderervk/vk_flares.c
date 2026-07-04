@@ -72,10 +72,20 @@ typedef struct flare_s {
 
 	qboolean	visible;			// state of last test
 	float		drawIntensity;		// may be non 0 even if !visible due to fading
+	float		deferredIntensity;	// drawIntensity captured at own-view test; later PV_NONE views (HUD icons) zero drawIntensity before the deferred draw
 
 	int			windowX, windowY;
 	float		eyeZ;
 	float		drawZ;
+
+	// Owning view's basis/metrics captured in RB_AddFlare so the deferred draw
+	// sizes/orients the world-space billboard from the flare's own view instead
+	// of whatever (HUD-icon/2D) view backEnd.viewParms holds at the 2D boundary.
+	int			viewportWidth;		// owning view's viewport width, for corona sizing
+	float		projScaleX;			// owning view's projectionMatrix[0] (1/tanHalfFovX)
+	vec3_t		viewOrigin;			// owning view's eye position
+	vec3_t		viewLeft;			// owning view's or.axis[1]
+	vec3_t		viewUp;				// owning view's or.axis[2]
 
 	vec3_t		origin;
 	vec3_t		color;
@@ -83,6 +93,12 @@ typedef struct flare_s {
 
 static flare_t	r_flareStructs[ MAX_FLARES ];
 static flare_t	*r_activeFlares, *r_inactiveFlares;
+
+// Main (PV_NONE) view stereo projection + mono modelview, captured in
+// RB_RenderFlares so RB_RenderDeferredFlares can re-establish the exact main
+// view camera after later views have overwritten the eyeProj UBO / viewParms.
+static float	deferredEyeProj[2][16];
+static float	deferredModelMatrix[16];
 
 
 /*
@@ -201,6 +217,14 @@ void RB_AddFlare( void *surface, int fogNum, vec3_t point, vec3_t color, vec3_t 
 	// save info needed to test
 	f->windowX = backEnd.viewParms.viewportX + window[0];
 	f->windowY = backEnd.viewParms.viewportY + window[1];
+
+	// captured now (own view) so the deferred draw doesn't size/orient off
+	// whatever view is last at the 2D boundary
+	f->viewportWidth = backEnd.viewParms.viewportWidth;
+	f->projScaleX = backEnd.viewParms.projectionMatrix[0];
+	VectorCopy( backEnd.viewParms.or.origin, f->viewOrigin );
+	VectorCopy( backEnd.viewParms.or.axis[1], f->viewLeft );
+	VectorCopy( backEnd.viewParms.or.axis[2], f->viewUp );
 
 	f->eyeZ = eye[2];
 
@@ -418,14 +442,15 @@ static void RB_RenderFlare( flare_t *f ) {
 	else
 		distance = -f->eyeZ;
 
-	// calculate the flare size..
-	size = backEnd.viewParms.viewportWidth * ( r_flareSize->value/640.0f + 8 / distance );
+	// calculate the flare size.. use the flare's own captured viewport width so a
+	// deferred draw isn't mis-sized by the last (HUD-icon) view's viewParms
+	size = f->viewportWidth * ( r_flareSize->value/640.0f + 8 / distance );
 
 /*
  * This is an alternative to intensity scaling. It changes the size of the flare on screen instead
  * with growing distance. See in the description at the top why this is not the way to go.
 	// size will change ~ 1/r.
-	size = backEnd.viewParms.viewportWidth * (r_flareSize->value / (distance * -2.0f));
+	size = f->viewportWidth * (r_flareSize->value / (distance * -2.0f));
 */
 
 /*
@@ -481,18 +506,20 @@ static void RB_RenderFlare( flare_t *f ) {
 	// screen fraction as the classic window-space quad (`size` pixels of
 	// viewportWidth at `distance`): half-width = 2 * size/W * distance * tanHalfFovX.
 	// The stereo projection is applied per eye by the pipeline, so the corona
-	// gets correct parallax and asymmetric-FOV placement in VR.
-	radius = 2.0f * distance * ( size / backEnd.viewParms.viewportWidth ) / backEnd.viewParms.projectionMatrix[0];
+	// gets correct parallax and asymmetric-FOV placement in VR. All view metrics
+	// come from the flare's own captured view (f->) so the deferred draw is not
+	// mis-sized/oriented by the last (HUD-icon/2D) view's viewParms.
+	radius = 2.0f * distance * ( size / f->viewportWidth ) / f->projScaleX;
 
 	// Viewer-facing basis: the quad faces the viewer's POSITION (view-plane
 	// alignment tracks head orientation instead and foreshortens at
 	// peripheral gaze angles); in-plane spin follows the view's up vector.
-	VectorSubtract( f->origin, backEnd.viewParms.or.origin, dir );
+	VectorSubtract( f->origin, f->viewOrigin, dir );
 	VectorNormalizeFast( dir );
-	CrossProduct( backEnd.viewParms.or.axis[2], dir, left );
+	CrossProduct( f->viewUp, dir, left );
 	if ( DotProduct( left, left ) < 0.0001f ) {
 		// sight line parallel to view up: fall back to view left
-		VectorCopy( backEnd.viewParms.or.axis[1], left );
+		VectorCopy( f->viewLeft, left );
 	} else {
 		VectorNormalizeFast( left );
 	}
@@ -501,7 +528,7 @@ static void RB_RenderFlare( flare_t *f ) {
 	VectorScale( left, radius, left );
 	VectorScale( up, radius, up );
 
-	if ( backEnd.viewParms.portalView == PV_MIRROR ) {
+	if ( f->portalView == PV_MIRROR ) {
 		VectorSubtract( vec3_origin, left, left );
 	}
 
@@ -567,6 +594,9 @@ void RB_RenderFlares( void ) {
 		f->drawIntensity = 0;
 		if ( f->frameSceneNum == backEnd.viewParms.frameSceneNum && f->portalView == backEnd.viewParms.portalView ) {
 			RB_TestFlare( f );
+			// deferred draw runs after later PV_NONE views (3D HUD icons) zero
+			// drawIntensity for this flare; preserve the real intensity here
+			f->deferredIntensity = f->drawIntensity;
 			if ( f->testCount == 0 ) {
 				// recently added, wait 1 frame for test result
 			} else if ( f->drawIntensity ) {
@@ -587,6 +617,19 @@ void RB_RenderFlares( void ) {
 		return;		// none visible
 	}
 
+	// Main-view coronas draw later via RB_RenderDeferredFlares (after bloom's
+	// bright-pass, so they aren't re-bloomed). portal/mirror views keep the
+	// classic per-view timing here, or a deferred draw would leak past the
+	// portal edge / lose occlusion by the main view.
+	if ( backEnd.viewParms.portalView == PV_NONE ) {
+		// Capture this (main) view's per-eye projections and mono modelview so
+		// the deferred draw can re-establish the exact camera: by 2D-boundary
+		// time backEnd.viewParms / the eyeProj UBO belong to a later view.
+		Com_Memcpy( deferredEyeProj, vk_view_eyeproj, sizeof( deferredEyeProj ) );
+		Com_Memcpy( deferredModelMatrix, backEnd.viewParms.world.modelMatrix, sizeof( deferredModelMatrix ) );
+		return;
+	}
+
 	// Flare quads are world-space billboards: push the mono world modelview
 	// (same matrix world surfaces draw with) and let the per-view eyeProj UBO,
 	// still holding this view's per-eye projections, provide the stereo
@@ -602,4 +645,76 @@ void RB_RenderFlares( void ) {
 
 	//Com_Memcpy( vk_world.modelview_transform, modelMatrix_original, sizeof( modelMatrix_original ) );
 	//vk_update_mvp( NULL );
+}
+
+
+/*
+==================
+RB_RenderDeferredFlares
+
+Draws main-view (PV_NONE) coronas once per frame at the 3D->2D boundary, after
+vk_bloom()'s bright-pass, so coronas aren't re-bloomed. doneFlares guards the
+once-per-frame; the draw is idempotent across the two bloom hook sites.
+
+The coronas are world-space billboards, so unlike the engine's window-space
+deferred draw this must re-establish the MAIN view's camera: by the time we run,
+backEnd.viewParms and the per-view eyeProj UBO belong to a later HUD-icon or 2D
+pass. We restore the main view's per-eye projections (captured in RB_RenderFlares)
+into the eyeProj UBO and push the main view's mono modelview; per-flare sizing/
+orientation comes from state captured in RB_AddFlare.
+==================
+*/
+void RB_RenderDeferredFlares( void ) {
+	flare_t				*f;
+	const trRefEntity_t	*savedEntity;
+
+	if ( !r_flares->integer || backEnd.doneFlares )
+		return;
+
+	// Skip pure-2D frames (menu/disconnect): frameCount is frozen on the last 3D
+	// frame there, so stale flares would still match and paint coronas over the UI.
+	if ( !backEnd.doneSurfaces )
+		return;
+
+	// checked before marking done, so a screenmap pass can't suppress the real deferred draw
+	if ( vk.renderPassIndex == RENDER_PASS_SCREENMAP )
+		return;
+
+	// Deferred coronas push a world modelview; if we somehow reach here in a 2D
+	// projection (e.g. the end-of-frame fallback after 2D began) vk_update_mvp
+	// would ignore it and mis-transform the quad. Only draw from the 3D->2D
+	// boundary where projection2D is still false.
+	if ( backEnd.projection2D )
+		return;
+
+	backEnd.doneFlares = qtrue;
+
+	// save/restore currentEntity so the following 2D batch flushes with the entity the caller expects
+	savedEntity = backEnd.currentEntity;
+	backEnd.currentEntity = &tr.worldEntity;
+
+	// Re-establish the main view's per-eye projections in the eyeProj UBO. The
+	// UBO now holds a later (HUD-icon/2D) view's data, so without this the
+	// world-space corona would be stereo-mismatched / mis-projected in-headset.
+	Com_Memcpy( vk_view_eyeproj, deferredEyeProj, sizeof( vk_view_eyeproj ) );
+	VK_PushEyeProj();
+
+	// World-space billboards: push the captured main-view mono modelview; the
+	// restored per-eye eyeProj UBO supplies the stereo projection.
+	vk_update_mvp( deferredModelMatrix );
+
+	for ( f = r_activeFlares ; f ; f = f->next ) {
+		if ( f->portalView == PV_NONE && f->addedFrame == backEnd.viewParms.frameCount ) {
+			// restore intensity zeroed by later PV_NONE (3D HUD icon) views since this flare's own test
+			f->drawIntensity = f->deferredIntensity;
+			if ( f->drawIntensity )
+				RB_RenderFlare( f );
+		}
+	}
+
+	// Restore MVP state so the flare camera can't leak into subsequent 2D: when
+	// projection2D is already set (end-of-frame hook site) this re-pushes the 2D
+	// ortho + eyeProj; otherwise it just restores the mono modelview push.
+	vk_update_mvp( NULL );
+	backEnd.currentEntity = savedEntity;
 }

@@ -8427,6 +8427,10 @@ void vk_end_frame( void )
 			vk_bloom();
 		}
 
+		// Fallback deferred-corona site for frames without an RC_FINISHBLOOM
+		// command; doneFlares makes this a no-op once the tr_backend hook ran.
+		RB_RenderDeferredFlares();
+
 		// End current render pass before gamma/virtual screen operations
 		vk_end_render_pass();
 
