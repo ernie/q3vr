@@ -36,3 +36,23 @@ Highly recommended to use on modern systems
 * Multiview
 * Support for VR HUD, overlay, and virtual screen rendering compatible with existing renderergl2 API patterns
 * Shader compilation via cmake
+
+## Known validation output
+
+With validation layers enabled (`USE_VK_VALIDATION`, debug builds), a burst
+of image-creation warnings appears at startup:
+
+- `VUID-VkImageCreateInfo-pNext-00990`, `VUID-VkImageCreateInfo-imageCreateMaxMipLevels-02251`
+- `VUID-VkImageViewCreateInfo-image-01762`, `VUID-VkImageViewCreateInfo-usage-02275`
+
+These are emitted while the OpenXR runtime (VDXR, SteamVR, ...) imports its
+mirror/companion swapchain images via external D3D11 KMT handles (images
+`0x100`/`0x102`/`0x104` in a typical run). The creation parameters are
+chosen by the runtime, not by this renderer — treat as known/harmless. The
+same applies to `vkBeginCommandBuffer-00049`/`vkQueueSubmit-00071` pairs on
+command buffers the engine does not own: the runtime records in-process
+Vulkan on our device, and the engine's four persistent command buffers are
+debug-named ("staging cmd", "tess cmd 0/1", "desktop blit cmd") with their
+handles printed at startup precisely so such reports can be attributed. Draw-time or
+submit-time errors (`vkCmdDraw`, `vkCmdBindDescriptorSets`, `vkQueueSubmit`)
+are NOT expected and should be investigated.

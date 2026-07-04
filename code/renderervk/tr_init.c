@@ -2011,25 +2011,28 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 	ri.Cmd_RemoveCommand( "vkinfo" );
 #endif
 
-	//if ( tr.registered ) {
-		//R_IssuePendingRenderCommands();
-		R_DeleteTextures();
-	//}
-
 #ifdef USE_VULKAN
-	// Force-finish any in-progress frame before releasing resources
-	// This properly ends any active render pass and command buffer
+	// Discard before deleting textures: the recorded portion may reference
+	// descriptors about to be destroyed, so it must never be submitted
+	// (VUID-vkCmdDraw-None-09600).
 	if ( vk.frame_count > 0 || vk.recordingCommands || vk.inRenderPass ) {
-		ri.Printf( PRINT_ALL, "RE_Shutdown: finishing active frame (frame_count=%d, recording=%d, inRenderPass=%d)\n",
+		ri.Printf( PRINT_ALL, "RE_Shutdown: discarding active frame (frame_count=%d, recording=%d, inRenderPass=%d)\n",
 			vk.frame_count, vk.recordingCommands, vk.inRenderPass );
-		vk_finish_frame();
+		vk_discard_frame();
 	}
 
 	// Wait for all GPU work to complete before destroying resources
 	if ( vk.device != VK_NULL_HANDLE ) {
 		vk_wait_idle();
 	}
+#endif
 
+	//if ( tr.registered ) {
+		//R_IssuePendingRenderCommands();
+		R_DeleteTextures();
+	//}
+
+#ifdef USE_VULKAN
 	vk_release_resources();
 #endif
 

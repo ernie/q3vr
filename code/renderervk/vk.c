@@ -2791,6 +2791,8 @@ void vk_init_descriptors( void )
 
 		vk_update_attachment_descriptors();
 	}
+
+	vk.descriptorsReady = qtrue;
 }
 
 
@@ -4450,6 +4452,7 @@ void vk_initialize( void )
 		alloc_info.commandBufferCount = 1;
 
 		VK_CHECK( qvkAllocateCommandBuffers( vk.device, &alloc_info, &vk.staging_command_buffer ) );
+		SET_OBJECT_NAME( vk.staging_command_buffer, "staging cmd", VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT );
 	}
 #endif
 
@@ -4467,8 +4470,7 @@ void vk_initialize( void )
 		alloc_info.commandBufferCount = 1;
 
 		VK_CHECK( qvkAllocateCommandBuffers( vk.device, &alloc_info, &vk.tess[i].command_buffer ) );
-
-		//SET_OBJECT_NAME( vk.tess[i].command_buffer, va( "command buffer %i", i ), VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT );
+		SET_OBJECT_NAME( vk.tess[i].command_buffer, va( "tess cmd %i", i ), VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT );
 	}
 
 	// Desktop mirror blit command buffer
@@ -4482,6 +4484,16 @@ void vk_initialize( void )
 		VK_CHECK( qvkAllocateCommandBuffers( vk.device, &alloc_info, &vk.desktopBlitCmd ) );
 		SET_OBJECT_NAME( vk.desktopBlitCmd, "desktop blit cmd", VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT );
 	}
+
+#ifdef USE_UPLOAD_QUEUE
+	ri.Printf( PRINT_ALL, "Command buffers: staging=%p tess0=%p tess1=%p desktopBlit=%p\n",
+		(void *)vk.staging_command_buffer, (void *)vk.tess[0].command_buffer,
+		(void *)vk.tess[1].command_buffer, (void *)vk.desktopBlitCmd );
+#else
+	ri.Printf( PRINT_ALL, "Command buffers: tess0=%p tess1=%p desktopBlit=%p\n",
+		(void *)vk.tess[0].command_buffer, (void *)vk.tess[1].command_buffer,
+		(void *)vk.desktopBlitCmd );
+#endif
 
 	//
 	// Descriptor pool.
@@ -5100,6 +5112,9 @@ void vk_queue_wait_idle( void )
 }
 
 
+// Precondition: callers must end (discard or finish) any in-flight frame
+// first — the pool reset below frees every set, and descriptorsReady only
+// guards frames that haven't started yet.
 void vk_release_resources( void ) {
 	int i, j;
 
@@ -5125,6 +5140,18 @@ void vk_release_resources( void ) {
 	vk.pipelines_count = vk.pipelines_world_base;
 
 	VK_CHECK( qvkResetDescriptorPool( vk.device, vk.descriptor_pool, 0 ) );
+
+	// Pool reset freed every set. vk_reallocate_xr_fbo_descriptors() below
+	// restores only the sampler-layout sets; the rest stay dead until R_Init
+	// reruns vk_init_descriptors(). NULL them so a gate bypass binds NULL
+	// rather than a freed handle.
+	vk.descriptorsReady = qfalse;
+	vk.storage.descriptor = VK_NULL_HANDLE;
+	vk.emissive_descriptor = VK_NULL_HANDLE;
+	vk.screenMap.color_descriptor = VK_NULL_HANDLE;
+	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
+		vk.tess[i].uniform_descriptor = VK_NULL_HANDLE;
+	}
 
 	// Reallocate XR descriptor sets that were invalidated by pool reset
 	// (includes FBO color, bloom, desktop mirror, and virtual screen mirror descriptors)
@@ -8012,6 +8039,10 @@ void vk_begin_hud_render_pass( qboolean clear )
 	VkRect2D scissor;
 	VkClearValue clearValues[2];
 
+	if ( !vk.recordingCommands ) {
+		return;
+	}
+
 	if ( vk.xr.hudFramebuffer == VK_NULL_HANDLE ) {
 		ri.Printf( PRINT_WARNING, "vk_begin_hud_render_pass: HUD buffer not initialized\n" );
 		return;
@@ -8212,6 +8243,20 @@ XR swapchain images are owned by OpenXR, not Vulkan.
 void vk_begin_frame( uint32_t colorIndex )
 {
 	VkCommandBufferBeginInfo begin_info;
+
+	// Descriptor sets are dead during the map-load window (between
+	// vk_release_resources() and vk_init_descriptors()); refuse to start a
+	// frame that would bind freed or dangling descriptors.
+	if ( !vk.descriptorsReady ) {
+		ri.Printf( PRINT_DEVELOPER, "vk_begin_frame: skipped, descriptor sets not initialized\n" );
+		// Guard: abandon a frame left open across the pool reset rather than
+		// let vk_end_frame submit dead-set binds.
+		if ( vk.recordingCommands || vk.inRenderPass ) {
+			vk_discard_frame();
+		}
+		vk.frame_count = 0;
+		return;
+	}
 
 	// If a frame is already in progress, we need to properly finish it first
 	// This can happen during loading when VR_Renderer_SubmitLoadingFrame starts new frames
@@ -8549,6 +8594,36 @@ void vk_finish_frame( void )
 	}
 
 	// Reset frame tracking
+	vk.frame_count = 0;
+	vk.renderPassIndex = RENDER_PASS_MAIN;
+}
+
+
+/*
+==============================================================================
+
+vk_discard_frame - Abandon an interrupted frame without submitting it
+
+The frame is incomplete and its output is irrelevant at teardown; submitting
+it would hand the queue draws referencing resources RE_Shutdown is about to
+destroy, with attachments possibly left mid-pass (VUID-vkCmdDraw-None-09600).
+
+==============================================================================
+*/
+void vk_discard_frame( void )
+{
+	if ( vk.inRenderPass ) {
+		qvkCmdEndRenderPass( vk.cmd->command_buffer );
+		vk.inRenderPass = qfalse;
+	}
+
+	if ( vk.recordingCommands ) {
+		VK_CHECK( qvkEndCommandBuffer( vk.cmd->command_buffer ) );
+		vk.recordingCommands = qfalse;
+	}
+
+	// Do not touch vk.cmd->waitForFence: it may still track this slot's
+	// previous real submission, which vk_begin_frame must still wait on.
 	vk.frame_count = 0;
 	vk.renderPassIndex = RENDER_PASS_MAIN;
 }
@@ -9138,6 +9213,14 @@ void vk_present_desktop_mirror( void )
 
 	// Check if XR resources are ready
 	if ( !vk.xr.initialized || !vk.xr.colorInfo || !vk.xr.colorInfo->images ) {
+		return;
+	}
+
+	// Second command recorder outside vk_begin_frame, so its descriptorsReady
+	// gate doesn't cover this path. Binds vk.emissive_descriptor (NULL during
+	// the dead-descriptor window) too, so gate here; spectator holds the last
+	// image meanwhile.
+	if ( !vk.descriptorsReady ) {
 		return;
 	}
 

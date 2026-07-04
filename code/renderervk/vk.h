@@ -303,6 +303,7 @@ void vk_clear_depth( qboolean clear_stencil );
 void vk_begin_frame( uint32_t colorIndex );
 void vk_end_frame( void );
 void vk_finish_frame( void );  // Force-end an interrupted frame (for shutdown)
+void vk_discard_frame( void ); // End an interrupted frame without submitting it (shutdown)
 void vk_present_desktop_mirror( void );  // Desktop mirror: acquire, blit, present
 
 void vk_end_render_pass( void );
@@ -799,6 +800,7 @@ typedef struct {
 	renderPass_t renderPassIndex;
 	qboolean inRenderPass;		// true when actually inside a render pass
 	qboolean recordingCommands;	// true when command buffer is recording (between Begin/End)
+	qboolean descriptorsReady;	// qfalse between vk_release_resources() and vk_init_descriptors() - pool contents are dead
 	qboolean colorNeedsTransitionToAttachment;	// true after ending post_bloom (color in SHADER_READ_ONLY)
 
 	uint32_t screenMapWidth;
