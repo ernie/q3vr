@@ -74,3 +74,24 @@ qboolean VR_ShouldDisableStereo( void )
 
 	return qfalse;
 }
+
+/*
+==================
+VR_Gameplay_VirtualScreenContextChanged
+
+Detects client connection-state transitions. Callers use it while the
+virtual screen is up to re-anchor when the screen's context changes
+mid-window (e.g. a map load beginning), so the loading screen appears where
+the player is facing instead of at the stale menu anchor.
+
+Single consumer per frame: the edge is consumed on read, so a second
+same-frame caller would starve the first.
+==================
+*/
+qboolean VR_Gameplay_VirtualScreenContextChanged( void )
+{
+	static connstate_t lastState = CA_UNINITIALIZED;
+	qboolean changed = ( clc.state != lastState );
+	lastState = clc.state;
+	return changed;
+}

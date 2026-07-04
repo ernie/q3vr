@@ -278,6 +278,11 @@ void VR_Renderer_EndFrame(VR_Engine* engine)
 
 	if (use_virtual_screen)
 	{
+		// Re-anchor when the client state changes mid-window (e.g. a map
+		// load beginning) so the screen appears where the player is facing
+		if ( VR_Gameplay_VirtualScreenContextChanged() ) {
+			VR_VirtualScreen_ResetPosition();
+		}
 		VR_DrawVirtualScreen(swapchains, swapchainColorIndex, fov, views, viewCount);
 		if ( !vr.menuYawLocked ) {
 			vr.menuYaw = VR_VirtualScreen_GetCurrentYaw();
