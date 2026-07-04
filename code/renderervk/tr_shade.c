@@ -1082,10 +1082,13 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 		if ( vk.hdrActive ) {
 			// Additive stages (dst ONE) feed the HDR emissive layer: src ONE writes
 			// color directly; src SRC_ALPHA is flagged negative so the shader
-			// alpha-weights it to match the color attachment.
+			// alpha-weights it to match the color attachment. Exclude flare coronas:
+			// they are simulated ocular glare, so routing them to emissive would
+			// double-count the glare in HDR; the fixture surface still emits.
 			const uint32_t src = pStage->stateBits & GLS_SRCBLEND_BITS;
 			const uint32_t dst = pStage->stateBits & GLS_DSTBLEND_BITS;
-			if ( dst == GLS_DSTBLEND_ONE && !backEnd.projection2D ) {
+			if ( dst == GLS_DSTBLEND_ONE && !backEnd.projection2D
+					&& tess.shader != tr.flareShader ) {
 				if ( src == GLS_SRCBLEND_SRC_ALPHA )
 					vk.cmd->emissive_factor = -1.0f;
 				else if ( src == GLS_SRCBLEND_ONE )
