@@ -2,7 +2,7 @@
 #extension GL_EXT_multiview : enable
 
 // Multiview fog vertex shader for VR stereo rendering
-// Uses precomputed per-eye MVP matrices via push constants
+// Mono modelview via push constants; per-eye projection via ViewTransform UBO
 
 // Mono modelview via push constants (64 bytes); per-eye projection lives in
 // the ViewTransform UBO (set 0, binding 1), populated once per view.

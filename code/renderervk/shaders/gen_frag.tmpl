@@ -1,7 +1,7 @@
 #version 450
 
 // Multiview fragment shader - identical to gen_frag.tmpl
-// Since per-eye MVP is in push constants, descriptor layout is unchanged
+// Vertex transforms moved to a mono modelview push + ViewTransform UBO (set 0, binding 1); fragment inputs unchanged.
 
 #ifdef USE_TX2
 #define USE_TX1

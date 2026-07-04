@@ -1,7 +1,7 @@
 #version 450
 
 // Multiview lighting fragment shader - identical to light_frag.tmpl
-// Since per-eye MVP is in push constants, descriptor layout is unchanged
+// Vertex transforms moved to a mono modelview push + ViewTransform UBO (set 0, binding 1); fragment inputs unchanged.
 
 layout(set = 0, binding = 0) uniform UBO {
 	// light/env parameters:

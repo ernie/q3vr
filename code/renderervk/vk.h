@@ -559,7 +559,7 @@ typedef struct {
 	VkDescriptorSetLayout set_layout_uniform;	// dynamic uniform buffer
 	VkDescriptorSetLayout set_layout_storage;	// feedback buffer
 
-	VkPipelineLayout pipeline_layout;			// main shaders (128-byte push constants for per-eye MVP)
+	VkPipelineLayout pipeline_layout;			// main shaders (64-byte mono modelview push; per-eye projection in set 0 binding 1)
 	VkPipelineLayout pipeline_layout_storage;	// flare test shader layout
 	VkPipelineLayout pipeline_layout_post_process;	// post-processing
 	VkPipelineLayout pipeline_layout_blend;		// post-processing
