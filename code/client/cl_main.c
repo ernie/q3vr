@@ -3224,7 +3224,7 @@ void CL_InitRef( void ) {
 	refImport.VR_Vulkan_GetDeviceInfo = VR_Vulkan_GetDeviceInfo;
 	refImport.VR_Vulkan_GetSwapchainInfo = VR_Vulkan_GetSwapchainInfo;
 
-	// Virtual screen state query - renderer pulls virtual screen MVP matrices
+	// Virtual screen state query - renderer pulls the split virtual-screen transform
 	refImport.VR_GetVirtualScreenState = VR_GetVirtualScreenMatrices;
 
 	ret = GetRefAPI( REF_API_VERSION, &refImport );

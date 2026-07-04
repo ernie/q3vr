@@ -20,7 +20,7 @@ float VR_VirtualScreen_GetCurrentYaw(void);
 
 // Query function for renderer to pull virtual screen state (pull model)
 // Returns qtrue if virtual screen should be rendered
-// If active, fills in precomputed per-eye MVP matrices for screen and floor
+// If active, fills in the split transform: shared per-eye eyeProj pair plus one mono model-view per mesh
 qboolean VR_GetVirtualScreenMatrices(float eyeProj[2][16], float screenModelView[16], float floorModelView[16]);
 
 #endif // VR_VK_VIRTUAL_SCREEN_H
