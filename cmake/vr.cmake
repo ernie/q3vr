@@ -20,6 +20,7 @@ set(VR_COMMON_SOURCES
     ${SOURCE_DIR}/vrcommon/vr_instance.c
     ${SOURCE_DIR}/vrcommon/vr_render_loop.c
     ${SOURCE_DIR}/vrcommon/vr_session.c
+    ${SOURCE_DIR}/vrcommon/vr_virtual_screen.c
 )
 
 # vrgl2 - OpenGL-specific VR sources

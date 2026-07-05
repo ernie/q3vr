@@ -4,7 +4,8 @@
  * Virtual screen is used for menus, console, and first-person follow mode.
  * The game renders to a texture which is then displayed as a curved 3D quad.
  *
- * Phase 8 - stub implementations provided here for Phase 4 linker compatibility.
+ * Anchor state and pose math live in vrcommon/vr_virtual_screen.c; this
+ * layer owns only the Vulkan-facing split-transform query.
  */
 
 #ifndef VR_VK_VIRTUAL_SCREEN_H
@@ -12,11 +13,10 @@
 
 #include "../qcommon/q_shared.h"
 #include "../vrcommon/vr_types.h"
+#include "../vrcommon/vr_graphics.h"
 
 void VR_VirtualScreen_Init(void);
 void VR_VirtualScreen_Destroy(void);
-void VR_VirtualScreen_ResetPosition(void);
-float VR_VirtualScreen_GetCurrentYaw(void);
 
 // Query function for renderer to pull virtual screen state (pull model)
 // Returns qtrue if virtual screen should be rendered

@@ -557,7 +557,7 @@ void VR_Swapchains_BlitXRToVirtualScreen(VR_SwapchainInfos* swapchains, uint32_t
 	extern vr_clientinfo_t vr;
 
 	// Always crop to 4:3 since the virtual screen display surface is 4:3 aspect ratio
-	// (see _VR_GetVirtualScreenModelMatrix which scales Y by 3/4)
+	// (see VR_VirtualScreen_GetModelMatrix which scales Y by 3/4)
 	// Without this, the full VR framebuffer would be squished to fit the 4:3 surface
 
 	// Calculate the maximum 4:3 area that fits within the framebuffer

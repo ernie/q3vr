@@ -1,11 +1,9 @@
 #include "vr_gl_virtual_screen.h"
 
 #include "../vrcommon/common/xr_linear.h"
-#include "../vrcommon/vr_clientinfo.h"
+#include "../vrcommon/vr_virtual_screen.h"
 
-extern cvar_t *vr_virtualScreenMode;
 extern cvar_t *vr_virtualScreenShape;
-extern vr_clientinfo_t vr;
 
 typedef enum
 {
@@ -330,219 +328,6 @@ void VR_VirtualScreen_Destroy(void)
 	quadVAO = 0;
 }
 
-static inline void XrQuaternionf_Transform(
-	XrVector3f* result,
-	const XrQuaternionf* q,
-	const XrVector3f* v)
-{
-	// Quaternion components
-	const float qx = q->x;
-	const float qy = q->y;
-	const float qz = q->z;
-	const float qw = q->w;
-
-	// t = 2 * cross(q.xyz, v)
-	const float tx = 2.0f * (qy * v->z - qz * v->y);
-	const float ty = 2.0f * (qz * v->x - qx * v->z);
-	const float tz = 2.0f * (qx * v->y - qy * v->x);
-
-	// v' = v + qw * t + cross(q.xyz, t)
-	result->x = v->x + qw * tx + (qy * tz - qz * ty);
-	result->y = v->y + qw * ty + (qz * tx - qx * tz);
-	result->z = v->z + qw * tz + (qx * ty - qy * tx);
-}
-
-static XrVector3f GetPositionInFront(const XrPosef* pose, float distance)
-{
-	// Forward vector in local/headset space
-	XrVector3f forward = { 0.0f, 0.0f, -1.0f }; // OpenXR uses -Z as forward
-
-	// Rotate it by headset orientation
-	XrVector3f rotatedForward;
-	XrQuaternionf_Transform(&rotatedForward, &pose->orientation, &forward);
-
-	// Project to XZ plane (remove Y component to keep same height)
-	rotatedForward.y = 0.0f;
-
-	// Normalize to unit vector
-	XrVector3f_Normalize(&rotatedForward);
-
-	// Scale by desired distance
-	rotatedForward.x *= distance;
-	rotatedForward.y *= distance;
-	rotatedForward.z *= distance;
-
-	// Final world position = headset pos + forward offset
-	XrVector3f result = {
-		pose->position.x + rotatedForward.x,
-		pose->position.y, // keep same height
-		pose->position.z + rotatedForward.z
-	};
-
-	return result;
-}
-
-static inline XrQuaternionf YawFacingQuaternion(
-	const XrVector3f* from,   // plane position
-	const XrVector3f* to)     // headset position
-{
-	// Direction vector (XZ plane only)
-	float dx = to->x - from->x;
-	float dz = to->z - from->z;
-
-	// Normalize
-	float len = sqrtf(dx*dx + dz*dz);
-	if (len < 1e-6f)
-	{
-		// fallback: no rotation
-		return (XrQuaternionf){0,0,0,1};
-	}
-	dx /= len;
-	dz /= len;
-
-	// Yaw angle (atan2: X then Z)
-	float yaw = atan2f(dx, dz);
-
-	// Quaternion from yaw rotation around Y
-	float half = yaw * 0.5f;
-	return (XrQuaternionf){
-		0.0f,
-		sinf(half),
-		0.0f,
-		cosf(half)
-	};
-}
-
-static int positionsInitialized = 0;
-static int updateTarget = 1;
-static XrVector3f currentPosition;
-static XrVector3f targetPosition;
-static XrQuaternionf currentRotation;
-static const float targetDistance = 2.5f;
-
-static void EnsureNewPositionInExpectedDistance(XrVector3f* hmdPosition, XrVector3f* vsPosition)
-{
-	XrVector3f virtualScreenToHmd;
-	XrVector3f_Sub(&virtualScreenToHmd, vsPosition, hmdPosition);
-	const float distance = XrVector3f_Length(&virtualScreenToHmd);
-
-	const float delta = (distance > targetDistance ? (distance - targetDistance) : (targetDistance - distance));
-	if (delta > 0.001)
-	{
-		XrVector3f scaledVirtualScreenToHmd;
-		XrVector3f_Normalize(&virtualScreenToHmd);
-		XrVector3f_Scale(&scaledVirtualScreenToHmd, &virtualScreenToHmd, targetDistance);
-		XrVector3f_Add(vsPosition, hmdPosition, &scaledVirtualScreenToHmd);
-	}
-}
-
-static void GetCurrentVirtualScreenPositionAndRotation(
-	XrPosef* leftEyePose,
-	XrVector3f* translation,
-	XrQuaternionf* rotation)
-{
-	XrVector3f positionInFront = GetPositionInFront(leftEyePose, targetDistance);
-
-	if (!positionsInitialized)
-	{
-		currentPosition = positionInFront;
-		targetPosition = positionInFront;
-		currentRotation = YawFacingQuaternion(&currentPosition, &leftEyePose->position);
-		positionsInitialized = 1;
-	}
-	else if (vr_virtualScreenMode->integer == 1)
-	{
-		XrVector3f lastToCurrentVec;
-		XrVector3f_Sub(&lastToCurrentVec, &targetPosition, &positionInFront);
-
-		const float updateTargetDist = XrVector3f_Length(&lastToCurrentVec);
-		if (updateTargetDist < 0.1f)
-		{
-			updateTarget = false;
-		}
-		else if (updateTargetDist > 1.5f || updateTarget)
-		{
-			targetPosition = positionInFront;
-			updateTarget = true;
-
-			if (updateTargetDist > 3.0f)
-			{
-				// We're too far, just teleport it in front, we probably just started or switched to VS.
-				currentPosition = targetPosition;
-			}
-		}
-
-		XrVector3f lerped;
-		XrVector3f_Lerp(&lerped, &currentPosition, &targetPosition, 0.01f);
-		EnsureNewPositionInExpectedDistance(&leftEyePose->position, &lerped);
-		currentPosition = lerped;
-		currentRotation = YawFacingQuaternion(&currentPosition, &leftEyePose->position);
-	}
-
-	*translation = currentPosition;
-	*rotation = currentRotation;
-}
-
-static XrQuaternionf lastKnownVirtualScreenOrientation = { 0.0f, 0.0f, 0.0f, 1.0f };
-
-static void _VR_GetVirtualScreenModelMatrix(XrMatrix4x4f* model, XrPosef* leftEyePose)
-{
-	// Base 4:3 aspect ratio for the virtual screen content
-	float aspectRatioCoeff = 3.0f / 4.0f;
-
-	// Compensate for non-square framebuffer aspect ratio.
-	// The virtual screen renders with symmetric FOV (fov_y = fov_x in cg_view.c),
-	// but into a framebuffer that may not be square (e.g., 3072x3264).
-	// With symmetric FOV, more pixels vertically means content appears squished.
-	// The framebuffer aspect ratio is proportional to fov_y/fov_x (the original asymmetric FOV).
-	// Multiply Y scale by this ratio to stretch content back to correct proportions.
-	if (vr.fov_x > 0.0f && vr.fov_y > 0.0f)
-	{
-		float framebufferAspect = vr.fov_y / vr.fov_x;
-		aspectRatioCoeff *= framebufferAspect;
-	}
-
-	XrVector3f translation;
-	XrQuaternionf rotation;
-	GetCurrentVirtualScreenPositionAndRotation(leftEyePose, &translation, &rotation);
-	XrVector3f scale = {3.0f, 3.0f * aspectRatioCoeff, 3.0f};
-
-	lastKnownVirtualScreenOrientation = rotation;
-	
-	// Fixup to lower slightly, do it after all computations so it won't affect recomputations
-	translation.y -= 0.5;
-
-	XrMatrix4x4f_CreateTranslationRotationScale(model, &translation, &rotation, &scale);
-}
-
-static void _VR_GetVirtualScreenFloorModelMatrix(XrMatrix4x4f* model)
-{
-	XrVector3f translation = { 0.0f, 0.0f, 0.0f };
-	XrQuaternionf rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
-	XrVector3f scale = { 30.0f, 30.0f, -30.0f };
-
-	// Align the floor with actual stage space instead of initial HMD rotation
-	XrVector3f upAxis = { 0.0f, 1.0f, 0.0f };
-	XrQuaternionf_CreateFromAxisAngle(&rotation, &upAxis, -vr.recenterYaw);
-	
-	XrMatrix4x4f_CreateTranslationRotationScale(model, &translation, &rotation, &scale);
-}
-
-static void _VR_GetVirtualScreenViewMatrix(XrMatrix4x4f* result, XrVector3f* translation, XrQuaternionf* rotation)
-{
-	XrMatrix4x4f rotationMatrix, translationMatrix, viewMatrix;
-	XrMatrix4x4f_CreateFromQuaternion(&rotationMatrix, rotation);
-	XrMatrix4x4f_CreateTranslation(&translationMatrix, translation->x, translation->y, translation->z);
-	XrMatrix4x4f_Multiply(&viewMatrix, &translationMatrix, &rotationMatrix);
-	XrMatrix4x4f_Invert(result, &viewMatrix);
-}
-
-void VR_VirtualScreen_ResetPosition(void)
-{
-	positionsInitialized = 0;
-	updateTarget = 1;
-}
-
 void VR_VirtualScreen_Draw(XrView* views, uint32_t viewCount, GLuint virtualScreenImage)
 {
 	GLuint previousVAO, previousProgram, previousTexture;
@@ -578,10 +363,7 @@ void VR_VirtualScreen_Draw(XrView* views, uint32_t viewCount, GLuint virtualScre
 	// Compute centered head pose (midpoint between eyes) for model matrix positioning
 	// This ensures the virtual screen appears centered, not offset to one eye
 	XrPosef centeredHead;
-	centeredHead.position.x = (left->position.x + right->position.x) * 0.5f;
-	centeredHead.position.y = (left->position.y + right->position.y) * 0.5f;
-	centeredHead.position.z = (left->position.z + right->position.z) * 0.5f;
-	centeredHead.orientation = left->orientation; // Use left eye orientation (both should be nearly identical)
+	VR_VirtualScreen_ComputeCenteredHeadPose(&centeredHead, views, viewCount);
 
 	// Compute Model, View(s) and per-eye Projection matrices
 	XrMatrix4x4f model, view[2], projection[2];
@@ -592,8 +374,8 @@ void VR_VirtualScreen_Draw(XrView* views, uint32_t viewCount, GLuint virtualScre
 	XrMatrix4x4f_CreateIdentity(&projection[0]);
 	XrMatrix4x4f_CreateIdentity(&projection[1]);
 
-	_VR_GetVirtualScreenViewMatrix(&view[0], &left->position, &left->orientation);
-	_VR_GetVirtualScreenViewMatrix(&view[1], &right->position, &right->orientation);
+	VR_VirtualScreen_GetViewMatrix(&view[0], &left->position, &left->orientation);
+	VR_VirtualScreen_GetViewMatrix(&view[1], &right->position, &right->orientation);
 
 	// Create per-eye projection matrices for proper stereo
 	XrMatrix4x4f_CreateProjectionFov(&projection[0], GRAPHICS_OPENGL, views[0].fov, 0.01f, 100.0f);
@@ -605,7 +387,7 @@ void VR_VirtualScreen_Draw(XrView* views, uint32_t viewCount, GLuint virtualScre
 
 	// Floor
 	{
-		_VR_GetVirtualScreenFloorModelMatrix(&model);
+		VR_VirtualScreen_GetFloorModelMatrix(&model);
 
 		qglUseProgram(floorShaderProgram);
 		qglBindVertexArray(quadVAO);
@@ -626,7 +408,7 @@ void VR_VirtualScreen_Draw(XrView* views, uint32_t viewCount, GLuint virtualScre
 		unsigned int VAO = (vr_virtualScreenShape->integer == CURVED) ? cylinderVAO : quadVAO;
 		unsigned int indexCount = (vr_virtualScreenShape->integer == CURVED) ? cylinderIndexCount : quadIndexCount;
 
-		_VR_GetVirtualScreenModelMatrix(&model, &centeredHead);
+		VR_VirtualScreen_GetModelMatrix(&model, &centeredHead);
 
 		qglUseProgram(vsShaderProgram);
 		qglBindVertexArray(VAO);
@@ -658,14 +440,4 @@ void VR_VirtualScreen_Draw(XrView* views, uint32_t viewCount, GLuint virtualScre
 	glBindTexture(GL_TEXTURE_2D, previousTexture);
 	qglBindVertexArray(previousVAO);
 	qglUseProgram(previousProgram);
-}
-
-void QuatToYawPitchRoll(XrQuaternionf q, vec3_t rotation, vec3_t out);
-
-float VR_VirtualScreen_GetCurrentYaw(void)
-{
-	vec3_t rotation = {0, 0, 0};
-	vec3_t yawPitchRoll = { 0, 0, 0 };
-	QuatToYawPitchRoll(lastKnownVirtualScreenOrientation, rotation, yawPitchRoll);
-	return yawPitchRoll[YAW];
 }
