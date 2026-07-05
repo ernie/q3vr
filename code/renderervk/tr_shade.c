@@ -1266,6 +1266,16 @@ uint32_t VK_PushEyeProj( void ) {
 	const uint32_t size = sizeof( float ) * 32;
 	const uint32_t offset = PAD( vk.cmd->vertex_buffer_offset, vk.uniform_alignment );
 
+	// identical content is already in the ring for this command buffer -
+	// rebind the existing slot instead of paying the write again (2D
+	// parallax pushes repeat for every overlay draw batch)
+	if ( vk.cmd->eyeproj_cache_valid &&
+			memcmp( vk.cmd->eyeproj_cache, vk_view_eyeproj, size ) == 0 ) {
+		vk_reset_descriptor( VK_DESC_UNIFORM );
+		vk_update_descriptor( VK_DESC_UNIFORM, vk.cmd->uniform_descriptor );
+		return vk.cmd->eyeproj_offset;
+	}
+
 	if ( offset + size > vk.geometry_buffer_size ) {
 		// schedule geometry buffer resize
 		vk.geometry_buffer_size_new = log2pad( offset + size, 1 );
@@ -1275,6 +1285,8 @@ uint32_t VK_PushEyeProj( void ) {
 	Com_Memcpy( vk.cmd->vertex_buffer_ptr + offset, vk_view_eyeproj, size );
 	vk.cmd->vertex_buffer_offset = offset + PAD( size, vk.uniform_alignment );
 	vk.cmd->eyeproj_offset = offset;
+	Com_Memcpy( vk.cmd->eyeproj_cache, vk_view_eyeproj, size );
+	vk.cmd->eyeproj_cache_valid = qtrue;
 
 	// dirty set 0 so the next vk_bind_descriptor_sets rebinds with new offsets
 	vk_reset_descriptor( VK_DESC_UNIFORM );

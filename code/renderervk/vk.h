@@ -370,6 +370,8 @@ typedef struct vk_tess_s {
 	VkDescriptorSet uniform_descriptor;
 	uint32_t		uniform_read_offset;
 	uint32_t		eyeproj_offset;	// dynamic offset for set 0 binding 1 (per-view eyeProj)
+	float			eyeproj_cache[32];		// ring content at eyeproj_offset, to skip redundant pushes
+	qboolean		eyeproj_cache_valid;	// per-frame: reset at begin_frame and on ring resize
 	VkDeviceSize	buf_offset[8];
 	VkDeviceSize	vbo_offset[8];
 

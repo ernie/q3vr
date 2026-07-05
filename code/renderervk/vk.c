@@ -8269,6 +8269,11 @@ static void vk_resize_geometry_buffer( void )
 
 	qvkResetCommandBuffer( vk.cmd->command_buffer, 0 );
 
+	// the buffer is back in the initial state; without this, the next
+	// vk_begin_frame would route it into vk_finish_frame and end/submit a
+	// never-begun command buffer
+	vk.recordingCommands = qfalse;
+
 	vk_wait_idle();
 
 	vk_release_geometry_buffers();
@@ -8276,8 +8281,11 @@ static void vk_resize_geometry_buffer( void )
 	vk_create_geometry_buffers( vk.geometry_buffer_size_new );
 	vk.geometry_buffer_size_new = 0;
 
-	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ )
+	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
 		vk_update_uniform_descriptor( vk.tess[ i ].uniform_descriptor, vk.tess[ i ].vertex_buffer );
+		// fresh buffers - every cached eyeProj slot is gone
+		vk.tess[ i ].eyeproj_cache_valid = qfalse;
+	}
 
 	ri.Printf( PRINT_DEVELOPER, "...geometry buffer resized to %iK\n", (int)( vk.geometry_buffer_size / 1024 ) );
 }
@@ -8480,6 +8488,9 @@ void vk_begin_frame( uint32_t colorIndex )
 
 	Com_Memset( &vk.cmd->scissor_rect, 0, sizeof( vk.cmd->scissor_rect ) );
 
+	// the ring restarted at offset 0 - last frame's cached eyeProj slot is gone
+	vk.cmd->eyeproj_cache_valid = qfalse;
+
 	// prime set 0 binding 1 so every dynamic-offset bind this frame has a
 	// valid eyeproj_offset even before the first RB_BeginDrawingView() (e.g. 2D/menu draws)
 	VK_PushEyeProj();
@@ -8606,6 +8617,21 @@ void vk_end_frame( void )
 
 
 /*
+Shared by vk_finish_frame / vk_discard_frame: end an interrupted render
+pass and report whether a command buffer is open - the finish path submits
+it, the discard path drops it.
+*/
+static qboolean vk_end_interrupted_pass( void )
+{
+	if ( vk.inRenderPass ) {
+		qvkCmdEndRenderPass( vk.cmd->command_buffer );
+		vk.inRenderPass = qfalse;
+	}
+	return vk.recordingCommands;
+}
+
+
+/*
 ==============================================================================
 
 vk_finish_frame - Force-finish an interrupted frame
@@ -8620,14 +8646,7 @@ void vk_finish_frame( void )
 {
 	VkSubmitInfo submit_info;
 
-	// If we're in a render pass, end it first
-	if ( vk.inRenderPass ) {
-		qvkCmdEndRenderPass( vk.cmd->command_buffer );
-		vk.inRenderPass = qfalse;
-	}
-
-	// If we're recording commands, end and submit the command buffer
-	if ( vk.recordingCommands ) {
+	if ( vk_end_interrupted_pass() ) {
 		VK_CHECK( qvkEndCommandBuffer( vk.cmd->command_buffer ) );
 		vk.recordingCommands = qfalse;
 
@@ -8665,12 +8684,7 @@ destroy, with attachments possibly left mid-pass (VUID-vkCmdDraw-None-09600).
 */
 void vk_discard_frame( void )
 {
-	if ( vk.inRenderPass ) {
-		qvkCmdEndRenderPass( vk.cmd->command_buffer );
-		vk.inRenderPass = qfalse;
-	}
-
-	if ( vk.recordingCommands ) {
+	if ( vk_end_interrupted_pass() ) {
 		VK_CHECK( qvkEndCommandBuffer( vk.cmd->command_buffer ) );
 		vk.recordingCommands = qfalse;
 	}

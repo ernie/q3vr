@@ -352,7 +352,7 @@ static inline void XrQuaternionf_Transform(
 	result->z = v->z + qw * tz + (qx * ty - qy * tx);
 }
 
-XrVector3f GetPositionInFront(const XrPosef* pose, float distance)
+static XrVector3f GetPositionInFront(const XrPosef* pose, float distance)
 {
 	// Forward vector in local/headset space
 	XrVector3f forward = { 0.0f, 0.0f, -1.0f }; // OpenXR uses -Z as forward
@@ -413,14 +413,14 @@ static inline XrQuaternionf YawFacingQuaternion(
 	};
 }
 
-int positionsInitialized = 0;
-int updateTarget = 1;
-XrVector3f currentPosition;
-XrVector3f targetPosition;
-XrQuaternionf currentRotation;
-const float targetDistance = 2.5f;
+static int positionsInitialized = 0;
+static int updateTarget = 1;
+static XrVector3f currentPosition;
+static XrVector3f targetPosition;
+static XrQuaternionf currentRotation;
+static const float targetDistance = 2.5f;
 
-void EnsureNewPositionInExpectedDistance(XrVector3f* hmdPosition, XrVector3f* vsPosition)
+static void EnsureNewPositionInExpectedDistance(XrVector3f* hmdPosition, XrVector3f* vsPosition)
 {
 	XrVector3f virtualScreenToHmd;
 	XrVector3f_Sub(&virtualScreenToHmd, vsPosition, hmdPosition);
@@ -436,7 +436,7 @@ void EnsureNewPositionInExpectedDistance(XrVector3f* hmdPosition, XrVector3f* vs
 	}
 }
 
-void GetCurrentVirtualScreenPositionAndRotation(
+static void GetCurrentVirtualScreenPositionAndRotation(
 	XrPosef* leftEyePose,
 	XrVector3f* translation,
 	XrQuaternionf* rotation)
@@ -483,9 +483,9 @@ void GetCurrentVirtualScreenPositionAndRotation(
 	*rotation = currentRotation;
 }
 
-XrQuaternionf lastKnownVirtualScreenOrientation = { 0.0f, 0.0f, 0.0f, 1.0f };
+static XrQuaternionf lastKnownVirtualScreenOrientation = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-void _VR_GetVirtualScreenModelMatrix(XrMatrix4x4f* model, XrPosef* leftEyePose)
+static void _VR_GetVirtualScreenModelMatrix(XrMatrix4x4f* model, XrPosef* leftEyePose)
 {
 	// Base 4:3 aspect ratio for the virtual screen content
 	float aspectRatioCoeff = 3.0f / 4.0f;
@@ -515,7 +515,7 @@ void _VR_GetVirtualScreenModelMatrix(XrMatrix4x4f* model, XrPosef* leftEyePose)
 	XrMatrix4x4f_CreateTranslationRotationScale(model, &translation, &rotation, &scale);
 }
 
-void _VR_GetVirtualScreenFloorModelMatrix(XrMatrix4x4f* model)
+static void _VR_GetVirtualScreenFloorModelMatrix(XrMatrix4x4f* model)
 {
 	XrVector3f translation = { 0.0f, 0.0f, 0.0f };
 	XrQuaternionf rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -528,7 +528,7 @@ void _VR_GetVirtualScreenFloorModelMatrix(XrMatrix4x4f* model)
 	XrMatrix4x4f_CreateTranslationRotationScale(model, &translation, &rotation, &scale);
 }
 
-void _VR_GetVirtualScreenViewMatrix(XrMatrix4x4f* result, XrVector3f* translation, XrQuaternionf* rotation)
+static void _VR_GetVirtualScreenViewMatrix(XrMatrix4x4f* result, XrVector3f* translation, XrQuaternionf* rotation)
 {
 	XrMatrix4x4f rotationMatrix, translationMatrix, viewMatrix;
 	XrMatrix4x4f_CreateFromQuaternion(&rotationMatrix, rotation);
