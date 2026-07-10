@@ -57,7 +57,7 @@ if(NOT EMSCRIPTEN)
     )
 endif()
 
-add_git_dependency(${SOURCE_DIR}/client/cl_console.c)
+add_git_dependency("${SOURCE_DIR}/client/cl_console.c")
 
 # CLIENT_DEFINITIONS is populated by library cmake files (opus.cmake, etc.)
 # Add our core definitions here

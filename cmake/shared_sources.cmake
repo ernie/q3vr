@@ -44,7 +44,7 @@ disable_warnings(
     ${SOURCE_DIR}/libzstd/zstd.c
 )
 
-add_git_dependency(${SOURCE_DIR}/qcommon/common.c)
+add_git_dependency("${SOURCE_DIR}/qcommon/common.c")
 
 set(SYSTEM_SOURCES
     ${SOURCE_DIR}/sys/con_log.c

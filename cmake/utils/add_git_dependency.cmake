@@ -4,6 +4,10 @@ include_guard(GLOBAL)
 # stamping). Handles .git as a directory (normal checkout) and as a
 # "gitdir:" pointer file (worktree), where HEAD is private to the worktree
 # but packed-refs and refs/ live in the common dir.
+# Note: OBJECT_DEPENDS only drives rebuilds under Makefile/Ninja generators
+# (e.g. Linux CI); the Visual Studio generator ignores the property, so MSVC
+# builds keep a stale version stamp until the file recompiles for other
+# reasons.
 function(add_git_dependency SOURCE_FILE)
     set(GIT_DIR "${CMAKE_SOURCE_DIR}/.git")
     if(NOT EXISTS "${GIT_DIR}")
@@ -56,7 +60,7 @@ function(add_git_dependency SOURCE_FILE)
     if(GIT_DEPENDS)
         # one property write: repeated set_source_files_properties calls
         # overwrite OBJECT_DEPENDS, keeping only the last file
-        set_source_files_properties(${SOURCE_FILE}
+        set_source_files_properties("${SOURCE_FILE}"
             PROPERTIES OBJECT_DEPENDS "${GIT_DEPENDS}")
     endif()
 endfunction()
