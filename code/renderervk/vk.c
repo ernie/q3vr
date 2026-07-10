@@ -2008,6 +2008,9 @@ static qboolean vk_select_surface_format( VkPhysicalDevice physical_device, VkSu
 			if ( !vk.hdrColorspaceExt ) {
 				ri.Printf( PRINT_ALL, "...HDR requested but VK_EXT_swapchain_colorspace is unavailable; using SDR\n" );
 			} else {
+				// the scRGB colorspace is advertised even when the OS HDR switch is
+				// off, which only makes the image look oversaturated; commit to HDR
+				// output unless we positively detect HDR as off.
 				vk.hdrOsState = vk_query_os_hdr_state();
 				if ( vk.hdrOsState != OSHDR_OFF && vk.hdrOsState != OSHDR_UNSUPPORTED ) {
 					uint32_t h;
@@ -2017,6 +2020,9 @@ static qboolean vk_select_surface_format( VkPhysicalDevice physical_device, VkSu
 							vk.present_format = candidates[h];
 							vk.hdrActive = qtrue;
 							ri.Printf( PRINT_ALL, "...HDR output: scRGB linear FP16 (EXTENDED_SRGB_LINEAR)\n" );
+							if ( vk.hdrOsState == OSHDR_UNKNOWN ) {
+								ri.Printf( PRINT_ALL, "...ensure HDR is enabled in Windows display settings; if the image looks oversaturated, HDR is likely off\n" );
+							}
 							break;
 						}
 					}
@@ -2024,9 +2030,9 @@ static qboolean vk_select_surface_format( VkPhysicalDevice physical_device, VkSu
 						ri.Printf( PRINT_ALL, "...HDR requested but no scRGB FP16 surface; using SDR\n" );
 					}
 				} else if ( vk.hdrOsState == OSHDR_OFF ) {
-					ri.Printf( PRINT_ALL, "...HDR requested but the OS HDR switch is off; using SDR\n" );
+					ri.Printf( PRINT_ALL, "...HDR requested but the Windows HDR switch is off; using SDR. Enable HDR in Windows display settings and run \\vid_restart\n" );
 				} else {
-					ri.Printf( PRINT_ALL, "...HDR requested but no HDR-capable display found; using SDR\n" );
+					ri.Printf( PRINT_ALL, "...HDR requested but no HDR-capable display was found; using SDR\n" );
 				}
 			}
 		}
