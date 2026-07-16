@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 cvar_t *s_volume;
 cvar_t *s_muted;
+cvar_t *s_khz;
 cvar_t *s_musicVolume;
 cvar_t *s_doppler;
 cvar_t *s_backend;
@@ -483,6 +484,27 @@ void S_Init( void )
 	s_backend = Cvar_Get( "s_backend", "", CVAR_ROM );
 	s_muteWhenMinimized = Cvar_Get( "s_muteWhenMinimized", "0", CVAR_ARCHIVE );
 	s_muteWhenUnfocused = Cvar_Get( "s_muteWhenUnfocused", "0", CVAR_ARCHIVE );
+
+	// Registered unconditionally (not per-backend) so the menu can read back the
+	// sound sampling rate even when the OpenAL backend is active.
+	s_khz = Cvar_Get( "s_khz", "22", CVAR_ARCHIVE_ND | CVAR_LATCH );
+	Cvar_CheckRange( s_khz, 0, 48, qtrue );
+	Cvar_SetDescription( s_khz, "Specifies the sound sampling rate, (8, 11, 22, 44, 48) in kHz. Default value is 22." );
+
+	switch( s_khz->integer ) {
+		case 48:
+		case 44:
+		case 22:
+		case 11:
+		case 8:
+			// these are legal values
+			break;
+		default:
+			// anything else is illegal
+			Com_Printf( "WARNING: cvar 's_khz' must be one of (8, 11, 22, 44, 48), setting to '%s'\n", s_khz->resetString );
+			Cvar_ForceReset( "s_khz" );
+			break;
+	}
 
 	cv = Cvar_Get( "s_initsound", "1", 0 );
 	if( !cv->integer ) {
