@@ -27,6 +27,7 @@ layout(push_constant) uniform PushConstants {
 	float hdrSaturation;
 	float hdrSaturationFull;
 	float hdrSoftKnee;
+	int   hdrCalibrate; // 1 = draw the peak-match calibration window
 } pc;
 
 layout(location = 0) in vec2 texCoord;
@@ -94,6 +95,25 @@ vec3 hdrReconstruct( vec3 base, vec3 emissive,
 void main() {
 	if (texCoord.x < 0.0 || texCoord.x > 1.0 || texCoord.y < 0.0 || texCoord.y > 1.0) {
 		discard;
+	}
+
+	if ( pc.hdrMode != 0 && pc.hdrCalibrate == 1 ) {
+		// Peak-match test: a fixed outer rectangle that clips to the panel's true
+		// peak, and an inner rectangle at r_hdrPeak. Raise r_hdrPeak until the inner
+		// edge vanishes = panel peak. Window ~5% of pixels, 2.4:1:
+		//   area 4*wx*wy = 0.05, wx = 2.4*wy -> wy = sqrt(0.05/9.6) = 0.0722
+		// Centered at 0.38 to leave room below for the menu controls.
+		vec2 d = abs(texCoord - vec2(0.5, 0.38));
+		const float wy = 0.0722;
+		const float wx = 0.1733; // wy * 2.4
+		if ( d.x < wx && d.y < wy ) {
+			float nits = 10000.0;                 // outer: clips to panel peak
+			if ( d.x < wx * 0.5 && d.y < wy * 0.5 ) {
+				nits = pc.hdrPeak;                // inner: value being calibrated
+			}
+			outColor = vec4(vec3(nits / 80.0), 1.0);
+			return;
+		}
 	}
 
 	if ( pc.hdrMode == 1 )

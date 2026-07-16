@@ -901,8 +901,8 @@ static void vk_create_render_passes( void )
 		attachments[1].format = depth_format;
 		attachments[1].samples = vk.msaaActive ? vkSamples : VK_SAMPLE_COUNT_1_BIT;
 		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		// Only STORE depth when MSAA is active - non-MSAA mainResume uses CLEAR instead of LOAD
-		attachments[1].storeOp = vk.msaaActive ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		// Must STORE at every sample count - post_bloom and mainResume LOAD depth
+		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1033,10 +1033,10 @@ static void vk_create_render_passes( void )
 			attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 			attachments[2].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		} else {
-			// Non-MSAA: main pass used DONT_CARE for depth, so we must CLEAR instead of LOAD
-			attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-			attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			// Non-MSAA: main pass stored depth, so we can LOAD it
+			attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+			attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+			attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		}
 
 		if ( vk.hdrActive )
@@ -1150,7 +1150,7 @@ static void vk_create_render_passes( void )
 			attachments[1].format = depth_format;
 			attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
 			attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-			attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;  // Store for mainResume after HUD
 			attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -2008,9 +2008,6 @@ static qboolean vk_select_surface_format( VkPhysicalDevice physical_device, VkSu
 			if ( !vk.hdrColorspaceExt ) {
 				ri.Printf( PRINT_ALL, "...HDR requested but VK_EXT_swapchain_colorspace is unavailable; using SDR\n" );
 			} else {
-				// the scRGB colorspace is advertised even when the OS HDR switch is
-				// off, which only makes the image look oversaturated; commit to HDR
-				// output unless we positively detect HDR as off.
 				vk.hdrOsState = vk_query_os_hdr_state();
 				if ( vk.hdrOsState != OSHDR_OFF && vk.hdrOsState != OSHDR_UNSUPPORTED ) {
 					uint32_t h;
@@ -2020,9 +2017,6 @@ static qboolean vk_select_surface_format( VkPhysicalDevice physical_device, VkSu
 							vk.present_format = candidates[h];
 							vk.hdrActive = qtrue;
 							ri.Printf( PRINT_ALL, "...HDR output: scRGB linear FP16 (EXTENDED_SRGB_LINEAR)\n" );
-							if ( vk.hdrOsState == OSHDR_UNKNOWN ) {
-								ri.Printf( PRINT_ALL, "...ensure HDR is enabled in Windows display settings; if the image looks oversaturated, HDR is likely off\n" );
-							}
 							break;
 						}
 					}
@@ -2030,13 +2024,15 @@ static qboolean vk_select_surface_format( VkPhysicalDevice physical_device, VkSu
 						ri.Printf( PRINT_ALL, "...HDR requested but no scRGB FP16 surface; using SDR\n" );
 					}
 				} else if ( vk.hdrOsState == OSHDR_OFF ) {
-					ri.Printf( PRINT_ALL, "...HDR requested but the Windows HDR switch is off; using SDR. Enable HDR in Windows display settings and run \\vid_restart\n" );
+					ri.Printf( PRINT_ALL, "...HDR requested but the OS HDR switch is off; using SDR\n" );
 				} else {
-					ri.Printf( PRINT_ALL, "...HDR requested but no HDR-capable display was found; using SDR\n" );
+					ri.Printf( PRINT_ALL, "...HDR requested but no HDR-capable display found; using SDR\n" );
 				}
 			}
 		}
 	}
+
+	ri.Cvar_Set( "r_hdrActive", vk.hdrActive ? "1" : "0" );
 
 	if ( !r_fbo->integer ) {
 		vk.present_format = vk.base_format;
@@ -4282,7 +4278,7 @@ void vk_initialize( void )
 
 	// FBO is always active in VR for post-processing (r_fbo clamped to 1)
 	vk.fboActive = qtrue;
-	if ( r_ext_framebuffer_multisample->integer ) {
+	if ( r_ext_multisample->integer ) {
 		vk.msaaActive = qtrue;
 	}
 
@@ -4296,7 +4292,7 @@ void vk_initialize( void )
 
 	if ( vk.msaaActive ) {
 		VkSampleCountFlags mask = vkMaxSamples;
-		vkSamples = MAX( log2pad( r_ext_framebuffer_multisample->integer, 1 ), VK_SAMPLE_COUNT_2_BIT );
+		vkSamples = MAX( log2pad( r_ext_multisample->integer, 1 ), VK_SAMPLE_COUNT_2_BIT );
 		while ( vkSamples > mask )
 				vkSamples >>= 1;
 		ri.Printf( PRINT_ALL, "...using %ix MSAA\n", vkSamples );
@@ -8026,6 +8022,46 @@ void vk_begin_main_render_pass( qboolean clear )
 	qvkCmdBeginRenderPass( vk.cmd->command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE );
 	vk.inRenderPass = qtrue;
 
+	if ( clear ) {
+		// Safety net: guarantee the eye color target has DEFINED contents across
+		// its FULL extent on the first 3D pass of the frame. The render-pass
+		// LOAD_OP for the color/resolve target is config-dependent (DONT_CARE when
+		// MSAA resolves it, CLEAR otherwise) and only ever covers what the subpass
+		// actually rasterizes. A game module that submits a refdef smaller than the
+		// per-eye render target would leave the surrounding region undefined; since
+		// the color image is double-buffered, that region alternates between two
+		// stale/undefined images each frame and the gamma pass composites the WHOLE
+		// FBO to the XR swapchain -> white/black strobing outside the view rect.
+		//
+		// vkCmdClearAttachments clears the rects passed here directly and ignores
+		// the dynamic scissor, so this covers the whole extent regardless of the
+		// view rectangle set later by RB_BeginDrawingView. Only the clear==qtrue
+		// (first) pass does this; the mainResume/HUD LOAD_OP_LOAD passes that
+		// preserve intra-frame content are untouched. For the in-tree cgame (which
+		// fills the eye every frame) this is a negligible, visually invisible clear.
+		VkClearAttachment clearAttachment;
+		VkClearRect clearRect;
+
+		clearAttachment.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		clearAttachment.colorAttachment = 0;
+		// Opaque black - matches RE_ClearVRFramebuffer (no spectator tint in the
+		// Vulkan renderer; it is a stub that always clears black).
+		clearAttachment.clearValue.color.float32[0] = 0.0f;
+		clearAttachment.clearValue.color.float32[1] = 0.0f;
+		clearAttachment.clearValue.color.float32[2] = 0.0f;
+		clearAttachment.clearValue.color.float32[3] = 1.0f;
+
+		clearRect.rect.offset.x = 0;
+		clearRect.rect.offset.y = 0;
+		clearRect.rect.extent.width = vk.renderWidth;
+		clearRect.rect.extent.height = vk.renderHeight;
+		clearRect.baseArrayLayer = 0;
+		// Multiview: layerCount must be 1; the view mask broadcasts to both eyes.
+		clearRect.layerCount = 1;
+
+		qvkCmdClearAttachments( vk.cmd->command_buffer, 1, &clearAttachment, 1, &clearRect );
+	}
+
 	// Note: mono modelview is passed via push constants (64 bytes); per-eye
 	// projection lives in the ViewTransform UBO (set 0, binding 1)
 
@@ -9062,7 +9098,7 @@ static qboolean vk_create_desktop_mirror_resources( void )
 	Com_Memset( &pushRange, 0, sizeof( pushRange ) );
 	pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushRange.offset = 0;
-	pushRange.size = 16 * sizeof(float);  // offset(8) + scale(8) + texCrop(8) + eyeLayer(4) + hdr fields(36)
+	pushRange.size = 17 * sizeof(float);  // offset(8) + scale(8) + texCrop(8) + eyeLayer(4) + hdr fields(40)
 
 	// set 0 = SDR source (eye swapchain / virtual screen); set 1 = scene base
 	// (color_descriptor); set 2 = emissive (emissive_descriptor) for HDR reconstruction.
@@ -9349,6 +9385,13 @@ void vk_present_desktop_mirror( void )
 	int contentFit = vr_desktopContentFit ? vr_desktopContentFit->integer : 1;
 	// Get menu style (0=desktop/flat view, 1=VR view)
 	int menuStyle = vr_desktopMenuStyle ? vr_desktopMenuStyle->integer : 0;
+	// The HDR calibration box only renders on the Desktop-view mirror branch (the
+	// box is a present-time scRGB overlay, and the VR-view branch samples the SDR
+	// XR swapchain). Force Desktop view while the calibration screen is up so the
+	// pattern shows regardless of the user's mirror preference; reverts on close.
+	if ( r_hdrCalibrate->integer ) {
+		menuStyle = 0;
+	}
 
 	// Source dimensions (XR resolution)
 	int srcWidth = vk.xr.width;
@@ -9532,6 +9575,7 @@ void vk_present_desktop_mirror( void )
 				float hdrSaturation;
 				float hdrSaturationFull;
 				float hdrSoftKnee;
+				int32_t hdrCalibrate;
 			} pushConstants;
 
 			float srcAspect = (float)srcWidth / (float)srcHeight;
@@ -9617,6 +9661,7 @@ void vk_present_desktop_mirror( void )
 					pushConstants.paperWhite = vk.hdrActive ? vk_hdr_paper_white() : 200.0f;
 					pushConstants.hdrPeak = 1000.0f;
 					pushConstants.hdrHighlight = 1.0f;
+					pushConstants.hdrCalibrate = 0;  // calibration pattern is drawn only on the desktop-view mirror
 
 					qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 						VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
@@ -9650,6 +9695,7 @@ void vk_present_desktop_mirror( void )
 				pushConstants.paperWhite = vk.hdrActive ? vk_hdr_paper_white() : 200.0f;
 				pushConstants.hdrPeak = 1000.0f;
 				pushConstants.hdrHighlight = 1.0f;
+				pushConstants.hdrCalibrate = 0;  // calibration pattern is drawn only on the desktop-view mirror
 
 				qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 					VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
@@ -9760,6 +9806,7 @@ void vk_present_desktop_mirror( void )
 				float hdrSaturation;
 				float hdrSaturationFull;
 				float hdrSoftKnee;
+				int32_t hdrCalibrate;
 			} pushConstants;
 
 			const float targetAspect = 4.0f / 3.0f;
@@ -9787,8 +9834,11 @@ void vk_present_desktop_mirror( void )
 			pushConstants.hdrGamma = 1.0f;
 			pushConstants.hdrObScale = 1.0f;
 			pushConstants.paperWhite = vk.hdrActive ? vk_hdr_paper_white() : 200.0f;
-			pushConstants.hdrPeak = 1000.0f;
+			// Mode 2 does not use hdrPeak, but the calibration inner box does: feed it
+			// the live slider so "raise Peak until the inner edge vanishes" actually works.
+			pushConstants.hdrPeak = vk.hdrActive ? r_hdrPeak->value : 1000.0f;
 			pushConstants.hdrHighlight = 1.0f;
+			pushConstants.hdrCalibrate = ( vk.hdrActive && r_hdrCalibrate->integer ) ? 1 : 0;
 
 			qvkCmdPushConstants( vk.desktopBlitCmd, vk.desktopMirrorPipelineLayout,
 				VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof( pushConstants ), &pushConstants );
@@ -9905,6 +9955,7 @@ void vk_present_desktop_mirror( void )
 			float hdrSaturation;
 			float hdrSaturationFull;
 			float hdrSoftKnee;
+			int32_t hdrCalibrate;
 		} pushConstants;
 
 		// Calculate letterbox/pillarbox (fit) or crop (fill) parameters
@@ -9962,6 +10013,7 @@ void vk_present_desktop_mirror( void )
 			pushConstants.paperWhite = 200.0f;
 			pushConstants.hdrPeak = 1000.0f;
 			pushConstants.hdrHighlight = 1.0f;
+			pushConstants.hdrCalibrate = 0;  // calibration pattern is drawn only on the desktop-view mirror
 			if ( vk.hdrActive ) {
 				float peakNits = r_hdrPeak->value;
 				pushConstants.eyeLayer = 0;
@@ -10033,6 +10085,7 @@ void vk_present_desktop_mirror( void )
 			pushConstants.paperWhite = 200.0f;
 			pushConstants.hdrPeak = 1000.0f;
 			pushConstants.hdrHighlight = 1.0f;
+			pushConstants.hdrCalibrate = 0;  // calibration pattern is drawn only on the desktop-view mirror
 			if ( vk.hdrActive ) {
 				float peakNits = r_hdrPeak->value;
 				pushConstants.hdrMode = 1;
@@ -12921,8 +12974,8 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 		attachments[1].format = vk.depth_format;
 		attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
 		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		// Non-MSAA: DONT_CARE for depth (mainResume will use CLEAR instead of LOAD)
-		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		// Must STORE because post_bloom and mainResume use LOAD_OP_LOAD on depth
+		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -13022,12 +13075,12 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 		attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachments[2].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	} else {
-		// Non-MSAA mode: load color, but CLEAR depth (main pass used DONT_CARE for depth storeOp)
+		// Non-MSAA mode: load color and depth (main pass stored depth)
 		attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachments[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	}
 
 	if ( vk.hdrActive ) {

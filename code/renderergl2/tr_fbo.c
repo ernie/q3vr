@@ -271,14 +271,14 @@ void FBO_Init(void)
 	if (glRefConfig.framebufferMultisample)
 		qglGetIntegerv(GL_MAX_SAMPLES, &multisample);
 
-	if (r_ext_framebuffer_multisample->integer < multisample)
-		multisample = r_ext_framebuffer_multisample->integer;
+	if (r_ext_multisample->integer < multisample)
+		multisample = r_ext_multisample->integer;
 
 	if (multisample < 2 || !glRefConfig.framebufferBlit)
 		multisample = 0;
 
-	if (multisample != r_ext_framebuffer_multisample->integer)
-		ri.Cvar_SetValue("r_ext_framebuffer_multisample", (float)multisample);
+	if (multisample != r_ext_multisample->integer)
+		ri.Cvar_SetValue("r_ext_multisample", (float)multisample);
 	
 	// only create a render FBO if we need to resolve MSAA or do HDR
 	// otherwise just render straight to the screen (tr.renderFbo = NULL)

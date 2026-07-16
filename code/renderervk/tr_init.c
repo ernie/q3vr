@@ -99,12 +99,14 @@ cvar_t	*r_vbo;
 cvar_t	*r_fbo;
 cvar_t	*r_hdr;
 cvar_t	*r_hdrDisplay;
+cvar_t	*r_hdrActive;
 cvar_t	*r_hdrPeak;
 cvar_t	*r_hdrPaperWhite;
 cvar_t	*r_hdrHighlight;
 cvar_t	*r_hdrSaturation;
 cvar_t	*r_hdrSaturationFull;
 cvar_t	*r_hdrSoftKnee;
+cvar_t	*r_hdrCalibrate;
 cvar_t	*r_bloom;
 cvar_t	*r_bloom_threshold;
 cvar_t	*r_bloom_intensity;
@@ -113,7 +115,7 @@ cvar_t	*r_bloom_modulate;
 cvar_t	*r_renderWidth;
 cvar_t	*r_renderHeight;
 cvar_t	*r_renderScale;
-cvar_t	*r_ext_framebuffer_multisample;
+cvar_t	*r_ext_multisample;
 #endif // USE_VULKAN
 
 cvar_t	*r_dlightBacks;
@@ -1833,6 +1835,10 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_hdrPaperWhite, 0, 1000, qfalse );
 	ri.Cvar_SetDescription( r_hdrPaperWhite, "Desktop HDR SDR-white brightness in nits. 0 = auto (BT.2408 reference white from r_hdrPeak)." );
 
+	r_hdrActive = ri.Cvar_Get( "r_hdrActive", "0", CVAR_ROM );
+	ri.Cvar_SetDescription( r_hdrActive,
+		"Read-only: 1 when HDR output is genuinely live (HDR swapchain up and the display's HDR switch on), else 0." );
+
 	r_hdrHighlight = ri.Cvar_Get( "r_hdrHighlight", "1.0", CVAR_ARCHIVE_ND );
 	ri.Cvar_CheckRange( r_hdrHighlight, 0.5, 4.0, qfalse );
 	ri.Cvar_SetDescription( r_hdrHighlight, "Desktop HDR highlight push into the overbright headroom. 1.0 = natural." );
@@ -1852,13 +1858,17 @@ static void R_Register( void )
 	ri.Cvar_SetDescription( r_hdrSoftKnee,
 		"How gradually the HDR highlight treatment (path-to-white plus roll-off) eases in above paper-white. The value is a width in paper-white units: the effect ramps from nothing at 1x to full at (1 + this)x paper-white. 0 = a hard kick at paper-white (a slope discontinuity that reads as a band); 1.0 = full effect by twice paper-white (default)." );
 
+	r_hdrCalibrate = ri.Cvar_Get( "r_hdrCalibrate", "0", CVAR_NORESTART );
+	ri.Cvar_CheckRange( r_hdrCalibrate, 0, 1, qtrue );
+	ri.Cvar_SetDescription( r_hdrCalibrate, "Draw the desktop-mirror HDR peak-match calibration pattern: a fixed outer rectangle that clips to the panel peak and an inner rectangle at r_hdrPeak. Raise r_hdrPeak until the inner edge vanishes into the outer to find your display's true peak. Driven by the HDR Calibration menu." );
+
 	r_bloom = ri.Cvar_Get( "r_bloom", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_bloom, 0, 1, qtrue );
 	ri.Cvar_SetDescription(r_bloom, "Enables bloom post-processing effect.");
 
-	r_ext_framebuffer_multisample = ri.Cvar_Get( "r_ext_framebuffer_multisample", "4", CVAR_ARCHIVE | CVAR_LATCH );
-	ri.Cvar_CheckRange( r_ext_framebuffer_multisample, 0, 8, qtrue );
-	ri.Cvar_SetDescription( r_ext_framebuffer_multisample, "MSAA anti-aliasing, valid values: 0|2|4|8." );
+	r_ext_multisample = ri.Cvar_Get( "r_ext_multisample", "4", CVAR_ARCHIVE | CVAR_LATCH );
+	ri.Cvar_CheckRange( r_ext_multisample, 0, 8, qtrue );
+	ri.Cvar_SetDescription( r_ext_multisample, "MSAA anti-aliasing, valid values: 0|2|4|8." );
 
 	r_renderWidth = ri.Cvar_Get( "r_renderWidth", "800", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_renderWidth, 96, 7680, qtrue );  // 8K max

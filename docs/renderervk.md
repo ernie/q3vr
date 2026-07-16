@@ -163,7 +163,7 @@ Additive 3D emitters (weapons, projectiles, effects) are captured during the mai
 
 | Cvar | Default | Description |
 |------|---------|-------------|
-| `r_ext_framebuffer_multisample` | 4 | MSAA sample count |
+| `r_ext_multisample` | 4 | MSAA sample count |
 
 **Values:** 0, 2, 4, or 8 samples.
 
@@ -209,7 +209,7 @@ For supersampling, set `r_renderWidth` and `r_renderHeight` higher than display 
 | `r_bloom_threshold_mode` | 0 | 0=channel, 1=average, 2=luma |
 | `r_bloom_intensity` | 0.5 | Blend intensity |
 | `r_bloom_modulate` | 0 | Modulation mode |
-| `r_ext_framebuffer_multisample` | 4 | MSAA samples (0,2,4,8) |
+| `r_ext_multisample` | 4 | MSAA samples (0,2,4,8) |
 | `r_greyscale` | 0 | Desaturation level (-1 to 1) |
 | `r_mapGreyScale` | 0 | Map-only desaturation |
 | `r_dither` | 0 | Ordered dithering |
