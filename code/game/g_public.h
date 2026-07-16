@@ -387,7 +387,12 @@ typedef enum {
 	BOTLIB_PC_LOAD_SOURCE,
 	BOTLIB_PC_FREE_SOURCE,
 	BOTLIB_PC_READ_TOKEN,
-	BOTLIB_PC_SOURCE_FILE_AND_LINE
+	BOTLIB_PC_SOURCE_FILE_AND_LINE,
+
+	// engine extensions (discovered by name via trap_GetValue, not by fixed
+	// number; append new ones here to keep the ABI stable)
+	G_VR_REGISTERSTATE,
+	G_TRAP_GETVALUE = COM_TRAP_GETVALUE,
 
 } gameImport_t;
 

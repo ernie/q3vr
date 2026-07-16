@@ -996,11 +996,17 @@ default values.
 #define CVAR_CHEAT		0x0200	// can not be changed if cheats are disabled
 #define CVAR_NORESTART		0x0400	// do not clear when a cvar_restart is issued
 
+// ABI: the game modules are compiled from the trinity checkout against its
+// q_shared.h and hand these bits to Cvar_Get as a plain integer, so the values
+// below MUST match trinity's and Quake3e's. NODEFAULT and DEVELOPER used to sit
+// on each other's bits, which silently cost every module-registered ARCHIVE_ND
+// cvar its no-write-at-default behaviour.
 #define CVAR_SERVER_CREATED	0x0800	// cvar was created by a server the client connected to.
 #define CVAR_VM_CREATED		0x1000	// cvar was created exclusively in one of the VMs.
 #define CVAR_PROTECTED		0x2000	// prevent modifying this var from VMs or the server
-#define CVAR_DEVELOPER		0x4000	// developer cvar (hidden from normal users)
-#define CVAR_NODEFAULT		0x8000	// do not write to config if matching with default value
+#define CVAR_NODEFAULT		0x4000	// do not write to config if matching with default value
+#define CVAR_PRIVATE		0x8000	// can't be read from VM (reserved: matches Quake3e)
+#define CVAR_DEVELOPER		0x10000	// developer cvar (hidden from normal users)
 #define CVAR_ARCHIVE_ND		(CVAR_ARCHIVE | CVAR_NODEFAULT)	// archived, but not written if value equals default
 // These flags are only returned by the Cvar_Flags() function
 #define CVAR_MODIFIED		0x40000000	// Cvar was modified

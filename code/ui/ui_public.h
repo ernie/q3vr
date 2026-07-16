@@ -124,15 +124,19 @@ typedef enum {
 	// 1.32
 	UI_FS_SEEK,
 
-  UI_HAPTICEVENT,
-
-	UI_CHECKUPDATES,
+	UI_HAPTICEVENT,
 
 	// Virtual keyboard
 	UI_VKEYBOARD_SHOW,
 	UI_VKEYBOARD_HIDE,
 	UI_VKEYBOARD_ISACTIVE,
 	UI_VKEYBOARD_HANDLEKEY,
+
+	// engine extensions (discovered by name via trap_GetValue, not by fixed
+	// number; append new ones here to keep the ABI stable)
+	// NOTE: sequential entries must stay below UI_MEMSET = 100
+	UI_VR_REGISTERSTATE,
+	UI_TRAP_GETVALUE = COM_TRAP_GETVALUE,
 
 	UI_MEMSET = 100,
 	UI_MEMCPY,

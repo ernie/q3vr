@@ -497,6 +497,32 @@ qboolean CL_GetValue( char *value, int valueSize, const char *key ) {
 		return qtrue;
 	}
 
+	if ( !Q_stricmp( key, "trap_VR_RegisterState" ) ) {
+		Com_sprintf( value, valueSize, "%i", CG_VR_REGISTERSTATE );
+		return qtrue;
+	}
+
+	if ( !Q_stricmp( key, "trap_R_BeginPostBloom2D" ) ) {
+		Com_sprintf( value, valueSize, "%i", CG_R_BEGIN_POST_BLOOM_2D );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "trap_R_EndPostBloom2D" ) ) {
+		Com_sprintf( value, valueSize, "%i", CG_R_END_POST_BLOOM_2D );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "trap_R_HUDBufferStart" ) ) {
+		Com_sprintf( value, valueSize, "%i", CG_R_HUDBUFFER_START );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "trap_R_HUDBufferEnd" ) ) {
+		Com_sprintf( value, valueSize, "%i", CG_R_HUDBUFFER_END );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "trap_HapticEvent" ) ) {
+		Com_sprintf( value, valueSize, "%i", CG_HAPTICEVENT );
+		return qtrue;
+	}
+
 	// Capability flag (no syscall): renderer honors RF_ANIMFRAME.
 	if ( !Q_stricmp( key, "R_animFrame" ) ) {
 		Com_sprintf( value, valueSize, "1" );
@@ -867,14 +893,23 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_HUDBUFFER_END:
 		re.HUDBufferEnd();
 		return 0;
-	case CG_R_FINISHBLOOM:
+	case CG_R_BEGIN_POST_BLOOM_2D:
+		// unified bracket vocabulary: on this engine, "begin protected 2D"
+		// means bloom the 3D scene immediately
 		re.FinishBloom();
+		return 0;
+	case CG_R_END_POST_BLOOM_2D:
+		// reserved: this engine's bloom completed at Begin
 		return 0;
 	case CG_TRAP_GETVALUE:
 		return CL_GetValue( VMA(1), args[2], VMA(3) );
 
 	case CG_R_PROJECTDECAL:
 		re.ProjectDecal( VMA(1), VMF(2), VMF(3), VMF(4), args[5], VMA(6), args[7] );
+		return 0;
+
+	case CG_VR_REGISTERSTATE:
+		VM_RegisterVRShared( cgvm, VR_WRITER_CGAME, args[1], args[2], args[3] );
 		return 0;
 
 	default:
@@ -908,30 +943,32 @@ void CL_InitCGame( void ) {
 	mapname = Info_ValueForKey( info, "mapname" );
 	Com_sprintf( cl.mapname, sizeof( cl.mapname ), "maps/%s.bsp", mapname );
 
-	// load the dll or bytecode
+	// interpreter-vs-JIT preference when the ladder selects a QVM;
+	// QVM-vs-native itself is decided in VM_Create
 	interpret = Cvar_VariableValue("vm_cgame");
-	if(cl_connectedToPureServer)
-	{
-		// if sv_pure is set we only allow qvms to be loaded
-		if(interpret != VMI_COMPILED && interpret != VMI_BYTECODE)
-			interpret = VMI_COMPILED;
-	}
+	if ( interpret == VMI_NATIVE )
+		interpret = VMI_COMPILED;
 
-  interpret = VMI_NATIVE;
 	cgvm = VM_Create( "cgame", CL_CgameSystemCalls, interpret );
 	if ( !cgvm ) {
 		Com_Error( ERR_DROP, "VM_Create on cgame failed" );
 	}
 	clc.state = CA_LOADING;
 
-	//Pass the vr client info in on the init
-	long long val = (long long)(&vr);
-	int *ptr = (int*)(&val);	 //HACK!!
+	// vid_restart tears down and re-inits the VR state with the derived mode
+	// flags zeroed, and no input frame runs before cgame draws its loading
+	// screen — recompute here so CG_INIT's loading UI sees the right
+	// virtual-screen state
+	VR_RefreshDerivedModeState();
 
 	// init for this gamestate
 	// use the lastExecutedServerCommand instead of the serverCommandSequence
 	// otherwise server commands sent just before a gamestate are dropped
-	VM_Call( cgvm, CG_INIT, clc.serverMessageSequence, clc.lastExecutedServerCommand, clc.clientNum, ptr[0], ptr[1] );
+	VM_Call( cgvm, CG_INIT, clc.serverMessageSequence, clc.lastExecutedServerCommand, clc.clientNum );
+
+	if ( VM_VRSentinel( cgvm ) && !VM_VRRegistered( cgvm ) ) {
+		Com_Error( ERR_DROP, "cgame QVM declared VR API support but never registered VR state" );
+	}
 
 	// reset any CVAR_CHEAT cvars registered by cgame
 	if ( !clc.demoplaying && !cl_connectedToCheatServer )

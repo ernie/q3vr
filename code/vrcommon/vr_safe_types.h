@@ -8,6 +8,7 @@
 
 typedef enum
 {
+	VRFM_NONE = 0,      // Not following / mirror not yet synced (zero must stay inert)
 	VRFM_THIRDPERSON_1, // Camera will auto move to keep up with player
 	VRFM_THIRDPERSON_2,	// Camera is completely free movement with the thumbstick
 	VRFM_FIRSTPERSON,   // Obvious isn't it?..

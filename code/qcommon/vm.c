@@ -34,6 +34,7 @@ and one exported function: Perform
 */
 
 #include "vm_local.h"
+#include "../vrcommon/vr_shared.h"
 
 
 vm_t	*currentVM = NULL;
@@ -73,6 +74,10 @@ void VM_Init( void ) {
 	Cvar_Get( "vm_cgame", "2", CVAR_ARCHIVE );	// !@# SHIP WITH SET TO 2
 	Cvar_Get( "vm_game", "2", CVAR_ARCHIVE );	// !@# SHIP WITH SET TO 2
 	Cvar_Get( "vm_ui", "2", CVAR_ARCHIVE );		// !@# SHIP WITH SET TO 2
+
+	// kill-switch for the VR-aware QVM ladder: set per-launch or via autoexec,
+	// deliberately NOT archived so an old default can't linger in user configs
+	Cvar_Get( "vm_forceNative", "0", 0 );
 
 	Cmd_AddCommand ("vmprofile", VM_VmProfile_f );
 	Cmd_AddCommand ("vminfo", VM_VmInfo_f );
@@ -563,6 +568,13 @@ vm_t *VM_Restart(vm_t *vm, qboolean unpure)
 	// free the original file
 	FS_FreeFile(header);
 
+	if ( vm->vrShared ) {
+		VR_SharedModuleUnloaded( vm->vrWriter );
+	}
+
+	// module must re-register during INIT; vrSentinel is preserved (same image)
+	vm->vrShared = NULL;
+
 	return vm;
 }
 
@@ -578,7 +590,7 @@ vm_t *VM_Create( const char *module, intptr_t (*systemCalls)(intptr_t *),
 				vmInterpret_t interpret ) {
 	vm_t		*vm;
 	vmHeader_t	*header = NULL;
-	int			i, remaining, retval;
+	int			i, remaining;
 	char filename[MAX_OSPATH];
 	void *startSearch = NULL;
 
@@ -611,37 +623,47 @@ vm_t *VM_Create( const char *module, intptr_t (*systemCalls)(intptr_t *),
 
 	Q_strncpyz(vm->name, module, sizeof(vm->name));
 
-	do
-	{
-		retval = FS_FindVM(&startSearch, filename, sizeof(filename), module, (interpret == VMI_NATIVE));
-		
-		if(retval == VMI_NATIVE)
-		{
-			Com_Printf("Try loading dll file %s\n", filename);
+	header = NULL;
 
-			vm->dllHandle = Sys_LoadGameDll(filename, &vm->entryPoint, VM_DllSyscall);
-			
-			if(vm->dllHandle)
-			{
+	// Phase 1: prefer a VR-aware QVM from the search path (uniform ladder).
+	// vm_forceNative 1 is the kill-switch that restores DLL-only loading.
+	if ( Cvar_VariableIntegerValue( "vm_forceNative" ) == 0 ) {
+		startSearch = NULL;
+		while ( FS_FindVM( &startSearch, filename, sizeof( filename ), module, qtrue ) == VMI_COMPILED ) {
+			int apiVersion = FS_GetVMVRAPIVersion( module, startSearch );
+			const char *pakName = FS_VMSearchPathName( startSearch );
+			if ( apiVersion == VR_API_VERSION ) {
+				Com_Printf( "%s: loading VR-aware QVM (VR API %d) from %s\n", module, apiVersion, pakName );
+				vm->searchPath = startSearch;
+				if ( ( header = VM_LoadQVM( vm, qtrue, qfalse ) ) ) {
+					vm->vrSentinel = qtrue;
+					break;
+				}
+				// VM_Free overwrites the name on failed load
+				Q_strncpyz( vm->name, module, sizeof( vm->name ) );
+			} else if ( apiVersion > 0 ) {
+				Com_Printf( "%s.qvm in %s declares VR API %d (engine supports %d); using native %s\n",
+					module, pakName, apiVersion, VR_API_VERSION, module );
+			} else {
+				Com_Printf( "%s.qvm in %s is not VR-aware; using native %s\n", module, pakName, module );
+			}
+		}
+	}
+
+	// Phase 2: native DLL fallback (previous behavior)
+	if ( !header ) {
+		startSearch = NULL;
+		while ( FS_FindVM( &startSearch, filename, sizeof( filename ), module, qfalse ) == VMI_NATIVE ) {
+			Com_Printf( "Try loading dll file %s\n", filename );
+			vm->dllHandle = Sys_LoadGameDll( filename, &vm->entryPoint, VM_DllSyscall );
+			if ( vm->dllHandle ) {
 				vm->systemCall = systemCalls;
 				return vm;
 			}
-			
-			Com_Printf("Failed loading dll, trying next\n");
+			Com_Printf( "Failed loading dll, trying next\n" );
 		}
-		else if(retval == VMI_COMPILED)
-		{
-			vm->searchPath = startSearch;
-			if((header = VM_LoadQVM(vm, qtrue, qfalse)))
-				break;
-
-			// VM_Free overwrites the name on failed load
-			Q_strncpyz(vm->name, module, sizeof(vm->name));
-		}
-	} while(retval >= 0);
-	
-	if(retval < 0)
 		return NULL;
+	}
 
 	vm->systemCall = systemCalls;
 
@@ -707,6 +729,10 @@ void VM_Free( vm_t *vm ) {
 		}
 	}
 
+	if ( vm->vrShared ) {
+		VR_SharedModuleUnloaded( vm->vrWriter );
+	}
+
 	if(vm->destroy)
 		vm->destroy(vm);
 
@@ -744,6 +770,50 @@ void VM_Forced_Unload_Start(void) {
 
 void VM_Forced_Unload_Done(void) {
 	forced_unload = 0;
+}
+
+/*
+==============
+VM_RegisterVRShared
+
+Module handed us its vr_shared_t mirror. Validate the handshake, translate
+the address (QVM: offset into dataBase; DLL: host pointer), and start syncing.
+==============
+*/
+void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize, int apiVersion ) {
+	const char *pakName = FS_VMSearchPathName( vm->searchPath );
+	if ( apiVersion != VR_API_VERSION || structSize != (int)sizeof( vr_shared_t ) ) {
+		Com_Error( ERR_DROP, "%s (from %s): VR API mismatch (module v%d size %d, engine v%d size %d)",
+			vm->name, pakName, apiVersion, structSize, VR_API_VERSION, (int)sizeof( vr_shared_t ) );
+	}
+	if ( vm->entryPoint ) {
+		// native DLL: shared address space
+		vm->vrShared = (struct vr_shared_s *)vmAddr;
+	} else {
+		unsigned dest = (unsigned)vmAddr;
+		if ( dest == 0 || ( dest & 3 ) != 0 ) {
+			Com_Error( ERR_DROP, "%s: VR shared block address invalid", vm->name );
+		}
+		if ( dest > (unsigned)vm->dataMask ||
+			 sizeof( vr_shared_t ) > (unsigned)vm->dataMask + 1 - dest ) {
+			Com_Error( ERR_DROP, "%s (from %s): VR shared block out of VM bounds", vm->name, pakName );
+		}
+		vm->vrShared = (struct vr_shared_s *)( vm->dataBase + dest );
+	}
+	vm->vrWriter = writer;
+	Com_Printf( "%s: VR shared state registered (VR API %d, %s)\n",
+		vm->name, apiVersion, vm->entryPoint ? "native" : "QVM" );
+	// module registered mid-call; give it fresh state immediately so init code
+	// after the register call reads live values
+	VR_SharedSyncIn( (vr_shared_t *)vm->vrShared );
+}
+
+qboolean VM_VRSentinel( vm_t *vm ) {
+	return vm ? vm->vrSentinel : qfalse;
+}
+
+qboolean VM_VRRegistered( vm_t *vm ) {
+	return ( vm && vm->vrShared ) ? qtrue : qfalse;
 }
 
 void *VM_ArgPtr( intptr_t intValue ) {
@@ -823,6 +893,13 @@ intptr_t QDECL VM_Call( vm_t *vm, int callnum, ... )
 	}
 
 	++vm->callLevel;
+	// Sync only around the outermost call: the mirror is shared-pointer state,
+	// so a nested same-VM call (e.g. trap_UpdateScreen -> UI_REFRESH) must see
+	// the mirror as-is (fresh engine state plus the outer call's own writes).
+	// Re-syncing on nested entry would clobber uncommitted writer-block writes,
+	// and re-committing on nested exit would push stale values back to the engine.
+	if ( vm->vrShared && vm->callLevel == 1 )
+		VR_SharedSyncIn( (vr_shared_t *)vm->vrShared );
 	// if we have a dll loaded, call it directly
 	if ( vm->entryPoint ) {
 		//rcg010207 -  see dissertation at top of VM_DllSyscall() in this file.
@@ -866,6 +943,8 @@ intptr_t QDECL VM_Call( vm_t *vm, int callnum, ... )
 			r = VM_CallInterpreted( vm, &a.callnum );
 #endif
 	}
+	if ( vm->vrShared && vm->callLevel == 1 )
+		VR_SharedSyncOut( (vr_shared_t *)vm->vrShared, vm->vrWriter );
 	--vm->callLevel;
 
 	if ( oldVM != NULL )

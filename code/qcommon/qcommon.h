@@ -368,6 +368,18 @@ void	VM_Debug( int level );
 void	*VM_ArgPtr( intptr_t intValue );
 void	*VM_ExplicitArgPtr( vm_t *vm, intptr_t intValue );
 
+#define VR_WRITER_CGAME	0
+#define VR_WRITER_GAME	1
+#define VR_WRITER_UI	2
+
+struct vr_shared_s;
+void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize, int apiVersion );
+qboolean VM_VRSentinel( vm_t *vm );
+qboolean VM_VRRegistered( vm_t *vm );
+void VR_SharedSyncIn( struct vr_shared_s *s );
+void VR_SharedSyncOut( const struct vr_shared_s *s, int writer );
+void VR_SharedModuleUnloaded( int writer );
+
 #define	VMA(x) VM_ArgPtr(args[x])
 static ID_INLINE float _vmf(intptr_t x)
 {
@@ -625,7 +637,9 @@ qboolean FS_FileExists( const char *file );
 
 qboolean FS_CreatePath (const char *OSPath);
 
-int FS_FindVM(void **startSearch, char *found, int foundlen, const char *name, int enableDll);
+int FS_FindVM(void **startSearch, char *found, int foundlen, const char *name, qboolean findQvm);
+int FS_GetVMVRAPIVersion( const char *name, void *searchPath );
+const char *FS_VMSearchPathName( void *searchPath );
 
 char	*FS_BaseDir_BuildOSPath( const char *base, const char *qpath );
 char	*FS_BuildOSPath( const char *base, const char *game, const char *qpath );

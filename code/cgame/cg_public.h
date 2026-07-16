@@ -168,10 +168,12 @@ typedef enum {
 	CG_HAPTICEVENT,
 	CG_R_HUDBUFFER_START,
 	CG_R_HUDBUFFER_END,
-	CG_R_FINISHBLOOM,
 	// engine extensions (discovered by name via trap_GetValue, not by fixed
 	// number; append new ones here to keep the ABI stable)
 	CG_R_PROJECTDECAL,
+	CG_VR_REGISTERSTATE,
+	CG_R_BEGIN_POST_BLOOM_2D,
+	CG_R_END_POST_BLOOM_2D,
 	CG_TRAP_GETVALUE = COM_TRAP_GETVALUE,
 //	qboolean trap_GetValue( char *value, int valueSize, const char *key );
 //	Engine-side value query (voip_*, plus discovered extensions e.g. trap_R_ProjectDecal).

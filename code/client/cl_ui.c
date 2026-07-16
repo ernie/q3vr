@@ -104,10 +104,6 @@ static void LAN_ResetPings(int source) {
 			servers = &cls.localServers[0];
 			count = MAX_OTHER_SERVERS;
 			break;
-		case AS_MPLAYER :
-			servers = &cls.mplayerServers[0];
-			count = MAX_GLOBAL_SERVERS;
-			break;
 		case AS_GLOBAL :
 			servers = &cls.globalServers[0];
 			count = MAX_GLOBAL_SERVERS;
@@ -140,11 +136,6 @@ static int LAN_AddServer(int source, const char *name, const char *address) {
 		case AS_LOCAL :
 			count = &cls.numlocalservers;
 			servers = &cls.localServers[0];
-			break;
-		case AS_MPLAYER :
-			max = MAX_GLOBAL_SERVERS;
-			count = &cls.nummplayerservers;
-			servers = &cls.mplayerServers[0];
 			break;
 		case AS_GLOBAL :
 			max = MAX_GLOBAL_SERVERS;
@@ -189,10 +180,6 @@ static void LAN_RemoveServer(int source, const char *addr) {
 			count = &cls.numlocalservers;
 			servers = &cls.localServers[0];
 			break;
-		case AS_MPLAYER :
-			count = &cls.nummplayerservers;
-			servers = &cls.mplayerServers[0];
-			break;
 		case AS_GLOBAL :
 			count = &cls.numglobalservers;
 			servers = &cls.globalServers[0];
@@ -230,9 +217,6 @@ static int LAN_GetServerCount( int source ) {
 		case AS_LOCAL :
 			return cls.numlocalservers;
 			break;
-		case AS_MPLAYER :
-			return cls.nummplayerservers;
-			break;
 		case AS_GLOBAL :
 			return cls.numglobalservers;
 			break;
@@ -253,12 +237,6 @@ static void LAN_GetServerAddressString( int source, int n, char *buf, int buflen
 		case AS_LOCAL :
 			if (n >= 0 && n < MAX_OTHER_SERVERS) {
 				Q_strncpyz(buf, NET_AdrToStringwPort( cls.localServers[n].adr) , buflen );
-				return;
-			}
-			break;
-		case AS_MPLAYER :
-			if (n >= 0 && n < MAX_GLOBAL_SERVERS) {
-				Q_strncpyz(buf, NET_AdrToStringwPort( cls.mplayerServers[n].adr) , buflen );
 				return;
 			}
 			break;
@@ -291,11 +269,6 @@ static void LAN_GetServerInfo( int source, int n, char *buf, int buflen ) {
 		case AS_LOCAL :
 			if (n >= 0 && n < MAX_OTHER_SERVERS) {
 				server = &cls.localServers[n];
-			}
-			break;
-		case AS_MPLAYER :
-			if (n >= 0 && n < MAX_GLOBAL_SERVERS) {
-				server = &cls.mplayerServers[n];
 			}
 			break;
 		case AS_GLOBAL :
@@ -348,11 +321,6 @@ static int LAN_GetServerPing( int source, int n ) {
 				server = &cls.localServers[n];
 			}
 			break;
-		case AS_MPLAYER :
-			if (n >= 0 && n < MAX_GLOBAL_SERVERS) {
-				server = &cls.mplayerServers[n];
-			}
-			break;
 		case AS_GLOBAL :
 			if (n >= 0 && n < MAX_GLOBAL_SERVERS) {
 				server = &cls.globalServers[n];
@@ -380,11 +348,6 @@ static serverInfo_t *LAN_GetServerPtr( int source, int n ) {
 		case AS_LOCAL :
 			if (n >= 0 && n < MAX_OTHER_SERVERS) {
 				return &cls.localServers[n];
-			}
-			break;
-		case AS_MPLAYER :
-			if (n >= 0 && n < MAX_GLOBAL_SERVERS) {
-				return &cls.mplayerServers[n];
 			}
 			break;
 		case AS_GLOBAL :
@@ -523,10 +486,6 @@ static void LAN_MarkServerVisible(int source, int n, qboolean visible ) {
 			case AS_LOCAL :
 				server = &cls.localServers[0];
 				break;
-			case AS_MPLAYER :
-				server = &cls.mplayerServers[0];
-				count = MAX_GLOBAL_SERVERS;
-				break;
 			case AS_GLOBAL :
 				server = &cls.globalServers[0];
 				count = MAX_GLOBAL_SERVERS;
@@ -546,11 +505,6 @@ static void LAN_MarkServerVisible(int source, int n, qboolean visible ) {
 			case AS_LOCAL :
 				if (n >= 0 && n < MAX_OTHER_SERVERS) {
 					cls.localServers[n].visible = visible;
-				}
-				break;
-			case AS_MPLAYER :
-				if (n >= 0 && n < MAX_GLOBAL_SERVERS) {
-					cls.mplayerServers[n].visible = visible;
 				}
 				break;
 			case AS_GLOBAL :
@@ -578,11 +532,6 @@ static int LAN_ServerIsVisible(int source, int n ) {
 		case AS_LOCAL :
 			if (n >= 0 && n < MAX_OTHER_SERVERS) {
 				return cls.localServers[n].visible;
-			}
-			break;
-		case AS_MPLAYER :
-			if (n >= 0 && n < MAX_GLOBAL_SERVERS) {
-				return cls.mplayerServers[n].visible;
 			}
 			break;
 		case AS_GLOBAL :
@@ -750,6 +699,53 @@ static int FloatAsInt( float f ) {
 	floatint_t fi;
 	fi.f = f;
 	return fi.i;
+}
+
+/*
+====================
+CL_UIGetValue
+
+Query engine-side values from ui. Returns qtrue if key is recognized
+and writes the value into the provided buffer.
+====================
+*/
+static qboolean CL_UIGetValue( char *value, int valueSize, const char *key ) {
+	if ( !Q_stricmp( key, "trap_VR_RegisterState" ) ) {
+		Com_sprintf( value, valueSize, "%i", UI_VR_REGISTERSTATE );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "trap_HapticEvent" ) ) {
+		Com_sprintf( value, valueSize, "%i", UI_HAPTICEVENT );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "trap_VKeyboard_Show" ) ) {
+		Com_sprintf( value, valueSize, "%i", UI_VKEYBOARD_SHOW );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "trap_VKeyboard_Hide" ) ) {
+		Com_sprintf( value, valueSize, "%i", UI_VKEYBOARD_HIDE );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "trap_VKeyboard_IsActive" ) ) {
+		Com_sprintf( value, valueSize, "%i", UI_VKEYBOARD_ISACTIVE );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "trap_VKeyboard_HandleKey" ) ) {
+		Com_sprintf( value, valueSize, "%i", UI_VKEYBOARD_HANDLEKEY );
+		return qtrue;
+	}
+
+	// Value keys (no syscall): names of the inputs that synthesize K_SPACE
+	// and K_ESCAPE in menus, so ui prompts can name the real controls.
+	if ( !Q_stricmp( key, "vr_menu_skip_button" ) ) {
+		Com_sprintf( value, valueSize, "%s", VR_GetMenuSkipButtonName() );
+		return qtrue;
+	}
+	if ( !Q_stricmp( key, "vr_menu_cancel_button" ) ) {
+		Com_sprintf( value, valueSize, "%s", VR_GetMenuCancelButtonName() );
+		return qtrue;
+	}
+	return qfalse;
 }
 
 /*
@@ -1128,6 +1124,13 @@ intptr_t CL_UISystemCalls( intptr_t *args ) {
 	case UI_VKEYBOARD_HANDLEKEY:
 		return VKeyboard_HandleKey( args[1] );
 
+	case UI_TRAP_GETVALUE:
+		return CL_UIGetValue( VMA(1), args[2], VMA(3) );
+
+	case UI_VR_REGISTERSTATE:
+		VM_RegisterVRShared( uivm, VR_WRITER_UI, args[1], args[2], args[3] );
+		return 0;
+
 	default:
 		Com_Error( ERR_DROP, "Bad UI system trap: %ld", (long int) args[0] );
 
@@ -1164,30 +1167,26 @@ void CL_InitUI( void ) {
 	int		v;
 	vmInterpret_t		interpret;
 
-	// load the dll or bytecode
+	// interpreter-vs-JIT preference when the ladder selects a QVM;
+	// QVM-vs-native itself is decided in VM_Create
 	interpret = Cvar_VariableValue("vm_ui");
-	if(cl_connectedToPureServer)
-	{
-		// if sv_pure is set we only allow qvms to be loaded
-		if(interpret != VMI_COMPILED && interpret != VMI_BYTECODE)
-			interpret = VMI_COMPILED;
-	}
+	if ( interpret == VMI_NATIVE )
+		interpret = VMI_COMPILED;
 
-  interpret = VMI_NATIVE;
-  uivm = VM_Create( "ui", CL_UISystemCalls, interpret );
+	uivm = VM_Create( "ui", CL_UISystemCalls, interpret );
 	if ( !uivm ) {
 		Com_Error( ERR_FATAL, "VM_Create on UI failed" );
 	}
-
-  long long val = (long long)(&vr);
-	int *ptr = (int*)(&val);	 //HACK!!
 
 	// sanity check
 	v = VM_Call( uivm, UI_GETAPIVERSION );
 	if (v == UI_OLD_API_VERSION) {
 //		Com_Printf(S_COLOR_YELLOW "WARNING: loading old Quake III Arena User Interface version %d\n", v );
 		// init for this gamestate
-		VM_Call( uivm, UI_INIT, (clc.state >= CA_AUTHORIZING && clc.state < CA_ACTIVE), ptr[0], ptr[1]);
+		VM_Call( uivm, UI_INIT, (clc.state >= CA_AUTHORIZING && clc.state < CA_ACTIVE) );
+		if ( VM_VRSentinel( uivm ) && !VM_VRRegistered( uivm ) ) {
+			Com_Error( ERR_DROP, "UI QVM declared VR API support but never registered VR state" );
+		}
 	}
 	else if (v != UI_API_VERSION) {
 		// Free uivm now, so UI_SHUTDOWN doesn't get called later.
@@ -1199,7 +1198,10 @@ void CL_InitUI( void ) {
 	}
 	else {
 		// init for this gamestate
-		VM_Call( uivm, UI_INIT, (clc.state >= CA_AUTHORIZING && clc.state < CA_ACTIVE), ptr[0], ptr[1] );
+		VM_Call( uivm, UI_INIT, (clc.state >= CA_AUTHORIZING && clc.state < CA_ACTIVE) );
+		if ( VM_VRSentinel( uivm ) && !VM_VRRegistered( uivm ) ) {
+			Com_Error( ERR_DROP, "UI QVM declared VR API support but never registered VR state" );
+		}
 	}
 }
 

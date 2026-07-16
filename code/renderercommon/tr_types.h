@@ -139,8 +139,6 @@ typedef struct {
 	vec3_t		vieworg;
 	vec3_t		viewaxis[3];		// transformation matrix
 
-	qboolean	isHUD;
-
 	// time in milliseconds for shader effects and other time dependent rendering issues
 	int			time;
 
@@ -151,6 +149,10 @@ typedef struct {
 
 	// text messages for deform text shaders
 	char		text[MAX_RENDER_STRINGS][MAX_RENDER_STRING_LENGTH];
+
+	// engine extension, deliberately after the stock ioq3 fields so the
+	// struct prefix stays layout-compatible with foreign QVMs
+	qboolean	isHUD;
 } refdef_t;
 
 

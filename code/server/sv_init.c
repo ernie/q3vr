@@ -695,7 +695,7 @@ void SV_Init (void)
 	Cvar_Get ("sv_dlURL", "", CVAR_SERVERINFO | CVAR_ARCHIVE);
 	
 	for ( index = 0; index < MAX_MASTER_SERVERS; index++ )
-		vr_master[index] = Cvar_Get( va( "vr_master%d", index + 1 ), "", CVAR_ARCHIVE );
+		sv_master[index] = Cvar_Get( va( "sv_master%d", index + 1 ), "", CVAR_ARCHIVE );
 
 	sv_reconnectlimit = Cvar_Get ("sv_reconnectlimit", "3", 0);
 	sv_showloss = Cvar_Get ("sv_showloss", "0", 0);

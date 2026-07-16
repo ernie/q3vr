@@ -141,6 +141,8 @@ typedef struct vmSymbol_s {
 #define	VM_OFFSET_PROGRAM_STACK		0
 #define	VM_OFFSET_SYSTEM_CALL		4
 
+struct vr_shared_s;
+
 struct vm_s {
     // DO NOT MOVE OR CHANGE THESE WITHOUT CHANGING THE VM_OFFSET_* DEFINES
     // USED BY THE ASM CODE
@@ -151,6 +153,11 @@ struct vm_s {
    
 	char		name[MAX_QPATH];
 	void	*searchPath;				// hint for FS_ReadFileDir()
+
+	// VR shared-state mirror (trap_VR_RegisterState)
+	struct vr_shared_s *vrShared;	// translated host pointer into module/VM memory
+	int			vrWriter;			// VR_WRITER_* sync-out scope
+	qboolean	vrSentinel;			// loaded QVM carried the VR API sentinel
 
 	// for dynamic linked modules
 	void		*dllHandle;

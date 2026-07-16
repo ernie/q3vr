@@ -2800,11 +2800,11 @@ void Com_Init( char *commandLine ) {
 	// trap_GetValue syscall number, then discover extensions by name
 	Cvar_Get( "//trap_GetValue", va( "%i", COM_TRAP_GETVALUE ), CVAR_PROTECTED | CVAR_ROM );
 
-	Cvar_Get( "vr_master1", "mp.quakevr.com:27950", 0 );
-	Cvar_Get( "vr_master2", "directory.trinity.run", 0 );
-	Cvar_Get( "vr_master3", MASTER_SERVER_NAME, 0 );
-	Cvar_Get( "vr_master4", "directory.ioquake3.org", CVAR_ARCHIVE );
-	Cvar_Get( "vr_master5", "", CVAR_ARCHIVE );
+	Cvar_Get( "sv_master1", MASTER_SERVER_NAME, 0 );
+	Cvar_Get( "sv_master2", "directory.trinity.run", 0 );
+	Cvar_Get( "sv_master3", "master.ioquake3.org", 0 );
+	Cvar_Get( "sv_master4", "mp.quakevr.com", 0 );
+	Cvar_Get( "sv_master5", "", CVAR_ARCHIVE );
 
 	com_gamename = Cvar_Get("com_gamename", GAMENAME_FOR_MASTER, CVAR_SERVERINFO | CVAR_INIT);
 	com_protocol = Cvar_Get("com_protocol", va("%i", PROTOCOL_VERSION), CVAR_SERVERINFO | CVAR_INIT);
