@@ -1419,10 +1419,11 @@ long FS_FOpenFileRead(const char *filename, fileHandle_t *file, qboolean uniqueF
 FS_GetVMVRAPIVersion
 
 Scan a candidate .qvm (at the given searchpath) for the VR API sentinel
-string. Returns the declared version, or 0 if the QVM is not VR-aware.
+string. Returns the declared MAJOR version (0 if the QVM is not VR-aware)
+and writes the minor to *outMinor. A sentinel with no ".minor" reads as .0.
 =================
 */
-int FS_GetVMVRAPIVersion( const char *name, void *searchPath )
+int FS_GetVMVRAPIVersion( const char *name, void *searchPath, int *outMinor )
 {
 	static const char needle[] = "TRINITY_VR_API/";
 	const int needleLen = (int)sizeof( needle ) - 1;
@@ -1431,7 +1432,10 @@ int FS_GetVMVRAPIVersion( const char *name, void *searchPath )
 	long len;
 	byte *buf;
 	long i;
-	int version = 0;
+	int major = 0;
+
+	if ( outMinor )
+		*outMinor = 0;
 
 	Com_sprintf( qvmName, sizeof( qvmName ), "vm/%s.qvm", name );
 	len = FS_FOpenFileReadDir( qvmName, (searchpath_t *)searchPath, &f, qfalse, qfalse );
@@ -1446,12 +1450,17 @@ int FS_GetVMVRAPIVersion( const char *name, void *searchPath )
 	buf[len] = '\0';
 	for ( i = 0; i + needleLen <= len; i++ ) {
 		if ( buf[i] == needle[0] && !memcmp( buf + i, needle, needleLen ) ) {
-			version = atoi( (char *)buf + i + needleLen );
+			const char *p = (char *)buf + i + needleLen;
+			major = atoi( p );
+			while ( *p >= '0' && *p <= '9' )
+				p++;
+			if ( *p == '.' && outMinor )
+				*outMinor = atoi( p + 1 );
 			break;
 		}
 	}
 	Hunk_FreeTempMemory( buf );
-	return version;
+	return major;
 }
 
 /*

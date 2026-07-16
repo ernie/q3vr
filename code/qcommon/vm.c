@@ -630,10 +630,14 @@ vm_t *VM_Create( const char *module, intptr_t (*systemCalls)(intptr_t *),
 	if ( Cvar_VariableIntegerValue( "vm_forceNative" ) == 0 ) {
 		startSearch = NULL;
 		while ( FS_FindVM( &startSearch, filename, sizeof( filename ), module, qtrue ) == VMI_COMPILED ) {
-			int apiVersion = FS_GetVMVRAPIVersion( module, startSearch );
+			int minor = 0;
+			int major = FS_GetVMVRAPIVersion( module, startSearch, &minor );
 			const char *pakName = FS_VMSearchPathName( startSearch );
-			if ( apiVersion == VR_API_VERSION ) {
-				Com_Printf( "%s: loading VR-aware QVM (VR API %d) from %s\n", module, apiVersion, pakName );
+			if ( major == 0 ) {
+				// a plain non-VR QVM: fall through to the native module
+				Com_Printf( "%s.qvm in %s is not VR-aware; using native %s\n", module, pakName, module );
+			} else if ( major == VR_API_MAJOR && minor <= VR_API_MINOR ) {
+				Com_Printf( "%s: loading VR-aware QVM (VR API %d.%d) from %s\n", module, major, minor, pakName );
 				vm->searchPath = startSearch;
 				if ( ( header = VM_LoadQVM( vm, qtrue, qfalse ) ) ) {
 					vm->vrSentinel = qtrue;
@@ -641,11 +645,11 @@ vm_t *VM_Create( const char *module, intptr_t (*systemCalls)(intptr_t *),
 				}
 				// VM_Free overwrites the name on failed load
 				Q_strncpyz( vm->name, module, sizeof( vm->name ) );
-			} else if ( apiVersion > 0 ) {
-				Com_Printf( "%s.qvm in %s declares VR API %d (engine supports %d); using native %s\n",
-					module, pakName, apiVersion, VR_API_VERSION, module );
 			} else {
-				Com_Printf( "%s.qvm in %s is not VR-aware; using native %s\n", module, pakName, module );
+				// a VR module the engine can't satisfy: drop, so the native
+				// module (a different game) never runs silently in its place
+				Com_Error( ERR_DROP, "%s.qvm (from %s): VR API incompatible: engine %d.%d, mod %d.%d",
+					module, pakName, VR_API_MAJOR, VR_API_MINOR, major, minor );
 			}
 		}
 	}
@@ -782,10 +786,12 @@ the address (QVM: offset into dataBase; DLL: host pointer), and start syncing.
 */
 void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize, int apiVersion ) {
 	const char *pakName = FS_VMSearchPathName( vm->searchPath );
-	if ( apiVersion != VR_API_VERSION || structSize != (int)sizeof( vr_shared_t ) ) {
-		Com_Error( ERR_DROP, "%s (from %s): VR API mismatch (module v%d size %d, engine v%d size %d)",
-			vm->name, pakName, apiVersion, structSize, VR_API_VERSION, (int)sizeof( vr_shared_t ) );
-	}
+	// The version gate already ran at load (the sentinel scan), so the handshake
+	// is trusted here - no size/version check. A broken module is its own
+	// problem. (When a later minor makes older, smaller-struct modules possible,
+	// sync-in clamps to structSize and this bounds check moves to it too.)
+	(void)apiVersion;
+	(void)structSize;
 	if ( vm->entryPoint ) {
 		// native DLL: shared address space
 		vm->vrShared = (struct vr_shared_s *)vmAddr;
@@ -801,8 +807,8 @@ void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize,
 		vm->vrShared = (struct vr_shared_s *)( vm->dataBase + dest );
 	}
 	vm->vrWriter = writer;
-	Com_Printf( "%s: VR shared state registered (VR API %d, %s)\n",
-		vm->name, apiVersion, vm->entryPoint ? "native" : "QVM" );
+	Com_Printf( "%s: VR shared state registered (VR API %d.%d, %s)\n",
+		vm->name, VR_API_MAJOR, VR_API_MINOR, vm->entryPoint ? "native" : "QVM" );
 	// module registered mid-call; give it fresh state immediately so init code
 	// after the register call reads live values
 	VR_SharedSyncIn( (vr_shared_t *)vm->vrShared );

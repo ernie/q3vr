@@ -9,8 +9,9 @@
 #include "vr_clientinfo.h"
 #include "vr_shared.h"
 
-// ABI v1 is frozen: these fail to compile if vr_shared_t's size or block
-// boundaries drift. Bump VR_API_VERSION and update the pins on any change.
+// ABI v1.0 is frozen: these fail to compile if vr_shared_t's size or block
+// boundaries drift. Moving or removing an existing field is a MAJOR bump
+// (update the pins); a new tail field is a MINOR bump.
 #define VR_ABI_ASSERT( name, expr ) typedef char name[ (expr) ? 1 : -1 ]
 VR_ABI_ASSERT( vr_abi_v1_size, sizeof( vr_shared_t ) == 352 );
 VR_ABI_ASSERT( vr_abi_v1_cg_first, offsetof( vr_shared_t, VR_SHARED_CG_FIRST ) == 240 );
@@ -20,6 +21,10 @@ VR_ABI_ASSERT( vr_abi_v1_cfg_first, offsetof( vr_shared_t, VR_SHARED_CFG_FIRST )
 extern vr_clientinfo_t vr;
 
 void VR_SharedSyncIn( vr_shared_t *s ) {
+	// Writes the full struct. A field appended for a later MINOR must guard its
+	// write with `if ( offsetof(vr_shared_t, f) + sizeof(f) <= s->structSize )`
+	// so an older module's smaller mirror is never overwritten. v1.0 has no such
+	// field, so every write below is unconditional.
 	// eng block
 	s->fov_x = vr.fov_x;
 	s->fov_y = vr.fov_y;
