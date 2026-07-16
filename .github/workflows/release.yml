@@ -16,6 +16,25 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # TRINITY_VERSION (single line at the repo root) pins the ernie/trinity
+      # release this build ships: every build job compiles the game module
+      # libraries from that tag's source, and the release job bundles that
+      # same release's pak assets byte-verbatim. One pin drives both; no job
+      # may reference the "latest" trinity release.
+      - name: Read Trinity pin
+        shell: bash
+        run: |
+          v="$(tr -d '[:space:]' < TRINITY_VERSION)"
+          test -n "$v"
+          echo "TRINITY_VERSION=$v" >> "$GITHUB_ENV"
+
+      - name: Checkout Trinity source (pinned)
+        uses: actions/checkout@v6
+        with:
+          repository: ernie/trinity
+          ref: ${{ env.TRINITY_VERSION }}
+          path: trinity
+
       - name: Install Vulkan SDK
         uses: jakoch/install-vulkan-sdk-action@v1.5.5
         with:
@@ -25,7 +44,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -G "Visual Studio 17 2022"
+          cmake -S . -B build -G "Visual Studio 17 2022" -DTRINITY_SOURCE_DIR="${{ github.workspace }}/trinity"
           cmake --build build --config Release
 
       - uses: actions/upload-artifact@v7
@@ -45,6 +64,21 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # TRINITY_VERSION pins the trinity release; see the windows-msvc job.
+      - name: Read Trinity pin
+        shell: bash
+        run: |
+          v="$(tr -d '[:space:]' < TRINITY_VERSION)"
+          test -n "$v"
+          echo "TRINITY_VERSION=$v" >> "$GITHUB_ENV"
+
+      - name: Checkout Trinity source (pinned)
+        uses: actions/checkout@v6
+        with:
+          repository: ernie/trinity
+          ref: ${{ env.TRINITY_VERSION }}
+          path: trinity
+
       - name: Install Vulkan SDK
         uses: jakoch/install-vulkan-sdk-action@v1.5.5
         with:
@@ -54,7 +88,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTRINITY_SOURCE_DIR="${{ github.workspace }}/trinity"
           cmake --build build
 
       - uses: actions/upload-artifact@v7
@@ -73,6 +107,20 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
+
+      # TRINITY_VERSION pins the trinity release; see the windows-msvc job.
+      - name: Read Trinity pin
+        run: |
+          v="$(tr -d '[:space:]' < TRINITY_VERSION)"
+          test -n "$v"
+          echo "TRINITY_VERSION=$v" >> "$GITHUB_ENV"
+
+      - name: Checkout Trinity source (pinned)
+        uses: actions/checkout@v6
+        with:
+          repository: ernie/trinity
+          ref: ${{ env.TRINITY_VERSION }}
+          path: trinity
 
       - name: Install dependencies
         run: |
@@ -100,7 +148,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTRINITY_SOURCE_DIR="${{ github.workspace }}/trinity"
           cmake --build build
 
       - uses: actions/upload-artifact@v7
@@ -121,20 +169,29 @@ jobs:
       - uses: actions/checkout@v6
         with:
           sparse-checkout: |
+            TRINITY_VERSION
             misc/update-trinity.bat
             misc/update-trinity.sh
+
+      # Same pin the build jobs compiled the module libraries from: the paks
+      # bundled below must come from that exact trinity release, byte-verbatim.
+      - name: Read Trinity pin
+        run: |
+          v="$(tr -d '[:space:]' < TRINITY_VERSION)"
+          test -n "$v"
+          echo "TRINITY_VERSION=$v" >> "$GITHUB_ENV"
 
       - name: Download build artifacts
         uses: actions/download-artifact@v8
 
-      - name: Download Trinity assets
+      - name: Download Trinity assets (pinned)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p trinity-assets
-          gh release download --repo ernie/trinity --pattern 'pak8t.pk3' --dir trinity-assets
-          gh release download --repo ernie/trinity --pattern 'pak3t.pk3' --dir trinity-assets
-          gh release download --repo ernie/trinity --pattern 'zzz-trinity-announcer.pk3' --dir trinity-assets
+          gh release download "$TRINITY_VERSION" --repo ernie/trinity --pattern 'pak8t.pk3' --dir trinity-assets
+          gh release download "$TRINITY_VERSION" --repo ernie/trinity --pattern 'pak3t.pk3' --dir trinity-assets
+          gh release download "$TRINITY_VERSION" --repo ernie/trinity --pattern 'zzz-trinity-announcer.pk3' --dir trinity-assets
 
       - name: Bundle Trinity assets
         run: |
@@ -207,4 +264,6 @@ jobs:
         with:
           files: |
             *.zip
+          body: |
+            Trinity mod: ${{ env.TRINITY_VERSION }}
           generate_release_notes: true

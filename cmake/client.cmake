@@ -57,7 +57,7 @@ if(NOT EMSCRIPTEN)
     )
 endif()
 
-add_git_dependency("${SOURCE_DIR}/client/cl_console.c")
+add_git_dependency(${SOURCE_DIR}/client/cl_console.c)
 
 # CLIENT_DEFINITIONS is populated by library cmake files (opus.cmake, etc.)
 # Add our core definitions here
@@ -174,26 +174,9 @@ if(BUILD_RENDERER_GL2)
     endif()
 endif()
 
-# Build pakQ3VR.pk3 from source (always regenerate to catch new files)
-add_custom_target(pakQ3VR ALL
-    COMMAND ${CMAKE_COMMAND} -E remove -f "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3"
-    COMMAND ${CMAKE_COMMAND} -E tar cf
-        ${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3 --format=zip
-        .
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/assets/pakQ3VR"
-    COMMENT "Building pakQ3VR.pk3 from source"
-)
-
 # Copy assets to output dir (attach to primary client only)
 if(DEFINED PRIMARY_CLIENT)
     add_custom_command(TARGET ${PRIMARY_CLIENT} POST_BUILD
-        # Copy pakQ3VR.pk3 to both baseq3 and missionpack
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3"
-        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3"
-        "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/missionpack/"
         # Copy point release files
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/assets/third_party/point_release_v1.32"
@@ -212,19 +195,9 @@ if(DEFINED PRIMARY_CLIENT)
         "${CMAKE_SOURCE_DIR}/code/thirdparty/openal-soft-1.25.1/COPYING"
         "$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/licenses/COPYING.openal-soft"
     )
-    # pakQ3VR is built unconditionally via `cmake -E tar`, so the POST_BUILD
-    # copy above must always wait for it. (Previously guarded by ZIP_EXECUTABLE
-    # back when a separate `zip` binary was required.)
-    add_dependencies(${PRIMARY_CLIENT} pakQ3VR)
 endif()
 
 # Install targets
-install(FILES "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3" DESTINATION
-    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-    COMPONENT game_engine)
-install(FILES "${CMAKE_SOURCE_DIR}/assets/pakQ3VR.pk3" DESTINATION
-    $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/missionpack/,${CMAKE_BINARY_DIR}/$<CONFIG>>
-    COMPONENT game_engine)
 install(
     DIRECTORY "${CMAKE_SOURCE_DIR}/assets/third_party/point_release_v1.32/" DESTINATION
     $<PATH:RELATIVE_PATH,$<TARGET_FILE_DIR:${PRIMARY_CLIENT}>/baseq3/,${CMAKE_BINARY_DIR}/$<CONFIG>>

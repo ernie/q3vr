@@ -209,7 +209,7 @@ details.
 If you're having some problems consider:
 
 * Verifying that all necessary PAK files are located in `baseq3/` subdirectory,
-  i.e. `pak0.pk3`, ..., `pak8.pk3` and `pakQ3VR.pk3`
+  i.e. `pak0.pk3`, ..., `pak8.pk3` and `pak8t.pk3`
 * Removing all user config files from your profile's directory
   * On Windows this will be `%appdata%\Quake3\` (usually
     `C:\Users\$user\AppData\Roaming\Quake3`)

@@ -1,4 +1,5 @@
-/build*
+/build/
+/build-mingw/
 /debug*
 Makefile.local
 *.swp
@@ -6,9 +7,6 @@ Makefile.local
 *~
 /.vscode/
 /baseq3
-
-# Built assets
-/assets/pakQ3VR.pk3
 
 # OS X
 ####################
