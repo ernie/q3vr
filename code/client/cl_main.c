@@ -2227,11 +2227,10 @@ void CL_ServersResponsePacket( const netadr_t* from, msg_t *msg, qboolean extend
 	byte*			buffptr;
 	byte*			buffend;
 
-	qboolean		isMplayer = NET_CompareAdr( *from, cls.masterAdr[MPLAYER_MASTER_INDEX] );
-	serverInfo_t   *bucketServers   = isMplayer ? cls.mplayerServers           : cls.globalServers;
-	int            *bucketCount     = isMplayer ? &cls.nummplayerservers       : &cls.numglobalservers;
-	netadr_t       *bucketAddrs     = isMplayer ? cls.mplayerServerAddresses   : cls.globalServerAddresses;
-	int            *bucketNumAddrs  = isMplayer ? &cls.numMplayerServerAddresses : &cls.numGlobalServerAddresses;
+	serverInfo_t   *bucketServers   = cls.globalServers;
+	int            *bucketCount     = &cls.numglobalservers;
+	netadr_t       *bucketAddrs     = cls.globalServerAddresses;
+	int            *bucketNumAddrs  = &cls.numGlobalServerAddresses;
 
 	Com_Printf("CL_ServersResponsePacket from %s\n", NET_AdrToStringwPort(*from));
 
@@ -3787,12 +3786,6 @@ static void CL_SetServerInfoByAddress(netadr_t from, const char *info, int ping)
 		}
 	}
 
-	for (i = 0; i < MAX_GLOBAL_SERVERS; i++) {
-		if (NET_CompareAdr(from, cls.mplayerServers[i].adr)) {
-			CL_SetServerInfo(&cls.mplayerServers[i], info, ping);
-		}
-	}
-
 	for (i = 0; i < MAX_OTHER_SERVERS; i++) {
 		if (NET_CompareAdr(from, cls.favoriteServers[i].adr)) {
 			CL_SetServerInfo(&cls.favoriteServers[i], info, ping);
@@ -4169,7 +4162,7 @@ void CL_GlobalServers_f( void ) {
 		int numAddress = 0;
 
 		for ( i = 1; i <= MAX_MASTER_SERVERS; i++ ) {
-			sprintf(command, "vr_master%d", i);
+			sprintf(command, "sv_master%d", i);
 			masteraddress = Cvar_VariableString(command);
 
 			if(!*masteraddress)
@@ -4187,7 +4180,7 @@ void CL_GlobalServers_f( void ) {
 		return;
 	}
 
-	sprintf(command, "vr_master%d", masterNum);
+	sprintf(command, "sv_master%d", masterNum);
 	masteraddress = Cvar_VariableString(command);
 	
 	if(!*masteraddress)
@@ -4211,17 +4204,9 @@ void CL_GlobalServers_f( void ) {
 
 	Com_Printf("Requesting servers from %s (%s)...\n", masteraddress, NET_AdrToStringwPort(to));
 
-	cls.masterAdr[masterNum - 1] = to;
-
-	if ( masterNum - 1 == MPLAYER_MASTER_INDEX ) {
-		cls.nummplayerservers = -1;
-		cls.numMplayerServerAddresses = 0;
-		cls.pingUpdateSource = AS_MPLAYER;
-	} else {
-		cls.numglobalservers = -1;
-		cls.numGlobalServerAddresses = 0;
-		cls.pingUpdateSource = AS_GLOBAL;
-	}
+	cls.numglobalservers = -1;
+	cls.numGlobalServerAddresses = 0;
+	cls.pingUpdateSource = AS_GLOBAL;
 
 	// Use the extended query for IPv6 masters
 	if (to.type == NA_IP6 || to.type == NA_MULTICAST6)
@@ -4487,10 +4472,6 @@ qboolean CL_UpdateVisiblePings_f(int source) {
 				server = &cls.localServers[0];
 				max = cls.numlocalservers;
 			break;
-			case AS_MPLAYER :
-				server = &cls.mplayerServers[0];
-				max = cls.nummplayerservers;
-			break;
 			case AS_GLOBAL :
 				server = &cls.globalServers[0];
 				max = cls.numglobalservers;
@@ -4544,12 +4525,6 @@ qboolean CL_UpdateVisiblePings_f(int source) {
 							cls.numGlobalServerAddresses--;
 							CL_InitServerInfo(&server[i], &cls.globalServerAddresses[cls.numGlobalServerAddresses]);
 							// NOTE: the server[i].visible flag stays untouched
-						}
-					}
-					else if (source == AS_MPLAYER) {
-						if ( cls.numMplayerServerAddresses > 0 ) {
-							cls.numMplayerServerAddresses--;
-							CL_InitServerInfo(&server[i], &cls.mplayerServerAddresses[cls.numMplayerServerAddresses]);
 						}
 					}
 				}
