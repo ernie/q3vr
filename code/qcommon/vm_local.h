@@ -157,6 +157,7 @@ struct vm_s {
 	// VR shared-state mirror (trap_VR_RegisterState)
 	struct vr_shared_s *vrShared;	// translated host pointer into module/VM memory
 	int			vrWriter;			// VR_WRITER_* sync-out scope
+	int			vrStructSize;		// module-declared struct size, sanitized to [0,sizeof]; bounds every sync
 	qboolean	vrSentinel;			// loaded QVM carried the VR API sentinel
 
 	// for dynamic linked modules

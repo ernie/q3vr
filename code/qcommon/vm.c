@@ -786,12 +786,16 @@ the address (QVM: offset into dataBase; DLL: host pointer), and start syncing.
 */
 void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize, int apiVersion ) {
 	const char *pakName = FS_VMSearchPathName( vm->searchPath );
-	// The version gate already ran at load (the sentinel scan), so the handshake
-	// is trusted here - no size/version check. A broken module is its own
-	// problem. (When a later minor makes older, smaller-struct modules possible,
-	// sync-in clamps to structSize and this bounds check moves to it too.)
+	// The version gate already ran at load, so the handshake is trusted. structSize
+	// comes from (possibly hostile) module memory, so clamp it to [0,sizeof] ONCE
+	// here and drive every sync from the stored value - never re-read it from the
+	// module (TOCTOU). The engine only ever touches structSize bytes of the block.
 	(void)apiVersion;
-	(void)structSize;
+	if ( structSize < 0 )
+		structSize = 0;
+	if ( structSize > (int)sizeof( vr_shared_t ) )
+		structSize = (int)sizeof( vr_shared_t );
+	vm->vrStructSize = structSize;
 	if ( vm->entryPoint ) {
 		// native DLL: shared address space
 		vm->vrShared = (struct vr_shared_s *)vmAddr;
@@ -801,7 +805,7 @@ void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize,
 			Com_Error( ERR_DROP, "%s: VR shared block address invalid", vm->name );
 		}
 		if ( dest > (unsigned)vm->dataMask ||
-			 sizeof( vr_shared_t ) > (unsigned)vm->dataMask + 1 - dest ) {
+			 (unsigned)structSize > (unsigned)vm->dataMask + 1 - dest ) {
 			Com_Error( ERR_DROP, "%s (from %s): VR shared block out of VM bounds", vm->name, pakName );
 		}
 		vm->vrShared = (struct vr_shared_s *)( vm->dataBase + dest );
@@ -811,7 +815,7 @@ void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize,
 		vm->name, VR_API_MAJOR, VR_API_MINOR, vm->entryPoint ? "native" : "QVM" );
 	// module registered mid-call; give it fresh state immediately so init code
 	// after the register call reads live values
-	VR_SharedSyncIn( (vr_shared_t *)vm->vrShared );
+	VR_SharedSyncIn( (vr_shared_t *)vm->vrShared, vm->vrStructSize );
 }
 
 qboolean VM_VRSentinel( vm_t *vm ) {
@@ -905,7 +909,7 @@ intptr_t QDECL VM_Call( vm_t *vm, int callnum, ... )
 	// Re-syncing on nested entry would clobber uncommitted writer-block writes,
 	// and re-committing on nested exit would push stale values back to the engine.
 	if ( vm->vrShared && vm->callLevel == 1 )
-		VR_SharedSyncIn( (vr_shared_t *)vm->vrShared );
+		VR_SharedSyncIn( (vr_shared_t *)vm->vrShared, vm->vrStructSize );
 	// if we have a dll loaded, call it directly
 	if ( vm->entryPoint ) {
 		//rcg010207 -  see dissertation at top of VM_DllSyscall() in this file.
@@ -950,7 +954,7 @@ intptr_t QDECL VM_Call( vm_t *vm, int callnum, ... )
 #endif
 	}
 	if ( vm->vrShared && vm->callLevel == 1 )
-		VR_SharedSyncOut( (vr_shared_t *)vm->vrShared, vm->vrWriter );
+		VR_SharedSyncOut( (vr_shared_t *)vm->vrShared, vm->vrWriter, vm->vrStructSize );
 	--vm->callLevel;
 
 	if ( oldVM != NULL )

@@ -376,8 +376,8 @@ struct vr_shared_s;
 void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize, int apiVersion );
 qboolean VM_VRSentinel( vm_t *vm );
 qboolean VM_VRRegistered( vm_t *vm );
-void VR_SharedSyncIn( struct vr_shared_s *s );
-void VR_SharedSyncOut( const struct vr_shared_s *s, int writer );
+void VR_SharedSyncIn( struct vr_shared_s *s, int structSize );
+void VR_SharedSyncOut( const struct vr_shared_s *s, int writer, int structSize );
 void VR_SharedModuleUnloaded( int writer );
 
 #define	VMA(x) VM_ArgPtr(args[x])
