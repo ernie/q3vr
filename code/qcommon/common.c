@@ -2803,8 +2803,8 @@ void Com_Init( char *commandLine ) {
 	Cvar_Get( "sv_master1", MASTER_SERVER_NAME, 0 );
 	Cvar_Get( "sv_master2", "directory.trinity.run", 0 );
 	Cvar_Get( "sv_master3", "master.ioquake3.org", 0 );
-	Cvar_Get( "sv_master4", "mp.quakevr.com", 0 );
-	Cvar_Get( "sv_master5", "", CVAR_ARCHIVE );
+	Cvar_Get( "sv_master4", "master.maverickservers.com", 0 );
+	Cvar_Get( "sv_master5", "mp.quakevr.com", 0 );
 
 	com_gamename = Cvar_Get("com_gamename", GAMENAME_FOR_MASTER, CVAR_SERVERINFO | CVAR_INIT);
 	com_protocol = Cvar_Get("com_protocol", va("%i", PROTOCOL_VERSION), CVAR_SERVERINFO | CVAR_INIT);
