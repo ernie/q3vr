@@ -3,6 +3,7 @@
 #include "../client/client.h"
 #include "vr_base.h"
 #include "vr_clientinfo.h"
+#include "vr_shared.h"
 #include "vr_debug.h"
 
 #include "vr_bhaptics.h"

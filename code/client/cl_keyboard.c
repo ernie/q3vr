@@ -453,9 +453,9 @@ void VKeyboard_Draw( void ) {
 	}
 
 	// Get primary cursor position from VR
-	if (vr.menuCursorX && vr.menuCursorY) {
-		cursorX = *vr.menuCursorX;
-		cursorY = *vr.menuCursorY;
+	if (vr.menuCursorActive) {
+		cursorX = vr.menuCursorX;
+		cursorY = vr.menuCursorY;
 	} else {
 		cursorX = SCREEN_WIDTH / 2;
 		cursorY = SCREEN_HEIGHT / 2;
@@ -847,9 +847,9 @@ qboolean VKeyboard_HandleKey( int key ) {
 	}
 
 	// Get cursor position from VR
-	if (vr.menuCursorX && vr.menuCursorY) {
-		cursorX = *vr.menuCursorX;
-		cursorY = *vr.menuCursorY;
+	if (vr.menuCursorActive) {
+		cursorX = vr.menuCursorX;
+		cursorY = vr.menuCursorY;
 	} else {
 		cursorX = SCREEN_WIDTH / 2;
 		cursorY = SCREEN_HEIGHT / 2;

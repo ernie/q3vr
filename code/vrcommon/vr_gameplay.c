@@ -27,6 +27,13 @@ qboolean VR_IsInMenu( void )
 	return (keyCatcher & (KEYCATCH_UI | KEYCATCH_CONSOLE)) != 0;
 }
 
+// The console counts as a menu for gating, but it answers to different keys
+// than the UI does, so anything synthesising keys has to tell the two apart.
+qboolean VR_IsInConsole( void )
+{
+	return (Key_GetCatcher() & KEYCATCH_CONSOLE) != 0;
+}
+
 qboolean VR_IsSPIntermission( void )
 {
 	return (cl.snap.ps.pm_type == PM_INTERMISSION) &&

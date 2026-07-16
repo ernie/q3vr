@@ -16,6 +16,83 @@
 #endif
 #include "common/xr_linear.h"
 
+extern cvar_t *vr_frameTimingLog;
+extern cvar_t *vr_layerSourceAlpha;
+
+// Diagnostic only: logs XR frame pacing (shouldRender transitions and
+// predictedDisplayTime deltas) to the console when vr_frameTimingLog is
+// nonzero. Never touches frame submission. No-op (aside from re-arming
+// its own priming state) when disabled.
+static void VR_LogFrameTiming( const XrFrameState *fs, qboolean enabled )
+{
+	static qboolean primed = qfalse;
+	static XrBool32 lastShouldRender = 0;
+	static XrTime lastDisplayTime = 0;
+	static XrTime windowAccumTime = 0;
+	static XrTime windowMaxDelta = 0;
+	static XrDuration windowPeriod = 0;
+	static int windowFrameCount = 0;
+	static int windowLongCount = 0;
+	XrTime delta;
+
+	if ( !enabled )
+	{
+		// Re-arm so the next enable primes cleanly instead of logging a
+		// spurious delta spanning the disabled interval.
+		primed = qfalse;
+		return;
+	}
+
+	if ( !primed )
+	{
+		primed = qtrue;
+		lastShouldRender = fs->shouldRender;
+		lastDisplayTime = fs->predictedDisplayTime;
+		windowPeriod = fs->predictedDisplayPeriod;
+		windowAccumTime = 0;
+		windowMaxDelta = 0;
+		windowFrameCount = 0;
+		windowLongCount = 0;
+		return;
+	}
+
+	if ( fs->shouldRender != lastShouldRender )
+	{
+		Com_Printf( "VR timing: shouldRender -> %d\n", (int)fs->shouldRender );
+		lastShouldRender = fs->shouldRender;
+	}
+
+	delta = fs->predictedDisplayTime - lastDisplayTime;
+	lastDisplayTime = fs->predictedDisplayTime;
+	windowPeriod = fs->predictedDisplayPeriod;
+
+	windowAccumTime += delta;
+	windowFrameCount++;
+	if ( delta > windowMaxDelta )
+	{
+		windowMaxDelta = delta;
+	}
+	if ( windowPeriod > 0 && delta > ( windowPeriod + windowPeriod / 2 ) )
+	{
+		windowLongCount++;
+	}
+
+	if ( windowAccumTime >= 1000000000LL )
+	{
+		Com_Printf( "VR timing: %d frames, period %.2fms, avg %.2fms, max %.2fms, long(>1.5x) %d\n",
+			windowFrameCount,
+			(double)windowPeriod / 1000000.0,
+			( (double)windowAccumTime / (double)windowFrameCount ) / 1000000.0,
+			(double)windowMaxDelta / 1000000.0,
+			windowLongCount );
+
+		windowAccumTime = 0;
+		windowMaxDelta = 0;
+		windowFrameCount = 0;
+		windowLongCount = 0;
+	}
+}
+
 XrFrameState VR_WaitFrame(XrSession session)
 {
 	XrFrameWaitInfo waitFrameInfo = {};
@@ -29,6 +106,8 @@ XrFrameState VR_WaitFrame(XrSession session)
 	XR_CHECK(
 		xrWaitFrame(session, &waitFrameInfo, &frameState),
 		"Failed to wait for XR frame");
+
+	VR_LogFrameTiming( &frameState, vr_frameTimingLog->integer != 0 );
 
 	return frameState;
 }
@@ -129,8 +208,9 @@ void VR_EndFrame(XrSession session, VR_SwapchainInfos* swapchains, XrView* views
 
 	XrCompositionLayerProjection projection_layer = {};
 	projection_layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION;
-	projection_layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT
-	                            | XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
+	projection_layer.layerFlags = XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
+	if ( vr_layerSourceAlpha->integer )
+		projection_layer.layerFlags |= XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
 	projection_layer.space = worldSpace;
 	projection_layer.viewCount = viewCount;
 	projection_layer.views = projection_layer_elements;

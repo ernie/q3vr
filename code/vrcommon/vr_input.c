@@ -436,6 +436,25 @@ static void IN_HandleInactiveInput(uint32_t * inputGroup, int inputFlag, char* i
 	}
 }
 
+// Human-readable name of the input the engine synthesizes K_SPACE from in
+// menus (the A-button path in IN_VRButtons). Must track the active
+// interaction profile's actual binding: buttonAAction is suggested onto
+// menu/click on the KHR Simple profile, so "A" is only true for the
+// Touch/Index layouts until this resolves the bound source's localized name.
+const char* VR_GetMenuSkipButtonName( void )
+{
+	return "A";
+}
+
+// Human-readable name of the input the engine synthesizes K_ESCAPE from
+// (the VR_Button_Enter path in IN_VRButtons). Must track the active
+// interaction profile's actual binding of menuAction; "MENU" assumes the
+// dedicated menu/click source the suggested bindings put it on.
+const char* VR_GetMenuCancelButtonName( void )
+{
+	return "MENU";
+}
+
 void VR_HapticEvent(const char* event, int position, int flags, int intensity, float angle, float yHeight )
 {
 	if (!VR_AreHapticsEnabled())
@@ -941,10 +960,10 @@ static void IN_VRController( qboolean isRightController, XrPosef pose )
 	}
 
 	// Update cursor for virtual screen, intermission, or when scoreboard is active
-	if ((vr.virtual_screen && (!vr.first_person_following || vr.in_menu)) || cl.snap.ps.pm_type == PM_INTERMISSION || (vr.scoreboardCursorX && vr.scoreboardCursorY))
+	if ((vr.virtual_screen && (!vr.first_person_following || vr.in_menu)) || cl.snap.ps.pm_type == PM_INTERMISSION || vr.scoreboardCursorActive)
 	{
 		vr.weapon_zoomed = qfalse;
-		if (vr.menuCursorX && vr.menuCursorY)
+		if (vr.menuCursorActive)
 		{
 			float yaw;
 			float pitch;
@@ -973,8 +992,8 @@ static void IN_VRController( qboolean isRightController, XrPosef pose )
 			x = factor * x + (1.0f - factor) * lastMenuCursorX;
 			y = factor * y + (1.0f - factor) * lastMenuCursorY;
 
-			lastMenuCursorX = *vr.menuCursorX = x;
-			lastMenuCursorY = *vr.menuCursorY = y;
+			lastMenuCursorX = vr.menuCursorX = x;
+			lastMenuCursorY = vr.menuCursorY = y;
 
 			Com_QueueEvent(in_vrEventTime, SE_MOUSE, 0, 0, 0, NULL);
 
@@ -1004,7 +1023,7 @@ static void IN_VRController( qboolean isRightController, XrPosef pose )
 				lastOffhandCursorY = vr.offhandCursorY = ohy;
 			}
 		}
-		if (vr.scoreboardCursorX && vr.scoreboardCursorY)
+		if (vr.scoreboardCursorActive)
 		{
 			float yaw;
 			float pitch;
@@ -1025,8 +1044,8 @@ static void IN_VRController( qboolean isRightController, XrPosef pose )
 			if (x > 640) x = 640;
 			if (y < 0) y = 0;
 			if (y > 480) y = 480;
-			*vr.scoreboardCursorX = x;
-			*vr.scoreboardCursorY = y;
+			vr.scoreboardCursorX = x;
+			vr.scoreboardCursorY = y;
 		}
 	}
 	else
@@ -1233,41 +1252,46 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
 	float curvedX = IN_ApplyThumbstickCurve(joystickX, vr_thumbstickDeadzone->value);
 	float curvedY = IN_ApplyThumbstickCurve(joystickY, vr_thumbstickDeadzone->value);
 
-	// Allow thumbstick menu navigation for virtual screen, intermission, or when scoreboard is active
-	if ((vr.virtual_screen && (!vr.first_person_following || vr.in_menu)) || cl.snap.ps.pm_type == PM_INTERMISSION || (vr.scoreboardCursorX && vr.scoreboardCursorY))
+	// Menu / intermission / scoreboard: suppress locomotion. In actual VR menus, vertical
+	// stick is handled by IN_VRMenuThumbstickNav (PGUP/PGDN with delayed repeat) - do NOT
+	// also emit PGUP/PGDN here or it doubles up. Keep the direct page-scroll for the
+	// intermission/scoreboard cases only.
+	qboolean inVrMenu = (vr.virtual_screen && (!vr.first_person_following || vr.in_menu));
+	if (inVrMenu || cl.snap.ps.pm_type == PM_INTERMISSION || vr.scoreboardCursorActive)
 	{
-
-		// Use thumbstick UP/DOWN as PAGEUP/PAGEDOWN in menus
-		// Check curved values: 0.05 = 5% into usable range past deadzone (hysteresis)
-		if (curvedY > 0.05f)
+		if (!inVrMenu)
 		{
-			if (!IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_UP))
+			// Check curved values: 0.05 = 5% into usable range past deadzone (hysteresis)
+			if (curvedY > 0.05f)
 			{
-				IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_UP);
+				if (!IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_UP))
+				{
+					IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_UP);
+					// One page per push (was every frame -> instant scroll, no delay)
+					Com_QueueEvent(in_vrEventTime, SE_KEY, K_PGUP, qtrue, 0, NULL);
+				}
 			}
-			// Send key down event every frame while held - engine handles repeat timing
-			Com_QueueEvent(in_vrEventTime, SE_KEY, K_PGUP, qtrue, 0, NULL);
-		}
-		else if (curvedY < -0.05f)
-		{
-			if (!IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_DOWN))
+			else if (curvedY < -0.05f)
 			{
-				IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_DOWN);
+				if (!IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_DOWN))
+				{
+					IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_DOWN);
+					// One page per push (was every frame -> instant scroll, no delay)
+					Com_QueueEvent(in_vrEventTime, SE_KEY, K_PGDN, qtrue, 0, NULL);
+				}
 			}
-			// Send key down event every frame while held - engine handles repeat timing
-			Com_QueueEvent(in_vrEventTime, SE_KEY, K_PGDN, qtrue, 0, NULL);
-		}
-		else if (curvedY < 0.05f && curvedY > -0.05f)
-		{
-			if (IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_UP))
+			else if (curvedY < 0.05f && curvedY > -0.05f)
 			{
-				IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_UP);
-				Com_QueueEvent(in_vrEventTime, SE_KEY, K_PGUP, qfalse, 0, NULL);
-			}
-			if (IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_DOWN))
-			{
-				IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_DOWN);
-				Com_QueueEvent(in_vrEventTime, SE_KEY, K_PGDN, qfalse, 0, NULL);
+				if (IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_UP))
+				{
+					IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_UP);
+					Com_QueueEvent(in_vrEventTime, SE_KEY, K_PGUP, qfalse, 0, NULL);
+				}
+				if (IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_DOWN))
+				{
+					IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_DOWN);
+					Com_QueueEvent(in_vrEventTime, SE_KEY, K_PGDN, qfalse, 0, NULL);
+				}
 			}
 		}
 	}
@@ -1424,7 +1448,7 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 	// Detect if we're in menu mode (virtual screen, intermission, or scoreboard)
 	qboolean inMenuMode = (vr.virtual_screen && (!vr.first_person_following || vr.in_menu)) ||
 	                      cl.snap.ps.pm_type == PM_INTERMISSION ||
-	                      (vr.scoreboardCursorX && vr.scoreboardCursorY);
+	                      vr.scoreboardCursorActive;
 
 	// On transition into menu mode, release any held +attack from gameplay.
 	// Only check primary trigger since that's what sends +attack.
@@ -1481,13 +1505,18 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 		}
 		else
 		{
-			// Normal single-cursor menu mode
+			// Normal single-cursor menu mode. During thumbstick nav the point cursor is
+			// hidden and selection is arrow-driven, so the trigger activates the
+			// highlighted item (Enter) rather than clicking the now-stale cursor spot
+			// (Mouse1). Latch the key at press so the release matches if nav flips mid-hold.
+			static int menuTriggerKey = K_MOUSE1;
 			if (triggerValue > IN_TriggerPressedThreshold() && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
 			{
 				IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
 				if (isActiveController)
 				{
-					Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qtrue, 0, NULL);
+					menuTriggerKey = vr.menuStickNavActive ? K_ENTER : K_MOUSE1;
+					Com_QueueEvent(in_vrEventTime, SE_KEY, menuTriggerKey, qtrue, 0, NULL);
 					VR_Vibrate(200, vr.menuLeftHanded ? 1 : 2, 0.8f);
 				}
 				else
@@ -1501,7 +1530,7 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 				IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
 				if (isActiveController)
 				{
-					Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qfalse, 0, NULL);
+					Com_QueueEvent(in_vrEventTime, SE_KEY, menuTriggerKey, qfalse, 0, NULL);
 				}
 			}
 		}
@@ -1855,7 +1884,11 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 			if (!IN_InputActivated(&controller->buttons, VR_Button_X))
 			{
 				IN_ActivateInput(&controller->buttons, VR_Button_X);
-				vr.follow_mode = (vr.follow_mode+1) % VRFM_NUM_FOLLOWMODES;
+				vr.follow_mode = vr.follow_mode + 1;
+				if (vr.follow_mode >= VRFM_NUM_FOLLOWMODES)
+				{
+					vr.follow_mode = VRFM_THIRDPERSON_1; // wrap past FP, skipping VRFM_NONE
+				}
 				if (vr.follow_mode == VRFM_THIRDPERSON_1)
 				{
 					if (!tvPlay.active) {
@@ -1910,16 +1943,101 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
 	}
 }
 
-void VR_ProcessInputActions( void )
+// Menu thumbstick navigation. Drives menus like a HELD KEY: press down while the stick
+// is deflected, release (up) when it centres or switches direction, and re-press at a
+// delayed repeat rate. Vertical -> UP/DOWN arrows (single-item nav); horizontal ->
+// LEFT/RIGHT (slider/feeder step). Paging is done via the UI's own scroll-arrow
+// buttons, not the stick. Emitting a real down/up pair across
+// separate frames (NOT down+up in one frame) matches the keyboard, which single-steps
+// feeders instead of snapping them to the end. Sets vr.menuStickNavActive so the UI
+// freezes hover / hides the point cursor; clears it only on a meaningful re-point.
+static void IN_VRMenuThumbstickNav( qboolean menuActive, float lx, float ly, float rx, float ry )
 {
-	if (vr_6dof->modified) {
-		vr_6dof->modified = qfalse;
-		vr.use_6dof = vr.single_player && vr_6dof->integer;
+	static int navKey        = 0;   // key currently held down (0 = none)
+	static int navNextRepeat = 0;   // in_vrEventTime of the next repeat
+	static int navAnchorX    = 0;   // menu cursor when nav took over (re-point reference)
+	static int navAnchorY    = 0;
+
+	const float ACT = 0.50f;        // activation magnitude
+	const float REL = 0.35f;        // release magnitude (hysteresis)
+	const int   INITIAL_DELAY = 400;
+	const int   REPEAT        = 140;
+	const int   REPOINT_PX    = 60;
+
+	// Dominant deflection across both sticks, per axis.
+	float ax  = ( fabsf( lx ) >= fabsf( rx ) ) ? lx : rx;
+	float ay  = ( fabsf( ly ) >= fabsf( ry ) ) ? ly : ry;
+	float mag = fabsf( ax ) > fabsf( ay ) ? fabsf( ax ) : fabsf( ay );
+
+	qboolean console = VR_IsInConsole();
+
+	int desired = 0;
+	if ( menuActive ) {
+		if ( fabsf( ax ) >= fabsf( ay ) ) {
+			if ( ax >  ACT ) desired = K_RIGHTARROW;
+			else if ( ax < -ACT ) desired = K_LEFTARROW;
+		} else {
+			// the console scrolls its buffer on PGUP/PGDN; arrows there would
+			// walk command history instead, which is not what a stick means
+			if ( ay >  ACT ) desired = console ? K_PGUP : K_UPARROW;   // stick forward -> previous item
+			else if ( ay < -ACT ) desired = console ? K_PGDN : K_DOWNARROW;
+		}
 	}
+
+	// Release the held key when the stick centres (< REL), switches direction, or we
+	// leave the menu, so a real up follows every down (feeders single-step).
+	if ( navKey && ( !menuActive || mag < REL || ( desired != 0 && desired != navKey ) ) ) {
+		Com_QueueEvent( in_vrEventTime, SE_KEY, navKey, qfalse, 0, NULL );
+		navKey = 0;
+	}
+
+	if ( !menuActive ) {
+		vr.menuStickNavActive = qfalse;
+		return;
+	}
+
+	if ( desired != 0 && navKey == 0 ) {
+		// press
+		Com_QueueEvent( in_vrEventTime, SE_KEY, desired, qtrue, 0, NULL );
+		navKey = desired;
+		navNextRepeat = in_vrEventTime + INITIAL_DELAY;
+		navAnchorX = vr.menuCursorX;
+		navAnchorY = vr.menuCursorY;
+		vr.menuStickNavActive = qtrue;
+	} else if ( desired != 0 && desired == navKey && in_vrEventTime >= navNextRepeat ) {
+		// auto-repeat: re-press (new key-down edge) at the repeat rate
+		Com_QueueEvent( in_vrEventTime, SE_KEY, desired, qtrue, 0, NULL );
+		navNextRepeat = in_vrEventTime + REPEAT;
+	}
+
+	// Hand control back to pointing on a meaningful re-point of the ray, but ONLY once
+	// the stick is at rest (navKey == 0), so the small controller rotation from flicking
+	// the stick can't trip the re-point mid-hold.
+	if ( vr.menuStickNavActive && navKey == 0 ) {
+		int dx = vr.menuCursorX - navAnchorX;
+		int dy = vr.menuCursorY - navAnchorY;
+		if ( ( dx * dx + dy * dy ) > REPOINT_PX * REPOINT_PX ) {
+			vr.menuStickNavActive = qfalse;
+		}
+	}
+}
+
+void VR_RefreshDerivedModeState( void )
+{
+	// recompute continuously: single_player arrives via the modules' config
+	// sync-out after cgame/game init, so an edge-triggered evaluation here
+	// would latch false before any map is loaded
+	vr.use_6dof = vr.single_player && vr_6dof->integer;
 
 	vr.virtual_screen = VR_Gameplay_ShouldRenderInVirtualScreen();
 	vr.first_person_following = vr.virtual_screen && VR_IsFollowingInFirstPerson();
 	vr.in_menu = VR_IsInMenu();
+}
+
+void VR_ProcessInputActions( void )
+{
+	VR_RefreshDerivedModeState();
+
 	vr.right_handed = vr_righthanded->integer != 0;
 
 #ifdef USE_BHAPTICS
@@ -1984,9 +2102,21 @@ void VR_ProcessInputActions( void )
 	//thumbstick
 	XrActionStateVector2f moveJoystickState;
 	moveJoystickState = GetActionStateVector2(moveOnLeftJoystickAction);
-	IN_VRJoystick(qfalse, moveJoystickState.currentState.x, moveJoystickState.currentState.y);
+	float navLX = moveJoystickState.currentState.x, navLY = moveJoystickState.currentState.y;
+	IN_VRJoystick(qfalse, navLX, navLY);
 	moveJoystickState = GetActionStateVector2(moveOnRightJoystickAction);
-	IN_VRJoystick(qtrue, moveJoystickState.currentState.x, moveJoystickState.currentState.y);
+	float navRX = moveJoystickState.currentState.x, navRY = moveJoystickState.currentState.y;
+	IN_VRJoystick(qtrue, navRX, navRY);
+
+	// Menu thumbstick navigation: only in an actual menu (virtual screen, not
+	// follow-mode gameplay) - the same menu gate the PGUP/PGDN path uses, minus
+	// intermission/scoreboard (no items to navigate there). NOTE: vr.menuCursorActive
+	// is a UI-VM-lifetime flag (true during gameplay/follow), so it must NOT gate this,
+	// or arrows would fire while playing. The helper resets its own repeat state when
+	// the gate is closed; we reuse the stick values already read above (no extra XR query).
+	IN_VRMenuThumbstickNav(
+		( vr.virtual_screen && ( !vr.first_person_following || vr.in_menu ) ),
+		navLX, navLY, navRX, navRY );
 
 	lastframetime = in_vrEventTime;
 	in_vrEventTime = Sys_Milliseconds( );

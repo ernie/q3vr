@@ -99,10 +99,14 @@ typedef struct {
 
 	float menuYaw;
 	qboolean menuYawLocked;	// prevent renderer from overwriting menuYaw (used during timeline scrub)
-	int *menuCursorX;
-	int *menuCursorY;
-	int *scoreboardCursorX;
-	int *scoreboardCursorY;
+	int menuCursorX;                // engine-computed menu cursor (640x480 virtual)
+	int menuCursorY;
+	int scoreboardCursorX;          // engine-computed scoreboard/vote cursor
+	int scoreboardCursorY;
+	qboolean menuCursorActive;      // module wants engine menu-cursor tracking
+	qboolean scoreboardCursorActive;// module wants engine scoreboard-cursor tracking
+	int menuStickNavActive;         // engine: thumbstick driving menu nav (synced to modules)
+	int probeEcho;                  // ABI round-trip: module writes, engine reflects at sync
 	qboolean menuLeftHanded;
 	int offhandCursorX;             // offhand cursor X (640x480 virtual coords)
 	int offhandCursorY;             // offhand cursor Y (640x480 virtual coords)

@@ -46,15 +46,13 @@ cvar_t *vr_thumbstickDeadzone = NULL;
 cvar_t *vr_thumbstickFullDeflection = NULL;
 cvar_t *vr_triggerSensitivity = NULL;
 cvar_t *vr_analogWalk = NULL;
-
-cvar_t *q3vr_update_version_major = NULL;
-cvar_t *q3vr_update_version_minor = NULL;
-cvar_t *q3vr_update_version_patch = NULL;
-cvar_t *q3vr_update_version_check = NULL;
+cvar_t *vr_frameTimingLog = NULL;
+cvar_t *vr_layerSourceAlpha = NULL;
 
 void VR_InitCvars( void )
 {
 	Cvar_Get ("skip_full_credits", "0.0", CVAR_ARCHIVE);
+	Cvar_Get ("vr_platform", "pc", CVAR_ROM);	// advertise the VR platform to UI modules
 	vr_worldscale = Cvar_Get ("vr_worldscale", "32.0", CVAR_ARCHIVE);
 	vr_worldscaleScaler = Cvar_Get ("vr_worldscaleScaler", "1.0", CVAR_ARCHIVE);
 	vr_hudDepth = Cvar_Get ("vr_hudDepth", "3", CVAR_ARCHIVE);
@@ -98,6 +96,8 @@ void VR_InitCvars( void )
 	vr_triggerSensitivity = Cvar_Get ("vr_triggerSensitivity", "0.25", CVAR_ARCHIVE);
 	Cvar_CheckRange( vr_triggerSensitivity, 0.1f, 0.9f, qfalse );
 	vr_analogWalk = Cvar_Get ("vr_analogWalk", "1", CVAR_ARCHIVE); // 0 - classic always-run, 1 - silent walk below run speed
+	vr_frameTimingLog = Cvar_Get ("vr_frameTimingLog", "0", 0); // diagnostic: log XR frame pacing (shouldRender/predictedDisplayTime) to console
+	vr_layerSourceAlpha = Cvar_Get ("vr_layerSourceAlpha", "1", 0); // diagnostic: toggle XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT on the projection layer
 
 	// Values are:  scale,right,up,forward,pitch,yaw,roll
 	// VALUES PROVIDED BY SkillFur - Thank-you!
@@ -227,10 +227,4 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_button_map_PRIMARYTHUMBREST_ALT", "", CVAR_ARCHIVE); // unmapped
 	Cvar_Get ("vr_button_map_SECONDARYTHUMBREST", "+alt", CVAR_ARCHIVE); // Alt modifier
 	Cvar_Get ("vr_button_map_SECONDARYTHUMBREST_ALT", "", CVAR_ARCHIVE); // unmapped
-
-	// Update versions, don't archive
-	Cvar_Get ("q3vr_update_version_major", "", 0);
-	Cvar_Get ("q3vr_update_version_minor", "", 0);
-	Cvar_Get ("q3vr_update_version_patch", "", 0);
-	Cvar_Get ("q3vr_update_version_check", "", 0);
 }
