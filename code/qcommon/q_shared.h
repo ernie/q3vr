@@ -208,6 +208,7 @@ typedef union {
 	float f;
 	int i;
 	unsigned int ui;
+	unsigned int u; // alias for ui; vm_interpreted.c (Quake3e-derived) spells it "u"
 } floatint_t;
 
 typedef union {

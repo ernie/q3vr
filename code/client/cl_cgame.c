@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "client.h"
 #include "cl_trinity_rconset.h"
+#include "../qcommon/vm_vr.h"
 
 #include "../botlib/botlib.h"
 
@@ -445,7 +446,7 @@ void CL_ShutdownCGame( void ) {
 	if ( !cgvm ) {
 		return;
 	}
-	VM_Call( cgvm, CG_SHUTDOWN );
+	VM_Call( cgvm, 0, CG_SHUTDOWN );
 	VM_Free( cgvm );
 	cgvm = NULL;
 }
@@ -454,6 +455,23 @@ static int	FloatAsInt( float f ) {
 	floatint_t fi;
 	fi.f = f;
 	return fi.i;
+}
+
+
+/*
+====================
+VM_ArgPtr
+====================
+*/
+static void *VM_ArgPtr( intptr_t intValue ) {
+
+	if ( !intValue || cgvm == NULL )
+		return NULL;
+
+	if ( cgvm->entryPoint )
+		return (void *)(intValue);
+	else
+		return (void *)(cgvm->dataBase + (intValue & cgvm->dataMask));
 }
 
 #ifdef USE_VOIP
@@ -922,6 +940,30 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 
 /*
 ====================
+CL_DllSyscall
+====================
+*/
+static intptr_t QDECL CL_DllSyscall( intptr_t arg, ... ) {
+#if !id386 || defined __clang__
+	intptr_t	args[16]; // headroom for VR traps (stock cgame max is 10)
+	va_list	ap;
+	int i;
+
+	args[0] = arg;
+	va_start( ap, arg );
+	for (i = 1; i < ARRAY_LEN( args ); i++ )
+		args[ i ] = va_arg( ap, intptr_t );
+	va_end( ap );
+
+	return CL_CgameSystemCalls( args );
+#else
+	return CL_CgameSystemCalls( &arg );
+#endif
+}
+
+
+/*
+====================
 CL_InitCGame
 
 Should only be called by CL_StartHunkUsers
@@ -949,7 +991,7 @@ void CL_InitCGame( void ) {
 	if ( interpret == VMI_NATIVE )
 		interpret = VMI_COMPILED;
 
-	cgvm = VM_Create( "cgame", CL_CgameSystemCalls, interpret );
+	cgvm = VM_Create( VM_CGAME, CL_CgameSystemCalls, CL_DllSyscall, interpret );
 	if ( !cgvm ) {
 		Com_Error( ERR_DROP, "VM_Create on cgame failed" );
 	}
@@ -964,7 +1006,7 @@ void CL_InitCGame( void ) {
 	// init for this gamestate
 	// use the lastExecutedServerCommand instead of the serverCommandSequence
 	// otherwise server commands sent just before a gamestate are dropped
-	VM_Call( cgvm, CG_INIT, clc.serverMessageSequence, clc.lastExecutedServerCommand, clc.clientNum );
+	VM_Call( cgvm, 3, CG_INIT, clc.serverMessageSequence, clc.lastExecutedServerCommand, clc.clientNum );
 
 	if ( VM_VRSentinel( cgvm ) && !VM_VRRegistered( cgvm ) ) {
 		Com_Error( ERR_DROP, "cgame QVM declared VR API support but never registered VR state" );
@@ -1008,7 +1050,7 @@ qboolean CL_GameCommand( void ) {
 		return qfalse;
 	}
 
-	return VM_Call( cgvm, CG_CONSOLE_COMMAND );
+	return VM_Call( cgvm, 0, CG_CONSOLE_COMMAND );
 }
 
 
@@ -1022,8 +1064,10 @@ void CL_CGameRendering( stereoFrame_t stereo ) {
 	if ( !cgvm ) {
 		return;
 	}
-	VM_Call( cgvm, CG_DRAW_ACTIVE_FRAME, cl.serverTime, stereo, clc.demoplaying );
+	VM_Call( cgvm, 3, CG_DRAW_ACTIVE_FRAME, cl.serverTime, stereo, clc.demoplaying );
+#ifdef DEBUG
 	VM_Debug( 0 );
+#endif
 }
 
 

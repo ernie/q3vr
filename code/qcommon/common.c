@@ -36,6 +36,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 int demo_protocols[] =
 { 67, 66, 0 };
 
+// CPU feature flags consumed by the Quake3e-derived VM JIT (vm_x86.c)
+int		CPU_Flags = 0;
+
 #define MAX_NUM_ARGVS	50
 
 #define MIN_DEDICATED_COMHUNKMEGS 1
@@ -97,6 +100,10 @@ cvar_t	*com_legacyprotocol;
 cvar_t	*com_basegame;
 cvar_t  *com_homepath;
 cvar_t	*com_busyWait;
+// vm_rtChecks storage lives in vm.c (Quake3e-derived); qcommon.h externs it
+// here. A duplicate tentative definition in this file links fine on
+// Windows/MinGW (common-symbol folding) but is a hard "duplicate symbol"
+// error under Android's -fno-common lld toolchain.
 #ifndef DEDICATED
 cvar_t  *con_autochat;
 #endif
@@ -2597,6 +2604,80 @@ static void Com_DetectAltivec(void)
 
 /*
 =================
+Com_DetectVMCPUFeatures
+
+Populates CPU_Flags for the Quake3e-derived VM JIT (vm_x86.c). Distinct from
+Com_DetectSSE below, which only drives Q_ftol/Q_SnapVector selection via the
+older cpuFeatures_t/Sys_GetProcessorFeatures mechanism.
+=================
+*/
+
+#if id386 || idx64
+
+#if defined _MSC_VER
+#include <intrin.h>
+static void CPUID( int func, unsigned int *regs )
+{
+	__cpuid( (int*)regs, func );
+}
+#else // clang/gcc/mingw
+static void CPUID( int func, unsigned int *regs )
+{
+	__asm__ __volatile__( "cpuid" :
+		"=a"(regs[0]),
+		"=b"(regs[1]),
+		"=c"(regs[2]),
+		"=d"(regs[3]) :
+		"a"(func) );
+}
+#endif
+
+static void Com_DetectVMCPUFeatures( void )
+{
+	uint32_t regs[4]; // EAX, EBX, ECX, EDX
+
+	// setup initial features
+#if idx64
+	CPU_Flags |= CPU_SSE | CPU_SSE2 | CPU_FCOM;
+#else
+	CPU_Flags = 0;
+#endif
+
+	// get CPU feature bits
+	CPUID( 0x1, regs );
+
+	// bit 15 of EDX denotes CMOV/FCMOV/FCOMI existence
+	if ( regs[3] & ( 1 << 15 ) )
+		CPU_Flags |= CPU_FCOM;
+
+	// bit 23 of EDX denotes MMX existence
+	if ( regs[3] & ( 1 << 23 ) )
+		CPU_Flags |= CPU_MMX;
+
+	// bit 25 of EDX denotes SSE existence
+	if ( regs[3] & ( 1 << 25 ) )
+		CPU_Flags |= CPU_SSE;
+
+	// bit 26 of EDX denotes SSE2 existence
+	if ( regs[3] & ( 1 << 26 ) )
+		CPU_Flags |= CPU_SSE2;
+
+	// bit 19 of ECX denotes SSE41 existence
+	if ( regs[2] & ( 1 << 19 ) )
+		CPU_Flags |= CPU_SSE41;
+}
+
+#else // non-x86
+
+static void Com_DetectVMCPUFeatures( void )
+{
+	CPU_Flags = 0;
+}
+
+#endif // non-x86
+
+/*
+=================
 Com_DetectSSE
 Find out whether we have SSE support for Q_ftol function
 =================
@@ -2693,6 +2774,7 @@ void Com_Init( char *commandLine ) {
 	Cbuf_Init ();
 
 	Com_DetectSSE();
+	Com_DetectVMCPUFeatures();
 
 	// override anything from the config files with command line args
 	Com_StartupVariable( NULL );
@@ -2702,6 +2784,13 @@ void Com_Init( char *commandLine ) {
 
 	// get the developer cvar set as early as possible
 	com_developer = Cvar_Get("developer", "0", CVAR_TEMP);
+
+	Com_StartupVariable( "vm_rtChecks" );
+	vm_rtChecks = Cvar_Get( "vm_rtChecks", "15", CVAR_INIT | CVAR_PROTECTED );
+	Cvar_CheckRange( vm_rtChecks, 0, 15, qtrue );
+	Cvar_SetDescription( vm_rtChecks,
+		"Runtime checks in compiled vm code, bitmask:\n 1 - program stack overflow\n" \
+		" 2 - opcode stack overflow\n 4 - jump target range\n 8 - data read/write range" );
 
 	// done early so bind command exists
 	CL_InitKeyCommands();

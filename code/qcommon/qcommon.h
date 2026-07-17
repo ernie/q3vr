@@ -348,34 +348,50 @@ typedef enum {
 	TRAP_TESTPRINTFLOAT
 } sharedTraps_t;
 
-typedef intptr_t (QDECL *vmMainProc)(int callNum, int arg0, int arg1, int arg2, int arg3, int arg4, int arg5, int arg6, int arg7, int arg8, int arg9, int arg10, int arg11);
+typedef enum {
+	VM_BAD = -1,
+	VM_GAME = 0,
+#ifndef USE_DEDICATED
+	VM_CGAME,
+	VM_UI,
+#endif
+	VM_COUNT
+} vmIndex_t;
+
+// we don't need more than 4 arguments (counting callnum) for vmMain, at least in Vanilla Quake3
+#define MAX_VMMAIN_CALL_ARGS 4
+
+typedef intptr_t (QDECL *vmMainFunc_t)( int command, int arg0, int arg1, int arg2 );
+
+typedef intptr_t (*syscall_t)( intptr_t *parms );
+typedef intptr_t (QDECL *dllSyscall_t)( intptr_t callNum, ... );
+typedef void (QDECL *dllEntry_t)( dllSyscall_t syscallptr );
 
 void	VM_Init( void );
-vm_t	*VM_Create( const char *module, intptr_t (*systemCalls)(intptr_t *), 
-				   vmInterpret_t interpret );
-// module should be bare: "cgame", not "cgame.dll" or "vm/cgame.qvm"
+vm_t	*VM_Create( vmIndex_t index, syscall_t systemCalls, dllSyscall_t dllSyscalls, vmInterpret_t interpret );
 
 void	VM_Free( vm_t *vm );
 void	VM_Clear(void);
 void	VM_Forced_Unload_Start(void);
 void	VM_Forced_Unload_Done(void);
-vm_t	*VM_Restart(vm_t *vm, qboolean unpure);
+vm_t	*VM_Restart( vm_t *vm );
 
-intptr_t		QDECL VM_Call( vm_t *vm, int callNum, ... );
+intptr_t	QDECL VM_Call( vm_t *vm, int nargs, int callNum, ... );
 
 void	VM_Debug( int level );
+void	VM_CheckBounds( const vm_t *vm, unsigned int address, unsigned int length );
+void	VM_CheckBounds2( const vm_t *vm, unsigned int addr1, unsigned int addr2, unsigned int length );
 
-void	*VM_ArgPtr( intptr_t intValue );
-void	*VM_ExplicitArgPtr( vm_t *vm, intptr_t intValue );
+// VM_ArgPtr is a per-module static helper (defined in cl_cgame.c / cl_ui.c /
+// sv_game.c, each resolving against its own module-global vm pointer) since
+// the vendored VM subsystem dropped the old global currentVM tracking.
+void	*GVM_ArgPtr( intptr_t intValue ); // exported for resolving a game VM pointer outside a VM_Call
 
 #define VR_WRITER_CGAME	0
 #define VR_WRITER_GAME	1
 #define VR_WRITER_UI	2
 
 struct vr_shared_s;
-void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize, int apiVersion );
-qboolean VM_VRSentinel( vm_t *vm );
-qboolean VM_VRRegistered( vm_t *vm );
 void VR_SharedSyncIn( struct vr_shared_s *s, int structSize );
 void VR_SharedSyncOut( const struct vr_shared_s *s, int writer, int structSize );
 void VR_SharedModuleUnloaded( int writer );
@@ -671,6 +687,9 @@ long		FS_FOpenFileRead( const char *qpath, fileHandle_t *file, qboolean uniqueFI
 int		FS_FileIsInPAK(const char *filename, int *pChecksum );
 // returns 1 if a file is in the PAK file, otherwise -1
 
+extern int fs_lastPakIndex;
+// index of the pak the most recently opened file came from, or -1
+
 int		FS_Write( const void *buffer, int len, fileHandle_t f );
 
 int		FS_Read( void *buffer, int len, fileHandle_t f );
@@ -790,6 +809,19 @@ MISC
 // https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=470
 extern char cl_cdkey[34];
 
+// CPU feature flags for the Quake3e-derived VM JIT (vm_x86.c); distinct from
+// the legacy cpuFeatures_t/Sys_GetProcessorFeatures mechanism below, which
+// only feeds Q_ftol/Q_SnapVector selection.
+extern	int	CPU_Flags;
+
+// x86 flags
+#define CPU_FCOM   0x01
+#define CPU_MMX    0x02
+#define CPU_SSE    0x04
+#define CPU_SSE2   0x08
+#define CPU_SSE3   0x10
+#define CPU_SSE41  0x20
+
 // returned by Sys_GetProcessorFeatures
 typedef enum
 {
@@ -863,6 +895,7 @@ int QDECL	Com_strCompare( const void *a, const void *b );
 
 extern	cvar_t	*com_developer;
 extern	cvar_t	*com_dedicated;
+extern	cvar_t	*vm_rtChecks;
 extern	cvar_t	*com_speeds;
 extern	cvar_t	*com_timescale;
 extern	cvar_t	*com_sv_running;
@@ -1094,8 +1127,8 @@ NON-PORTABLE SYSTEM SERVICES
 void	Sys_Init (void);
 
 // general development dll loading for virtual machine testing
-void	* QDECL Sys_LoadGameDll( const char *name, vmMainProc *entryPoint,
-				  intptr_t (QDECL *systemcalls)(intptr_t, ...) );
+void	* QDECL Sys_LoadGameDll( const char *name, vmMainFunc_t *entryPoint,
+								 dllSyscall_t systemcalls );
 void	Sys_UnloadDll( void *dllHandle );
 
 qboolean Sys_DllExtension( const char *name );

@@ -234,7 +234,7 @@ static void CL_VoipParseTargets( void )
 				if ( !Q_stricmpn( target, "team", 4 ) ) {
 					clc.voipFlags |= VOIP_TEAM;
 					// fallback: populate recips bitmask for old servers
-					if ( VM_Call( cgvm, CG_VOIP_TEAM ) == 0 ) {
+					if ( VM_Call( cgvm, 0, CG_VOIP_TEAM ) == 0 ) {
 						char teamIds[256];
 						const char *p;
 						char *e;
@@ -253,10 +253,10 @@ static void CL_VoipParseTargets( void )
 					target += 4;
 					continue;
 				} else if ( !Q_stricmpn( target, "attacker", 8 ) ) {
-					val = VM_Call( cgvm, CG_LAST_ATTACKER );
+					val = VM_Call( cgvm, 0, CG_LAST_ATTACKER );
 					target += 8;
 				} else if ( !Q_stricmpn( target, "crosshair", 9 ) ) {
-					val = VM_Call( cgvm, CG_CROSSHAIR_PLAYER );
+					val = VM_Call( cgvm, 0, CG_CROSSHAIR_PLAYER );
 					target += 9;
 				} else {
 					while ( *target && *target != ',' && *target != ' ' )

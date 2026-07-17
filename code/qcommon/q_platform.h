@@ -103,6 +103,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #define Q3_LITTLE_ENDIAN
 
+// [vm_vr]: the vendored Quake3e VM sources key 64-bit paths off glibc's
+// __WORDSIZE (vm_interpreted.c syscall marshalling); MSVC/MinGW don't
+// define it, so define it here the same way trinity-engine's q_platform.h does
+#ifndef __WORDSIZE
+#define __WORDSIZE 64
+#endif
+
 #define DLL_EXT ".dll"
 
 #elif defined(_WIN32) || defined(__WIN32__)
@@ -130,6 +137,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #endif
 
 #define Q3_LITTLE_ENDIAN
+
+#ifndef __WORDSIZE
+#define __WORDSIZE 32
+#endif
 
 #define DLL_EXT ".dll"
 

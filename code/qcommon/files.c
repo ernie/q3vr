@@ -230,6 +230,7 @@ typedef struct {
 	int				hashSize;					// hash table size (power of 2)
 	fileInPack_t*	*hashTable;					// hash table
 	fileInPack_t*	buildBuffer;				// buffer with the filenames etc.
+	int				index;						// pak numbering, used by fs_lastPakIndex
 } pack_t;
 
 typedef struct {
@@ -264,6 +265,9 @@ static	int			fs_readCount;			// total bytes read
 static	int			fs_loadCount;			// total files read
 static	int			fs_loadStack;			// total files in memory
 static	int			fs_packFiles = 0;		// total number of files in packs
+static	int			fs_packCount = 0;		// total number of packs in searchpath, used to number pack_t::index
+
+int	fs_lastPakIndex;
 
 static cvar_t *fs_pathVars[16];
 
@@ -1214,6 +1218,7 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 
 	*file = FS_HandleForFile();
 	fsh[*file].handleFiles.unique = uniqueFILE;
+	fs_lastPakIndex = -1;
 
 	// is the element a pak file?
 	if(search->pack)
@@ -1288,6 +1293,7 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 					unzOpenCurrentFile(fsh[*file].handleFiles.file.z);
 					fsh[*file].zipFilePos = pakFile->pos;
 					fsh[*file].zipFileLen = pakFile->len;
+					fs_lastPakIndex = pak->index;
 
 					if(fs_debug->integer)
 					{
@@ -3083,6 +3089,9 @@ static void FS_AddGameDirectory( const char *path, const char *dir ) {
 			// store the game name for downloading
 			Q_strncpyz(pak->pakGamename, dir, sizeof(pak->pakGamename));
 
+			pak->index = fs_packCount;
+			fs_packCount++;
+
 			fs_packFiles += pak->numfiles;
 
 			search = Z_Malloc(sizeof(searchpath_t));
@@ -3485,6 +3494,7 @@ static void FS_Startup( const char *gameName )
 	Com_Printf( "----- FS_Startup -----\n" );
 
 	fs_packFiles = 0;
+	fs_packCount = 0;
 
 	fs_debug = Cvar_Get( "fs_debug", "0", 0 );
 	fs_basepath = Cvar_Get ("fs_basepath", Sys_DefaultInstallPath(), CVAR_INIT|CVAR_PROTECTED );

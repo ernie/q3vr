@@ -1,6 +1,7 @@
 /*
 ===========================================================================
 Copyright (C) 1999-2005 Id Software, Inc.
+Copyright (C) 2011-2026 Quake3e project
 
 This file is part of Quake III Arena source code.
 
@@ -19,164 +20,1654 @@ along with Quake III Arena source code; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 ===========================================================================
 */
-// vm_x86.c -- load time compiler and execution environment for x86
 
-#if defined (__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64)
+// load time compiler and execution environment for x86_64
+// with dynamic register allocation and various optimizations
 
 #include "vm_local.h"
+#ifndef DEDICATED
+#include "../ui/ui_public.h"
+#include "../cgame/cg_public.h"
+#endif
+#include "../game/g_public.h"
 
 #ifdef _WIN32
-  #include <windows.h>
-#else
-  #ifdef __FreeBSD__
-  #include <sys/types.h>
-  #endif
-
-  #include <sys/mman.h> // for PROT_ stuff
-
-  /* need this on NX enabled systems (i386 with PAE kernel or
-   * noexec32=on x86_64) */
-  #define VM_X86_MMAP
-  
-  // workaround for systems that use the old MAP_ANON macro
-  #ifndef MAP_ANONYMOUS
-    #define MAP_ANONYMOUS MAP_ANON
-  #endif
+#include <windows.h>
 #endif
 
-static void VM_Destroy_Compiled(vm_t* self);
+#ifdef __FreeBSD__
+#include <sys/types.h>
+#endif
+
+#ifndef _WIN32
+#include <sys/mman.h> // for PROT_ stuff
+#endif
+
+/* need this on NX enabled systems (i386 with PAE kernel or noexec32=on x86_64) */
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__APPLE__)
+#define VM_X86_MMAP
+#endif
+
+#define DEBUG_VM
+
+//#define DEBUG_INT
+
+//#define DUMP_CODE
+
+//#define VM_LOG_SYSCALLS
+#define JUMP_OPTIMIZE 1
+
+#if JUMP_OPTIMIZE
+#define NUM_PASSES       3
+#define PASS_INIT        0
+#define PASS_COMPRESS    1
+#define PASS_EXPAND_ONLY 2
+#define NUM_COMPRESSIONS 1
+#define NUM_PROC_COMPRESSIONS 3
+#define FJUMP_THRESHOLD 48
+#else
+#define NUM_PASSES       1
+#endif
+
+#define DYN_ALLOC_RX
+#define DYN_ALLOC_SX
+
+#define CONST_CACHE_RX
+#define CONST_CACHE_SX
+
+#define REGS_OPTIMIZE
+#define ADDR_OPTIMIZE
+#define LOAD_OPTIMIZE
+#define FPU_OPTIMIZE
+#define CONST_OPTIMIZE
+#define MACRO_OPTIMIZE
+//#define RET_OPTIMIZE // increases code size because of far-jumps 
+
+
+#define USE_LITERAL_POOL // allocate data for FP immediates at the end of the code
+
+// allow sharing both variables and constants in registers
+#define REG_TYPE_MASK
+// number of variables/memory mappings per register
+#define REG_MAP_COUNT 4
+
+#define R_PSTACK		R_ESI
+#define R_OPSTACK		R_EDI
+#define R_DATABASE		R_EBX
+#define R_PROCBASE		R_EBP
+#if idx64
+#define R_DATAMASK		R_R11
+#define R_INSPOINTERS	R_R12
+#define R_SYSCALL		R_R13
+#define R_STACKBOTTOM	R_R14
+#define R_OPSTACKTOP	R_R15
+#endif
+
+#define FUNC_ALIGN		16
 
 /*
+  -------------
+  eax	scratch
+  ebx*	dataBase
+  ecx	scratch (required for shifts)
+  edx	scratch (required for divisions)
+  esi*	programStack
+  edi*	opStack
+  ebp*  procBase ( dataBase + programStack )
+  -------------
+  rax   scratch
+  rbx*  dataBase
+  rcx   scratch (required for shifts)
+  rdx   scratch (required for divisions)
+  rsi*  programStack
+  rdi*  opStack
+  rbp*  procBase ( dataBase + programStack )
+  rsp*
+  r8    scratch
+  r9    scratch
+  r10   scratch
+  r11   scratch - dataMask
+  r12*  instructionPointers
+  r13*  systemCall
+  r14*  stackBottom
+  r15*  opStackTop
+  xmm0  scratch
+  xmm1  scratch
+  xmm2  scratch
+  xmm3  scratch
+  xmm4  scratch
+  xmm5  scratch
 
-  eax		scratch
-  ebx/bl	opStack offset
-  ecx		scratch (required for shifts)
-  edx		scratch (required for divisions)
-  esi		program stack
-  edi   	opStack base
-x86_64:
-  r8		vm->instructionPointers
-  r9		vm->dataBase
+  Windows  ABI: you are required to preserve the XMM6-XMM15 registers
+  System V ABI: you don't have to preserve any of the XMM registers, RSI/RDI are callee-saved
+
+  Example how data segment will look like during vmMain execution:
+  | .... |
+  |------| vm->programStack -=36 (8+12+16) // set by vmMain -> procBase
+  | ???? | +0 - unused/scratch, reserved for interpreter
+  | ???? | +4 - unused/scratch, reserved for interpreter
+  |-------
+  | arg0 | +8  \
+  | arg4 | +12  | - passed arguments, accessible from subroutines
+  | arg8 | +16 /
+  |------|
+  | loc0 | +20 \
+  | loc4 | +24  \ - locals, accessible only from local scope
+  | loc8 | +28  /
+  | lc12 | +32 /
+  |------| vm->programStack -= 24 ( 8 + MAX_VMMAIN_CALL_ARGS*4 ) // set by VM_CallCompiled() -> procBase
+  | ???? | +0 - unused/scratch, reserved for interpreter
+  | ???? | +4 - unused/scratch, reserved for interpreter
+  | arg0 | +8  \
+  | arg1 | +12  \ - passed arguments, accessible from vmMain
+  | arg2 | +16  /
+  | arg3 | +20 /
+  |------| vm->programStack = vm->dataMask + 1 // set by VM_Create()
+
+  jump/call opStack rules:
+
+  1) opStack must be 8 before conditional jump
+  2) opStack must be 4 before unconditional jump
+  3) opStack must be >=4 before OP_CALL
+  4) opStack must remain the same after OP_CALL
+  5) you may not jump in/call locations with opStack != 0
 
 */
 
-#define VMFREE_BUFFERS() do {Z_Free(buf); Z_Free(jused);} while(0)
-static	byte	*buf = NULL;
-static	byte	*jused = NULL;
-static	int		jusedSize = 0;
-static	int		compiledOfs = 0;
-static	byte	*code = NULL;
-static	int		pc = 0;
-
-#define FTOL_PTR
-
-static	int	instruction, pass;
-static	int	lastConst = 0;
-static	int	oc0, oc1, pop0, pop1;
-static	int jlabel;
-
-typedef enum 
-{
-	LAST_COMMAND_NONE	= 0,
-	LAST_COMMAND_MOV_STACK_EAX,
-	LAST_COMMAND_SUB_BL_1,
-	LAST_COMMAND_SUB_BL_2,
-} ELastCommand;
-
 typedef enum
 {
-	VM_JMP_VIOLATION = 0,
-	VM_BLOCK_COPY = 1
-} ESysCallType;
+	FUNC_ENTR = 0,
+	FUNC_CALL,
+	FUNC_SYSC,
+	FUNC_BCPY,
+	FUNC_PSOF,
+	FUNC_OSOF,
+	FUNC_BADJ,
+	FUNC_ERRJ,
+	FUNC_DATR,
+	FUNC_DATW,
+	FUNC_LAST
+} func_t;
 
-static	ELastCommand	LastCommand;
+// macro opcode sequences
+#ifdef MACRO_OPTIMIZE
+typedef enum {
+	MOP_ADD = OP_MAX,
+	MOP_SUB,
+	MOP_BAND,
+	MOP_BOR,
+	MOP_BXOR
+} macro_op_t;
+#endif
 
-static int iss8(int32_t v)
+static	byte     *code;
+static	int      compiledOfs;
+static	int      *instructionOffsets;
+static	intptr_t *instructionPointers;
+
+static  instruction_t *inst = NULL;
+
+static	int	ip, pass;
+#if JUMP_OPTIMIZE
+static	int jumpSizeChanged;
+#endif
+
+static	int	funcOffset[ FUNC_LAST ];
+static	qboolean forceDataMask;
+
+// literal pool
+#ifdef USE_LITERAL_POOL
+
+#define MAX_LITERALS  1024 /* usually ~160 for Q3 mods, ~270 for q3ut4 */
+#define LIT_HASH_SIZE 256
+#define LIT_HASH_FUNC(v) ((v*157)&(LIT_HASH_SIZE-1))
+
+typedef struct literal_s {
+	struct literal_s* next;
+	uint32_t value;
+} literal_t;
+
+static uint32_t numLiterals;
+static literal_t* litHash[LIT_HASH_SIZE];
+static literal_t litList[MAX_LITERALS];
+static intptr_t litBase;
+
+static void VM_InitLiterals( void )
 {
-	return (SCHAR_MIN <= v && v <= SCHAR_MAX);
+	Com_Memset( litHash, 0x0, sizeof( litHash ) );
+	Com_Memset( litList, 0x0, sizeof( litList ) );
+	numLiterals = 0;
+	litBase = 0;
+}
+
+static int VM_SearchLiteral( const uint32_t value )
+{
+	uint32_t h = LIT_HASH_FUNC( value );
+	literal_t* lt = litHash[h];
+
+	while ( lt != NULL ) {
+		if ( lt->value == value ) {
+			return (lt - &litList[0]);
+		}
+		lt = lt->next;
+	}
+
+	if ( numLiterals >= ARRAY_LEN( litList ) ) {
+		return -1;
+	}
+
+	lt = &litList[numLiterals];
+	lt->next = litHash[h];
+	lt->value = value;
+	litHash[h] = lt;
+
+	return numLiterals++;
+}
+#endif // USE_LITERAL_POOL
+
+static void *VM_Alloc_Compiled( vm_t *vm, int codeLength, int tableLength );
+static void VM_Destroy_Compiled( vm_t *vm );
+static void VM_FreeBuffers( void );
+
+static void Emit1( int v );
+static void Emit2( int16_t v );
+static void Emit4( int32_t v );
+#if idx64
+static void Emit8( int64_t v );
+#endif
+
+#ifdef _MSC_VER
+#define DROP( reason, ... ) \
+	do { \
+		VM_FreeBuffers(); \
+		Com_Error( ERR_DROP, "%s: " reason, __func__, __VA_ARGS__ ); \
+	} while(0)
+#else
+#define DROP( reason, args... ) \
+	do { \
+		VM_FreeBuffers(); \
+		Com_Error( ERR_DROP, "%s: " reason, __func__, ##args ); \
+	} while(0)
+#endif
+
+#define SWAP_INT( X, Y ) do { int T = X; X = Y; Y = T; } while ( 0 )
+
+// x86 instruction encoding
+
+typedef enum {
+	R_EAX = 0x00,
+	R_ECX = 0x01,
+	R_EDX = 0x02,
+	R_EBX = 0x03,
+	R_ESP = 0x04,
+	R_EBP = 0x05,
+	R_ESI = 0x06,
+	R_EDI = 0x07,
+#if idx64
+	R_R8 =   0x08,
+	R_R9 =   0x09,
+	R_R10 =  0x0A,
+	R_R11 =  0x0B,
+	R_R12 =  0x0C,
+	R_R13 =  0x0D,
+	R_R14 =  0x0E,
+	R_R15 =  0x0F,
+	R_MASK = 0x0F,
+	R_REX =  0x10 // mask to force 64-bit operation
+#else
+	R_MASK = 0x07,
+	R_REX  = 0x00
+#endif
+} intreg_t;
+
+#define RNN_SHIFT 3
+#define REX_SHIFT 4
+
+typedef enum {
+	R_XMM0 = 0x00,
+	R_XMM1 = 0x01,
+	R_XMM2 = 0x02,
+	R_XMM3 = 0x03,
+	R_XMM4 = 0x04,
+	R_XMM5 = 0x05
+} xmmreg_t;
+
+typedef union {
+	struct {
+		unsigned b : 1; // 1-bit extension of MODRM.r_m or SIB.base
+		unsigned x : 1; // 1-bit extension of SIB.index
+		unsigned r : 1; // 1-bit extension of MODRM.r_x
+		unsigned w : 1; // 64-bit operand size or default (0)
+		unsigned f : 4; // always 0x4 (0b0100)
+	} s;
+	uint8_t v;
+} rex_t;
+
+typedef enum {
+	MOD_NO_DISP = 0,			// 0-byte displacement
+	MOD_DISP4_ONLY_RM_5 = 0,	// displacement-only mode with r_m = 5 (101)
+	MOD_SIB_NO_DISP_RM_4 = 0,	// SIB with no displacement with r_m = 4 (100)
+	MOD_DISP1 = 1,				// 1-byte signed displacement
+	MOD_DISP4 = 2,				// 4-byte signed displacement
+	MOD_REG_TO_REG = 3			// register addressing mode
+} mod_t;
+
+typedef union {
+	struct {
+		unsigned r_m : 3; // direct or indirect register operand with opt.displacement, REX.b can extend this by 1 bit
+		unsigned r_x : 3; // register or opcode extension, REX.r can extend this by 1 bit
+		unsigned mod : 2; // see mod_t
+	} s;
+	uint8_t v;
+} modrm_t;
+
+typedef union {
+	struct {
+		unsigned base : 3;  // base register to use, REX.b can extend by 1 bit
+		unsigned index : 3; // index register to use, REX.x can extend by 1 bit
+		unsigned scale : 2; // 1 2 4 8
+	} s;
+	uint8_t v;
+} sib_t;
+
+#if idx64
+static void emit_rex3( const uint32_t base, const uint32_t reg, const uint32_t idx )
+{
+	rex_t rex;
+	rex.v = 0x40;
+
+	rex.s.b = ( base >> RNN_SHIFT ) & 1;
+	rex.s.r = ( reg >> RNN_SHIFT ) & 1;
+	rex.s.x = ( idx >> RNN_SHIFT ) & 1;
+	rex.s.w = ( ( base | reg | idx ) >> REX_SHIFT ) & 1;
+
+	if ( rex.v != 0x40 )
+		Emit1( rex.v );
+}
+
+static void emit_rex2( const uint32_t base, const uint32_t reg )
+{
+	rex_t rex;
+	rex.v = 0x40;
+
+	rex.s.b = ( base >> RNN_SHIFT ) & 1;
+	rex.s.r = ( reg >> RNN_SHIFT ) & 1;
+	rex.s.w = ( ( base | reg ) >> REX_SHIFT ) & 1;
+
+	if ( rex.v != 0x40 )
+		Emit1( rex.v );
+}
+
+static void emit_rex1( const uint32_t base )
+{
+	rex_t rex;
+	rex.v = 0x40;
+
+	rex.s.b = ( base >> RNN_SHIFT ) & 1;
+	rex.s.w = ( base >> REX_SHIFT ) & 1;
+
+	if ( rex.v != 0x40 )
+		Emit1( rex.v );
+}
+#endif
+
+ // reg <-> [offset]
+static void emit_modrm_offset( uint32_t reg, int32_t offset )
+{
+	modrm_t modrm;
+
+	modrm.s.mod = MOD_DISP4_ONLY_RM_5; // displacement-only mode with ( r_m == 0x5 )	
+	modrm.s.r_m = 5; // 101
+	modrm.s.r_x = reg;
+
+	Emit1( modrm.v );
+	Emit4( offset );
+}
+
+ // reg <-> [base + offset]
+static void emit_modrm_base_offset( uint32_t reg, uint32_t base, int32_t offset )
+{
+	modrm_t modrm;
+
+	modrm.s.r_m = base;
+	modrm.s.r_x = reg;
+
+	if ( offset >= -127 && offset < 128 ) {
+		if ( offset != 0 || modrm.s.r_m == 0x5 /* 101 */ ) {
+			modrm.s.mod = MOD_DISP1; // 1-byte displacement
+			Emit1( modrm.v );
+			if ( modrm.s.r_m == 0x4 /* 100 */ ) {
+				Emit1( 0x24 ); // SIB: 00:100:100
+			}
+			Emit1( offset );
+		} else {
+			modrm.s.mod = MOD_NO_DISP; // 0-byte displacement
+			Emit1( modrm.v );
+			if ( modrm.s.r_m == 0x4 /* 100 */ ) {
+				Emit1( 0x24 ); // SIB: 00:100:100
+			}
+		}
+	} else {
+		modrm.s.mod = MOD_DISP4; // 4-byte displacement	
+		Emit1( modrm.v );
+		if ( modrm.s.r_m == 0x4 /* 100 */ ) {
+			Emit1( 0x24 ); // SIB: 00:100:100
+		}
+		Emit4( offset );
+	}
+}
+
+// reg <-> [base + index*scale + disp]
+static void emit_modrm_base_index( uint32_t reg, uint32_t base, uint32_t index, int scale, int32_t disp )
+{
+	modrm_t modrm;
+	sib_t sib;
+
+	sib.s.base = base;
+	sib.s.index = index;
+
+	switch ( scale ) {
+		case 8: sib.s.scale = 3; break;
+		case 4: sib.s.scale = 2; break;
+		case 2: sib.s.scale = 1; break;
+		default: sib.s.scale = 0; break;
+	}
+
+	modrm.s.r_x = reg;
+	modrm.s.r_m = 4; // 100
+	
+	if ( disp == 0 ) {
+		if ( sib.s.base == 5 /* 101 */ ) {
+			modrm.s.mod = MOD_DISP1; // dummy 1-byte displacement
+			Emit1( modrm.v );
+			Emit1( sib.v );
+			Emit1( 0x0 ); // displacement
+		} else {
+			modrm.s.mod = MOD_SIB_NO_DISP_RM_4; // SIB with no displacement ( r_m == 0x4 )
+			Emit1( modrm.v );
+			Emit1( sib.v );
+		}
+	} else {
+		if ( disp >= -128 && disp <= 127 ) {
+			modrm.s.mod = MOD_DISP1;
+			Emit1( modrm.v );
+			Emit1( sib.v );
+			Emit1( disp );
+		} else {
+			modrm.s.mod = MOD_DISP4;
+			Emit1( modrm.v );
+			Emit1( sib.v );
+			Emit4( disp );
+		}
+	}
+}
+
+
+// reg <-> reg
+static void emit_modrm_reg( uint32_t base, uint32_t regx )
+{
+	modrm_t modrm;
+
+	modrm.s.mod = MOD_REG_TO_REG;
+	modrm.s.r_m = base;
+	modrm.s.r_x = regx;
+
+	Emit1( modrm.v );
+}
+
+static void emit_op_reg( int prefix, int opcode, uint32_t base, uint32_t reg )
+{
+#if idx64
+	emit_rex2( base, reg );
+#endif
+	if ( prefix != 0 )
+		Emit1( prefix );
+
+	Emit1( opcode );
+
+	emit_modrm_reg( base, reg );
+}
+
+// offset is RIP-related in 64-bit mode
+static void emit_op_reg_offset( int prefix, int opcode, uint32_t reg, int32_t offset )
+{
+#if idx64
+	emit_rex2( 0x0, reg );
+#endif
+	if ( prefix != 0 )
+		Emit1( prefix );
+
+	Emit1( opcode );
+
+	emit_modrm_offset( reg, offset );
+}
+
+static void emit_op_reg_base_offset( int prefix, int opcode, uint32_t reg, uint32_t base, int32_t offset )
+{
+#if idx64
+	emit_rex2( base, reg );
+#endif
+	if ( prefix != 0 )
+		Emit1( prefix );
+
+	Emit1( opcode );
+
+	emit_modrm_base_offset( reg, base, offset );
+}
+
+static void emit_op2_reg_base_offset( int prefix, int opcode, int opcode2, uint32_t reg, uint32_t base, int32_t offset )
+{
+#if idx64
+	emit_rex2( base, reg );
+#endif
+	if ( prefix != 0 )
+		Emit1( prefix );
+
+	Emit1( opcode );
+
+	Emit1( opcode2 );
+
+	emit_modrm_base_offset( reg, base, offset );
+}
+
+
+static void emit_op_reg_base_index( int prefix, int opcode, uint32_t reg, uint32_t base, uint32_t index, int scale, int32_t disp )
+{
+	if ( ( index & R_MASK ) == 4 ) {
+		if ( scale == 1 && ( base & R_MASK ) != 4 ) {
+			SWAP_INT( index, base ); // swap index with base
+		} else {
+#ifndef DEBUG_INT
+			DROP( "incorrect index register" );
+#else
+			return; // R_ESP cannot be used as index register
+#endif
+		}
+	} else if ( disp != 0 && ( base & 7 ) == 5 && scale == 1 && ( index & R_MASK ) != 4 ) {
+		SWAP_INT( index, base ); // avoid using dummy displacement with R_EBP
+	}
+#if idx64
+	emit_rex3( base, reg, index );
+#endif
+	if ( prefix != 0 )
+		Emit1( prefix );
+
+	Emit1( opcode );
+
+	emit_modrm_base_index( reg, base, index, scale, disp );
+}
+
+
+static void emit_op_reg_index_offset( int opcode, uint32_t reg, uint32_t index, int scale, int32_t offset )
+{
+	modrm_t modrm;
+	sib_t sib;
+
+	if ( ( index & R_MASK ) == 4 )
+		return;
+
+#if idx64
+	emit_rex3( 0x0, reg, index );
+#endif
+
+	// modrm = 00:<reg>:100
+	modrm.s.mod = MOD_SIB_NO_DISP_RM_4;
+	modrm.s.r_x = reg;
+	modrm.s.r_m = 4;
+
+	// sib = <scale>:<index>:101
+	sib.s.base = 5; // 101 - (index*scale + disp4) mode
+	sib.s.index = index;
+	switch ( scale ) {
+		case 8: sib.s.scale = 3; break;
+		case 4: sib.s.scale = 2; break;
+		case 2: sib.s.scale = 1; break;
+		default: sib.s.scale = 0; break;
+	}
+
+	Emit1( opcode );
+	Emit1( modrm.v );
+	Emit1( sib.v );
+	Emit4( offset );
+}
+
+static void emit_lea( uint32_t reg, uint32_t base, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0x8D, reg, base, offset );
+}
+
+static void emit_lea_base_index( uint32_t reg, uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0, 0x8D, reg, base, index, 1, 0 );
 }
 
 #if 0
-static int isu8(uint32_t v)
+static void emit_lea_index_scale( uint32_t reg, uint32_t index, int scale, int32_t offset )
 {
-	return (v <= UCHAR_MAX);
+	emit_op_reg_index_offset( 0x8D, reg, index, scale, offset );
 }
 #endif
 
-static int NextConstant4(void)
+static void emit_lea_base_index_offset( uint32_t reg, uint32_t base, uint32_t index, int32_t offset )
 {
-	return ((unsigned int)code[pc] | ((unsigned int)code[pc+1]<<8) | ((unsigned int)code[pc+2]<<16) | ((unsigned int)code[pc+3]<<24));
+	emit_op_reg_base_index( 0, 0x8D, reg, base, index, 1, offset );
 }
 
-static int	Constant4( void ) {
-	int		v;
-
-	v = NextConstant4();
-	pc += 4;
-	return v;
-}
-
-static int	Constant1( void ) {
-	int		v;
-
-	v = code[pc];
-	pc += 1;
-	return v;
-}
-
-static void Emit1( int v ) 
+static void emit_mov_rx( uint32_t base, uint32_t reg )
 {
-	buf[ compiledOfs ] = v;
-	compiledOfs++;
-
-	LastCommand = LAST_COMMAND_NONE;
+	emit_op_reg( 0, 0x89, base, reg );
 }
 
-static void Emit2(int v)
+static void emit_sex8( uint32_t base, uint32_t reg )
 {
-	Emit1(v & 255);
-	Emit1((v >> 8) & 255);
+	emit_op_reg( 0x0F, 0xBE, reg, base );
 }
 
-
-static void Emit4(int v)
+static void emit_zex8( uint32_t base, uint32_t reg )
 {
-	Emit1(v & 0xFF);
-	Emit1((v >> 8) & 0xFF);
-	Emit1((v >> 16) & 0xFF);
-	Emit1((v >> 24) & 0xFF);
+	emit_op_reg( 0x0F, 0xB6, reg, base );
 }
 
-static void EmitPtr(void *ptr)
+static void emit_sex16( uint32_t base, uint32_t reg )
 {
-	intptr_t v = (intptr_t) ptr;
-	
-	Emit4(v);
+	emit_op_reg( 0x0F, 0xBF, reg, base );
+}
+
+static void emit_zex16( uint32_t base, uint32_t reg )
+{
+	emit_op_reg( 0x0F, 0xB7, reg, base );
+}
+
+static void emit_test_rx( uint32_t base, uint32_t reg )
+{
+	emit_op_reg( 0, 0x85, base, reg );
+}
+
+static void emit_test_rx_imm32( uint32_t base, int32_t imm32 )
+{
+	if ( (base & R_MASK) == R_EAX ) {
 #if idx64
-	Emit1((v >> 32) & 0xFF);
-	Emit1((v >> 40) & 0xFF);
-	Emit1((v >> 48) & 0xFF);
-	Emit1((v >> 56) & 0xFF);
+		emit_rex1( base );
+#endif
+		Emit1( 0xA9 );
+	} else {
+		emit_op_reg( 0, 0xF7, base, 0x0 );
+	}
+	Emit4( imm32 );
+}
+
+static void emit_cmp_rx( uint32_t base, uint32_t reg )
+{
+	emit_op_reg( 0, 0x39, base, reg );
+}
+
+/*static*/ void emit_cmp_rx_mem( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_offset( 0, 0x3B, reg, offset );
+}
+
+static void emit_and_rx( uint32_t base, uint32_t reg )
+{
+	emit_op_reg( 0, 0x21, base, reg );
+}
+
+static void emit_or_rx( uint32_t base, uint32_t reg )
+{
+	emit_op_reg( 0, 0x09, base, reg );
+}
+
+static void emit_xor_rx( uint32_t base, uint32_t reg )
+{
+	emit_op_reg( 0, 0x31, base, reg );
+}
+
+static void emit_mov_rx_imm32( uint32_t reg, int32_t imm32 )
+{
+#if idx64
+	emit_rex1( reg & ~R_REX );
+#endif
+	Emit1( 0xB8 + ( reg & 7 ) );
+	Emit4( imm32 );
+}
+
+#if idx64
+static void emit_mov_rx_imm64( uint32_t reg, int64_t imm64 )
+{
+	emit_rex1( reg | R_REX );
+	Emit1( 0xB8 + ( reg & 7 ) );
+	Emit8( imm64 );
+}
+#endif
+
+// wrapper function
+static void mov_rx_imm32( uint32_t reg, uint32_t imm32 )
+{
+	if ( imm32 == 0 ) {
+		emit_xor_rx( reg & ~R_REX, reg & ~R_REX );
+	} else {
+		emit_mov_rx_imm32( reg, imm32 );
+	}
+}
+
+#if idx64
+// wrapper function
+static void mov_rx_imm64( uint32_t reg, int64_t imm64 )
+{
+	if ( imm64 == 0 ) {
+		emit_xor_rx( reg & ~R_REX, reg & ~R_REX );
+	} else {
+		if ( (uint64_t) imm64 > 0xFFFFFFFFULL ) {
+			// move to 64-bit register
+			if ( imm64 < 0 && imm64 >= -0x80000000LL ) {
+				// sign-extend to 64 bit
+				emit_rex1( reg | R_REX );
+				Emit1( 0xC7 );
+				Emit1( 0xC0 + ( reg & 7 ) ); // modrm: 11.000.reg
+				Emit4( (int32_t)imm64 );
+			} else {
+				// worst case
+				emit_mov_rx_imm64( reg, imm64 );
+			}
+		} else {
+			// move to 32-bit register with implicit zero-extension to 64-bits
+			emit_mov_rx_imm32( reg, (int32_t)imm64 );
+		}
+	}
+}
+#endif
+
+static void mov_rx_ptr( uint32_t reg, const void *ptr )
+{
+#if idx64
+	mov_rx_imm64( reg, (intptr_t) ptr );
+#else
+	mov_rx_imm32( reg, (intptr_t) ptr );
 #endif
 }
 
-static int Hex( int c ) {
-	if ( c >= 'a' && c <= 'f' ) {
-		return 10 + c - 'a';
+static void emit_not_rx( uint32_t reg )
+{
+	modrm_t modrm;
+#if idx64
+	emit_rex1( reg );
+#endif
+	Emit1( 0xF7 );
+
+	modrm.v = 0xD0;
+	modrm.s.r_m = reg;
+	Emit1( modrm.v );
+}
+
+static void emit_neg_rx( uint32_t reg )
+{
+	modrm_t modrm;
+#if idx64
+	emit_rex1( reg );
+#endif
+	Emit1( 0xF7 );
+
+	modrm.v = 0xD8;
+	modrm.s.r_m = reg;
+	Emit1( modrm.v );
+}
+
+static void emit_load1( uint32_t reg, uint32_t base, int32_t offset )
+{
+	emit_op_reg_base_offset( 0x0F, 0xB6, reg, base, offset );
+}
+
+static void emit_load1_sex( uint32_t reg, uint32_t base, int32_t offset )
+{
+	emit_op_reg_base_offset( 0x0F, 0xBE, reg, base, offset );
+}
+
+static void emit_load2( uint32_t reg, uint32_t base, int32_t offset )
+{
+	emit_op_reg_base_offset( 0x0F, 0xB7, reg, base, offset );
+}
+
+static void emit_load2_sex( uint32_t reg, uint32_t base, int32_t offset )
+{
+	emit_op_reg_base_offset( 0x0F, 0xBF, reg, base, offset );
+}
+
+static void emit_load4( uint32_t reg, uint32_t base, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0x8B, reg, base, offset );
+}
+
+/*static*/ void emit_load_rx_offset( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_offset( 0, 0x8B, reg, offset );
+}
+
+static void emit_load1_index( uint32_t reg, uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0x0F, 0xB6, reg, base, index, 1, 0 );
+}
+
+static void emit_load1_sex_index( uint32_t reg, uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0x0F, 0xBE, reg, base, index, 1, 0 );
+}
+
+static void emit_load2_index( uint32_t reg, uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0x0F, 0xB7, reg, base, index, 1, 0 );
+}
+
+static void emit_load2_sex_index( uint32_t reg, uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0x0F, 0xBF, reg, base, index, 1, 0 );
+}
+
+static void emit_load4_index( uint32_t reg, uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0, 0x8B, reg, base, index, 1, 0 );
+}
+
+#if 0
+static void emit_load4_index_offset( uint32_t reg, uint32_t base, uint32_t index, int scale, int32_t offset )
+{
+	emit_op_reg_base_index( 0, 0x8B, reg, base, index, scale, offset );
+}
+#endif
+
+// R_REX prefix flag in [reg] may expand store to 8 bytes
+static void emit_store_rx( uint32_t reg, uint32_t base, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0x89, reg, base, offset );
+}
+
+/*static*/ void emit_store_rx_offset( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_offset( 0, 0x89, reg, offset );
+}
+
+static void emit_store_imm32( int32_t imm32, uint32_t base, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0xC7, 0, base, offset );
+	Emit4( imm32 );
+}
+
+static void emit_store_imm32_index( int32_t imm32, uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0, 0xC7, 0, base, index, 1, 0 );
+	Emit4( imm32 );
+}
+
+static void emit_store2_rx( uint32_t reg, uint32_t base, int32_t offset )
+{
+	Emit1( 0x66 );
+	emit_op_reg_base_offset( 0, 0x89, reg, base, offset );
+}
+
+static void emit_store2_imm16( int imm16, uint32_t base, int32_t offset )
+{
+	Emit1( 0x66 );
+	emit_op_reg_base_offset( 0, 0xC7, 0x0, base, offset );
+	Emit2( imm16 );
+}
+
+static void emit_store2_imm16_index( int imm16, uint32_t base, uint32_t index )
+{
+	Emit1( 0x66 );
+	emit_op_reg_base_index( 0, 0xC7, 0x0, base, index, 1, 0 );
+	Emit2( imm16 );
+}
+
+static void emit_store1_rx( int reg, uint32_t base, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0x88, reg, base, offset );
+}
+
+static void emit_store1_imm8( int imm8, uint32_t base, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0xC6, 0x0, base, offset );
+	Emit1( imm8 );
+}
+
+static void emit_store1_imm8_index( int imm8, uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0, 0xC6, 0x0, base, index, 1, 0 );
+	Emit1( imm8 );
+}
+
+static void emit_store4_index( uint32_t reg, uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0, 0x89, reg, base, index, 1, 0 );
+}
+
+static void emit_store2_index( uint32_t reg, uint32_t base, uint32_t index )
+{
+	Emit1( 0x66 );
+	emit_op_reg_base_index( 0, 0x89, reg, base, index, 1, 0 );
+}
+
+static void emit_store1_index( uint32_t reg, uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0, 0x88, reg, base, index, 1, 0 );
+}
+
+/*static*/ void emit_jump_index( uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0, 0xFF, 0x4, base, index, sizeof( void* ), 0 );
+}
+
+/*static*/ void emit_jump_index_offset( int32_t offset, uint32_t index )
+{
+	emit_op_reg_index_offset( 0xFF, 0x4, index, sizeof( void * ), offset );
+}
+
+void emit_call_index( uint32_t base, uint32_t index )
+{
+	emit_op_reg_base_index( 0, 0xFF, 0x2, base, index, sizeof( void* ), 0 );
+}
+
+/*static*/ void emit_call_index_offset( int32_t offset, uint32_t index )
+{
+	emit_op_reg_index_offset( 0xFF, 0x2, index, sizeof( void * ), offset );
+}
+
+/*static*/ void emit_call_indir( int32_t offset )
+{
+	Emit1( 0xFF );
+	Emit1( 0x15 );
+	Emit4( offset );
+}
+
+/*static*/ void emit_call_rx( uint32_t reg )
+{
+	emit_op_reg( 0, 0xFF, reg & ~R_REX, 0x2 );
+}
+
+static void emit_add_rx( uint32_t base, uint32_t reg )
+{
+	emit_op_reg( 0, 0x01, base, reg );
+}
+
+/*static*/ void emit_pushad( void )
+{
+	Emit1( 0x60 );
+}
+
+/*static*/ void emit_popad( void )
+{
+	Emit1( 0x61 );
+}
+
+static void emit_push( uint32_t reg )
+{
+#if idx64
+	emit_rex1( reg & ~R_REX );
+#endif
+	Emit1( 0x50 + ( reg & 7 ) );
+}
+
+static void emit_pop( uint32_t reg )
+{
+#if idx64
+	emit_rex1( reg & ~R_REX );
+#endif
+	Emit1( 0x58 + ( reg & 7 ) );
+}
+
+static void emit_ret( void )
+{
+	Emit1( 0xC3 );
+}
+
+static void emit_nop( void )
+{
+	Emit1( 0x90 );
+}
+
+static void emit_brk( void )
+{
+	Emit1( 0xCC );
+}
+
+enum {
+	X_ADD,
+	X_OR,
+	X_ADC,
+	X_SBB,
+	X_AND,
+	X_SUB,
+	X_XOR,
+	X_CMP
+};
+
+static void emit_op_rx_imm32( int xop, uint32_t reg, int32_t imm32 )
+{
+	if ( imm32 < -128 || imm32 > 127 ) {
+		if ( reg == R_EAX ) {
+			switch ( xop ) {
+				case X_ADD: Emit1( 0x05 ); break;
+				case X_OR:  Emit1( 0x0D ); break;
+				case X_ADC: Emit1( 0x15 ); break;
+				case X_SBB: Emit1( 0x1D ); break;
+				case X_AND: Emit1( 0x25 ); break;
+				case X_SUB: Emit1( 0x2D ); break;
+				case X_XOR: Emit1( 0x35 ); break;
+				case X_CMP: Emit1( 0x3D ); break;
+				default: DROP( "unknown xop %i", xop );
+			}
+		} else {
+			emit_op_reg( 0, 0x81, reg, xop );
+		}
+		Emit4( imm32 );
+	} else {
+		emit_op_reg( 0, 0x83, reg, xop );
+		Emit1( imm32 );
+	}
+}
+
+#ifdef MACRO_OPTIMIZE
+static void emit_op_mem_imm( int xop, int base, int32_t offset, int32_t imm32 )
+{
+	if ( imm32 < -128 || imm32 > 127 ) {
+		emit_op_reg_base_offset( 0, 0x81, xop, base, offset );
+		Emit4( imm32 );
+	} else {
+		emit_op_reg_base_offset( 0, 0x83, xop, base, offset );
+		Emit1( imm32 );
+	}
+}
+#endif
+
+static void emit_mul_rx_imm( int reg, int32_t imm32 )
+{
+	if ( imm32 < -128 || imm32 > 127 ) {
+		emit_op_reg( 0, 0x69, reg, reg );
+		Emit4( imm32 );
+	} else {
+		emit_op_reg( 0, 0x6B, reg, reg );
+		Emit1( imm32 );
+	}
+}
+
+static void emit_shl_rx_imm( int reg, int8_t imm8 )
+{
+	emit_op_reg( 0, 0xC1, reg, 4 );
+	Emit1( imm8 );
+}
+
+static void emit_shr_rx_imm( int reg, int8_t imm8 )
+{
+	emit_op_reg( 0, 0xC1, reg, 5 );
+	Emit1( imm8 );
+}
+
+static void emit_sar_rx_imm( int reg, int8_t imm8 )
+{
+	emit_op_reg( 0, 0xC1, reg, 7 );
+	Emit1( imm8 );
+}
+
+static void emit_sub_rx( int base, int reg )
+{
+	emit_op_reg( 0, 0x29, base, reg );
+}
+
+static void emit_mul_rx( int base, int reg )
+{
+	emit_op_reg( 0x0F, 0xAF, reg, base );
+}
+
+static void emit_cdq( void )
+{
+	Emit1( 0x99 );
+}
+
+static void emit_idiv_rx( uint32_t reg )
+{
+#if idx64
+	emit_rex1( reg );
+#endif
+	Emit1( 0xF7 );
+	Emit1( 0xF8 + ( reg & 7 ) );
+}
+
+static void emit_udiv_rx( uint32_t reg )
+{
+#if idx64
+	emit_rex1( reg );
+#endif
+	Emit1( 0xF7 );
+	Emit1( 0xF0 + ( reg & 7 ) );
+}
+
+static void emit_shl_rx( uint32_t reg )
+{
+#if idx64
+	emit_rex1( reg );
+#endif
+	Emit1( 0xD3 );
+	Emit1( 0xE0 + ( reg & 7 ) );
+}
+
+static void emit_shr_rx( uint32_t reg )
+{
+#if idx64
+	emit_rex1( reg );
+#endif
+	Emit1( 0xD3 );
+	Emit1( 0xE8 + ( reg & 7 ) );
+}
+
+static void emit_sar_rx( uint32_t reg )
+{
+#if idx64
+	emit_rex1( reg );
+#endif
+	Emit1( 0xD3 );
+	Emit1( 0xF8 + ( reg & 7 ) );
+}
+
+#if 0
+static void emit_xchg_rx( uint32_t reg1, uint32_t reg2 )
+{
+	emit_op_reg( 0, 0x87, reg2, reg1 );
+}
+#endif
+
+/* FPU functions */
+
+static void emit_mov_sx( uint32_t dst, uint32_t src )
+{
+	emit_op_reg( 0x0F, 0x28, src, dst );
+}
+
+static void emit_mov_rx_sx( uint32_t intreg, uint32_t xmmreg )
+{
+	Emit1( 0x66 );
+	emit_op_reg( 0x0F, 0x7E, intreg, xmmreg );
+}
+
+static void emit_xor_sx( uint32_t dst, uint32_t src )
+{
+	emit_op_reg( 0x0F, 0x57, src, dst );
+}
+
+static void emit_ucomiss( uint32_t base, uint32_t reg )
+{
+	emit_op_reg( 0x0F, 0x2E, reg, base );
+}
+
+static void emit_comiss( uint32_t base, uint32_t reg )
+{
+	emit_op_reg( 0x0F, 0x2F, reg, base );
+}
+
+static void emit_load_sx( uint32_t xmmreg, uint32_t base, int32_t offset )
+{
+	Emit1( 0xF3 );
+	emit_op_reg_base_offset( 0x0F, 0x10, xmmreg, base, offset );
+}
+
+static void emit_load_sx_mem( uint32_t xmmreg, uint32_t offset )
+{
+	Emit1( 0xF3 );
+	emit_op_reg_offset( 0x0F, 0x10, xmmreg, offset );
+}
+
+static void emit_load_sx_index( uint32_t xmmreg, uint32_t base, uint32_t index )
+{
+	Emit1( 0xF3 );
+	emit_op_reg_base_index( 0x0F, 0x10, xmmreg, base, index, 1, 0 );
+}
+
+// platform, wrapper function:  xmmreg = intreg
+static void mov_sx_rx( uint32_t xmmreg, uint32_t intreg )
+{
+	if ( CPU_Flags & CPU_SSE2 ) {
+		// movd xmmreg, intreg
+		Emit1( 0x66 );
+		emit_op_reg( 0x0F, 0x6E, intreg, xmmreg );
+	} else {
+		// SSE1 CPUs do not initialize FP register domain with movd so use movss
+		emit_store_rx( intreg, R_PROCBASE, 0 );	// mov dword ptr [procBase + 0], eax
+		emit_load_sx( xmmreg, R_PROCBASE, 0 );	// movss xmm0, [procBase + 0]
+	}
+}
+
+#if 0
+static void emit_load_sx_index_offset( uint32_t reg, uint32_t base, uint32_t index, int scale, int32_t offset )
+{
+	Emit1( 0xF3 );
+	emit_op_reg_base_index( 0x0F, 0x10, reg, base, index, scale, offset );
+}
+#endif
+
+static void emit_store_sx( uint32_t reg, uint32_t base, int32_t offset )
+{
+	Emit1( 0xF3 );
+	emit_op_reg_base_offset( 0x0F, 0x11, reg, base, offset );
+}
+
+static void emit_store_sx_index( uint32_t reg, uint32_t base, uint32_t index )
+{
+	Emit1( 0xF3 );
+	emit_op_reg_base_index( 0x0F, 0x11, reg, base, index, 1, 0 );
+}
+
+static void emit_add_sx( uint32_t dst, uint32_t src )
+{
+	emit_op_reg( 0x0F, 0x58, src, dst );
+}
+
+static void emit_sub_sx( uint32_t dst, uint32_t src )
+{
+	emit_op_reg( 0x0F, 0x5C, src, dst );
+}
+
+static void emit_mul_sx( uint32_t dst, uint32_t src )
+{
+	emit_op_reg( 0x0F, 0x59, src, dst );
+}
+
+static void emit_div_sx( uint32_t dst, uint32_t src )
+{
+	Emit1( 0xF3 ); // use divss instead of divps to avoid division by zero from src[32...127] and triggering "invalid operation" bit
+	emit_op_reg( 0x0F, 0x5E, src, dst );
+}
+
+#if 0
+static void emit_add_sx_mem( uint32_t reg, uint32_t base, int32_t offset )
+{
+	Emit1( 0xF3 );
+	emit_op_reg_base_offset( 0x0F, 0x58, reg, base, offset );
+}
+
+static void emit_sub_sx_mem( uint32_t reg, uint32_t base, int32_t offset )
+{
+	Emit1( 0xF3 );
+	emit_op_reg_base_offset( 0x0F, 0x5C, reg, base, offset );
+}
+
+static void emit_mul_sx_mem( uint32_t reg, uint32_t base, int32_t offset )
+{
+	Emit1( 0xF3 );
+	emit_op_reg_base_offset( 0x0F, 0x59, reg, base, offset );
+}
+
+static void emit_div_sx_mem( uint32_t reg, uint32_t base, int32_t offset )
+{
+	Emit1( 0xF3 );
+	emit_op_reg_base_offset( 0x0F, 0x5E, reg, base, offset );
+}
+#endif
+
+static void emit_cvtsi2ss( uint32_t xmmreg, uint32_t intreg )
+{
+	Emit1( 0xF3 );
+	emit_op_reg( 0x0F, 0x2A, intreg, xmmreg );
+}
+
+static void emit_cvttss2si( uint32_t intreg, uint32_t xmmreg )
+{
+	Emit1( 0xF3 );
+	emit_op_reg( 0x0F, 0x2C, xmmreg, intreg );
+}
+
+static void emit_sqrt( uint32_t xmmreg, uint32_t base, int32_t offset )
+{
+	Emit1( 0xF3 );
+	emit_op_reg_base_offset( 0x0F, 0x51, xmmreg, base, offset );
+}
+
+static void emit_floor( uint32_t xmmreg, uint32_t base, int32_t offset )
+{
+	Emit1( 0x66 );
+	emit_op2_reg_base_offset( 0x0F, 0x3A, 0x0A, xmmreg, base, offset );
+	Emit1( 0x01 ); // exceptions not masked
+}
+
+static void emit_ceil( uint32_t xmmreg, uint32_t base, int32_t offset )
+{
+	Emit1( 0x66 );
+	emit_op2_reg_base_offset( 0x0F, 0x3A, 0x0A, xmmreg, base, offset );
+	Emit1( 0x02 ); // exceptions not masked
+}
+
+// legacy x87 functions
+
+static void emit_fld( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0xD9, 0x0, reg, offset );
+}
+
+static void emit_fstp( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0xD9, 0x3, reg, offset );
+}
+
+static void emit_fild( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0xDB, 0x0, reg, offset );
+}
+
+static void emit_fistp( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0xDB, 0x3, reg, offset );
+}
+
+static void emit_fadd( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0xD8, 0x0, reg, offset );
+}
+
+static void emit_fsub( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0xD8, 0x4, reg, offset );
+}
+
+static void emit_fmul( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0xD8, 0x1, reg, offset );
+}
+
+static void emit_fdiv( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0xD8, 0x6, reg, offset );
+}
+
+static void emit_fcomp( uint32_t reg, int32_t offset )
+{
+	emit_op_reg_base_offset( 0, 0xD8, 0x3, reg, offset );
+}
+
+// array sizes for cached/meta registers
+#if idx64
+#define NUM_RX_REGS 11	// max[EAX..R10] + 1
+#define NUM_SX_REGS 6	// max[XMM0..XMM5] + 1
+#else
+#define NUM_RX_REGS 3	// max[EAX, ECX, EDX] + 1
+#define NUM_SX_REGS 6	// max[XMM0..XMM5] + 1
+#endif
+
+// general-purpose register list available for dynamic allocation
+static const uint32_t rx_list_alloc[] = {
+	R_EAX, R_EDX, R_ECX
+#if idx64
+	,R_R8, R_R9, R_R10
+#endif
+};
+
+// FPU scalar register list available for dynamic allocation
+static const uint32_t sx_list_alloc[] = {
+	R_XMM0, R_XMM1, R_XMM2,
+	R_XMM3, R_XMM4, R_XMM5
+};
+
+#ifdef CONST_CACHE_RX
+static const uint32_t rx_list_cache[] = {
+	R_EDX, R_ECX, R_EAX
+};
+#endif
+
+#ifdef CONST_CACHE_SX
+static const uint32_t sx_list_cache[] = {
+	R_XMM0, R_XMM1, R_XMM2,
+	R_XMM3, R_XMM4, R_XMM5
+};
+#endif
+
+// optimization framework:
+
+#include "vm_optimize.h"
+
+// platform functions:
+
+static void mov_rx( uint32_t dst, uint32_t src )
+{
+	emit_mov_rx( dst, src );
+}
+
+
+static void mov_sx( uint32_t dst, uint32_t src )
+{
+	emit_mov_sx( dst, src );
+}
+
+
+static uint32_t split_rx( uint32_t reg )
+{
+	const uint32_t rx = alloc_rx( R_ECX );
+	unmask_rx( reg );
+	return rx;
+}
+
+
+static uint32_t split_sx( uint32_t reg )
+{
+	const uint32_t sx = alloc_sx( R_XMM2 );
+	unmask_sx( reg );
+	return sx;
+}
+
+
+static void mov_rx_local( uint32_t reg, const uint32_t addr )
+{
+	emit_lea( reg, R_PSTACK, addr );
+}
+
+
+static void mov_sx_local( uint32_t reg, const uint32_t addr )
+{
+	const uint32_t rx = alloc_rx_local( R_ECX | RCONST, addr );
+	mov_sx_rx( reg, rx );
+	unmask_rx( rx );
+}
+
+
+static void mov_sx_imm32( uint32_t reg, uint32_t imm32 )
+{
+	if ( imm32 == 0 ) {
+		emit_xor_sx( reg, reg );
+	} else {
+		uint32_t rx;
+#ifdef USE_LITERAL_POOL
+		const int v = VM_SearchLiteral( imm32 );
+		if ( v >= 0 ) {
+#if idx64
+			emit_load_sx_mem( reg, litBase + v * sizeof( uint32_t ) - compiledOfs  - 8);
+#else
+			emit_load_sx_mem( reg, litBase + v * sizeof( uint32_t ) );
+#endif
+			return;
+		}
+#endif
+		rx = alloc_rx_const( R_ECX | TEMP, imm32 );
+		mov_sx_rx( reg, rx );
+		unmask_rx( rx );
+	}
+}
+
+
+static void mov_rx_sx( uint32_t intreg, uint32_t xmmreg )
+{
+	emit_mov_rx_sx( intreg, xmmreg );
+}
+
+
+static void load4_rx( uint32_t reg, uint32_t offset )
+{
+	emit_load4( reg, R_OPSTACK, offset );
+}
+
+
+static void load4_sx( uint32_t reg, uint32_t offset )
+{
+	emit_load_sx( reg, R_OPSTACK, offset );
+}
+
+
+static void store4_rx( uint32_t rx, uint32_t offset )
+{
+	emit_store_rx( rx, R_OPSTACK, offset ); 
+}
+
+
+static void store4_sx( uint32_t sx, uint32_t offset )
+{
+	emit_store_sx( sx, R_OPSTACK, offset );
+}
+
+
+static void store4_const( uint32_t value, uint32_t offset )
+{
+	if ( value == 0 ) {
+		uint32_t rx = alloc_rx_const( R_EAX, value );	// mov eax, const
+		store4_rx( rx, offset );						// opStack[ offset ] = eax
+		unmask_rx( rx );
+	} else {
+		emit_store_imm32( value, R_OPSTACK, offset );	// opStack[ offset ] = const
+	}
+}
+
+
+static void store4_local( uint32_t value, uint32_t offset )
+{
+	const uint32_t rx = alloc_rx_local( R_EAX, value );	// lea eax, [pStack + address]
+	store4_rx( rx, offset );							// opStack[ offset ] = eax
+	unmask_rx( rx );
+}
+
+
+static void ErrJump( void )
+{
+	Com_Error( ERR_DROP, "program tried to execute code outside VM" );
+}
+
+
+static void BadJump( void )
+{
+	Com_Error( ERR_DROP, "program tried to execute code at bad location inside VM" );
+}
+
+
+static void BadStack( void )
+{
+	Com_Error( ERR_DROP, "program tried to overflow program stack" );
+}
+
+
+static void BadOpStack( void )
+{
+	Com_Error( ERR_DROP, "program tried to overflow opcode stack" );
+}
+
+
+static void BadDataRead( void )
+{
+	Com_Error( ERR_DROP, "program tried to read out of data segment" );
+}
+
+
+static void BadDataWrite( void )
+{
+	Com_Error( ERR_DROP, "program tried to write out of data segment" );
+}
+
+
+static void( *const errJumpPtr )( void ) = ErrJump;
+static void( *const badJumpPtr )( void ) = BadJump;
+static void( *const badStackPtr )( void ) = BadStack;
+static void( *const badOpStackPtr )( void ) = BadOpStack;
+static void( *const badDataReadPtr )( void ) = BadDataRead;
+static void( *const badDataWritePtr )( void ) = BadDataWrite;
+
+
+static void VM_FreeBuffers( void )
+{
+	// should be freed in reversed allocation order
+	Z_Free( instructionOffsets );
+	Z_Free( inst );
+}
+
+
+static const ID_INLINE qboolean HasFCOM( void )
+{
+#if id386
+	return ( CPU_Flags & CPU_FCOM );
+#else
+	return qtrue; // assume idx64
+#endif
+}
+
+
+static const ID_INLINE qboolean HasSSEFP( void )
+{
+#if id386
+	return ( CPU_Flags & CPU_SSE );
+#else
+	return qtrue; // assume idx64
+#endif
+}
+
+
+static void Emit1( int v )
+{
+	if ( code )
+	{
+		code[ compiledOfs ] = v;
+	}
+	compiledOfs++;
+}
+
+
+static void Emit2( int16_t v )
+{
+	Emit1( v & 255 );
+	Emit1( ( v >> 8 ) & 255 );
+}
+
+
+static void Emit4( int32_t v )
+{
+	Emit1( v & 255 );
+	Emit1( ( v >> 8 ) & 255 );
+	Emit1( ( v >> 16 ) & 255 );
+	Emit1( ( v >> 24 ) & 255 );
+}
+
+#if idx64
+static void Emit8( int64_t v )
+{
+	Emit1( ( v >> 0 ) & 255 );
+	Emit1( ( v >> 8 ) & 255 );
+	Emit1( ( v >> 16 ) & 255 );
+	Emit1( ( v >> 24 ) & 255 );
+	Emit1( ( v >> 32 ) & 255 );
+	Emit1( ( v >> 40 ) & 255 );
+	Emit1( ( v >> 48 ) & 255 );
+	Emit1( ( v >> 56 ) & 255 );
+}
+#endif
+
+static int Hex( int c )
+{
+	if ( c >= '0' && c <= '9' ) {
+		return c - '0';
 	}
 	if ( c >= 'A' && c <= 'F' ) {
 		return 10 + c - 'A';
 	}
-	if ( c >= '0' && c <= '9' ) {
-		return c - '0';
+	if ( c >= 'a' && c <= 'f' ) {
+		return 10 + c - 'a';
 	}
 
-	VMFREE_BUFFERS();
+	VM_FreeBuffers();
 	Com_Error( ERR_DROP, "Hex: bad char '%c'", c );
 
 	return 0;
 }
-static void EmitString( const char *string ) {
+
+
+static void EmitString( const char *string )
+{
 	int		c1, c2;
 	int		v;
 
@@ -193,1515 +1684,2067 @@ static void EmitString( const char *string ) {
 		string += 3;
 	}
 }
-static void EmitRexString(byte rex, const char *string)
+
+
+static void EmitAlign( int align )
 {
-#if idx64
-	if(rex)
-		Emit1(rex);
+	int i, n;
+
+	n = compiledOfs & ( align - 1 );
+
+	for ( i = 0; i < n; i++ )
+		emit_nop();
+}
+
+
+#if JUMP_OPTIMIZE
+static const char *NearJumpStr( int op )
+{
+	switch ( op )
+	{
+		case OP_EQF:
+		case OP_EQ:  return "74"; // je
+
+		case OP_NEF:
+		case OP_NE:  return "75"; // jne
+
+		case OP_LTI: return "7C"; // jl
+		case OP_LEI: return "7E"; // jle
+		case OP_GTI: return "7F"; // jg
+		case OP_GEI: return "7D"; // jge
+
+		case OP_LTF:
+		case OP_LTU: return "72"; // jb
+
+		case OP_LEF:
+		case OP_LEU: return "76"; // jbe
+
+		case OP_GTF:
+		case OP_GTU: return "77"; // ja
+
+		case OP_GEF:
+		case OP_GEU: return "73"; // jae
+
+		case OP_JUMP: return "EB";   // jmp
+
+		//default:
+		//	Com_Error( ERR_DROP, "Bad opcode %i", op );
+	};
+	return NULL;
+}
 #endif
 
-	EmitString(string);
+
+static const char *FarJumpStr( int op, int *n )
+{
+	switch ( op )
+	{
+		case OP_EQF:
+		case OP_EQ:  *n = 2; return "0F 84"; // je
+
+		case OP_NEF:
+		case OP_NE:  *n = 2; return "0F 85"; // jne
+
+		case OP_LTI: *n = 2; return "0F 8C"; // jl
+		case OP_LEI: *n = 2; return "0F 8E"; // jle
+		case OP_GTI: *n = 2; return "0F 8F"; // jg
+		case OP_GEI: *n = 2; return "0F 8D"; // jge
+
+		case OP_LTF:
+		case OP_LTU: *n = 2; return "0F 82"; // jb
+
+		case OP_LEF:
+		case OP_LEU: *n = 2; return "0F 86"; // jbe
+
+		case OP_GTF:
+		case OP_GTU: *n = 2; return "0F 87"; // ja
+
+		case OP_GEF:
+		case OP_GEU: *n = 2; return "0F 83"; // jae
+
+		case OP_JUMP: *n = 1; return "E9";   // jmp
+	};
+	return NULL;
 }
 
 
-#define MASK_REG(modrm, mask) \
-	do { \
-		EmitString("81"); \
-		EmitString((modrm)); \
-		Emit4((mask)); \
-	} while(0)
-
-// add bl, bytes
-#define STACK_PUSH(bytes) \
-	do { \
-		EmitString("80 C3"); \
-		Emit1(bytes); \
-	} while(0)
-
-// sub bl, bytes
-#define STACK_POP(bytes) \
-	do { \
-		EmitString("80 EB"); \
-		Emit1(bytes); \
-	} while(0)
-
-static void EmitCommand(ELastCommand command)
+static void EmitJump( instruction_t *i, int op, int addr )
 {
-	switch(command)
-	{
-		case LAST_COMMAND_MOV_STACK_EAX:
-			EmitString("89 04 9F");		// mov dword ptr [edi + ebx * 4], eax
-			break;
+	const char *str;
+	int v, jump_size = 0;
+	qboolean shouldNaNCheck = qfalse;
 
-		case LAST_COMMAND_SUB_BL_1:
-			STACK_POP(1);			// sub bl, 1
-			break;
+	v = instructionOffsets[addr] - compiledOfs;
 
-		case LAST_COMMAND_SUB_BL_2:
-			STACK_POP(2);			// sub bl, 2
-			break;
-		default:
-			break;
-	}
-	LastCommand = command;
-}
-
-static void EmitPushStack(vm_t *vm)
-{
-	if (!jlabel)
-	{
-		if(LastCommand == LAST_COMMAND_SUB_BL_1)
-		{	// sub bl, 1
-			compiledOfs -= 3;
-			vm->instructionPointers[instruction - 1] = compiledOfs;
-			return;
+	if ( HasFCOM() ) {
+		// EQF, LTF and LEF use je/jb/jbe to conditional branch. je/jb/jbe branch if CF/ZF
+		// is set. comiss/fucomip was used to perform the compare, so if any of the
+		// operands are NaN, ZF, CF and PF will be set and je/jb/jbe would branch.
+		// However, according to IEEE 754, when the operand is NaN for these comparisons,
+		// the result must be false. So, we emit `jp` before je/jb/jbe to skip
+		// the branch if the result is NaN.
+		if ( op == OP_EQF || op == OP_LTF || op == OP_LEF ) {
+			shouldNaNCheck = qtrue;
 		}
-		if(LastCommand == LAST_COMMAND_SUB_BL_2)
-		{	// sub bl, 2
-			compiledOfs -= 3;
-			vm->instructionPointers[instruction - 1] = compiledOfs;
-			STACK_POP(1);		//	sub bl, 1
-			return;
+	} else {
+		// Similar to above, NaN needs to be accounted for. When HasFCOM() is false,
+		// fcomp is used to perform the compare and EmitFloatJump is called. Which in turn,
+		// preserves C2 when masking and calls EmitJump with OP_NE. When any of the operands
+		// are NaN, C2 and C0/C3 (whichever was also masked) will be set. So like the previous
+		// case, we can use PF to skip the branch if the result is NaN.
+		if ( op == OP_EQF || op == OP_LTF || op == OP_LEF ) {
+			shouldNaNCheck = qtrue;
 		}
 	}
 
-	STACK_PUSH(1);		// add bl, 1
-}
+	if ( shouldNaNCheck ) {
+		v -= 2;			// 2 bytes needed to account for NaN
+		Emit1( 0x7A );	// jp, target will be filled once we know if next inst is a near or far jump
+	}
 
-static void EmitMovEAXStack(vm_t *vm, int andit)
-{
-	if(!jlabel)
-	{
-		if(LastCommand == LAST_COMMAND_MOV_STACK_EAX) 
-		{	// mov [edi + ebx * 4], eax
-			compiledOfs -= 3;
-			vm->instructionPointers[instruction - 1] = compiledOfs;
-		}
-		else if(pop1 == OP_CONST && buf[compiledOfs-7] == 0xC7 && buf[compiledOfs-6] == 0x04 && buf[compiledOfs - 5] == 0x9F)
-		{	// mov [edi + ebx * 4], 0x12345678
-			compiledOfs -= 7;
-			vm->instructionPointers[instruction - 1] = compiledOfs;
-			EmitString("B8");	// mov	eax, 0x12345678
-
-			if(andit)
-				Emit4(lastConst & andit);
-			else
-				Emit4(lastConst);
-			
+#if JUMP_OPTIMIZE
+	if ( i->njump ) {
+		// expansion, can happen
+		if ( pass != PASS_INIT && ( v < -126 || v > 129 ) ) {
+			str = FarJumpStr( op, &jump_size );
+			if ( shouldNaNCheck ) {
+				Emit1( jump_size + 4 ); // target for NaN branch
+			}
+			EmitString( str );
+			Emit4( v - 4 - jump_size );
+			i->njump = 0;
+			jumpSizeChanged++;
 			return;
 		}
-		else if(pop1 != OP_DIVI && pop1 != OP_DIVU && pop1 != OP_MULI && pop1 != OP_MULU &&
-			pop1 != OP_STORE4 && pop1 != OP_STORE2 && pop1 != OP_STORE1)
-		{	
-			EmitString("8B 04 9F");	// mov eax, dword ptr [edi + ebx * 4]
+		if ( shouldNaNCheck ) {
+			Emit1( 0x02 ); // target for NaN branch
 		}
+		EmitString( NearJumpStr( op ) );
+		Emit1( v - 2 );
+		return;
 	}
-	else
-		EmitString("8B 04 9F");		// mov eax, dword ptr [edi + ebx * 4]
 
-	if(andit)
-	{
-		EmitString("25");		// and eax, 0x12345678
-		Emit4(andit);
-	}
-}
-
-void EmitMovECXStack(vm_t *vm)
-{
-	if(!jlabel)
-	{
-		if(LastCommand == LAST_COMMAND_MOV_STACK_EAX) // mov [edi + ebx * 4], eax
-		{
-			compiledOfs -= 3;
-			vm->instructionPointers[instruction - 1] = compiledOfs;
-			EmitString("89 C1");		// mov ecx, eax
-			return;
-		}
-		if(pop1 == OP_DIVI || pop1 == OP_DIVU || pop1 == OP_MULI || pop1 == OP_MULU ||
-			pop1 == OP_STORE4 || pop1 == OP_STORE2 || pop1 == OP_STORE1) 
-		{	
-			EmitString("89 C1");		// mov ecx, eax
+	if ( pass == PASS_COMPRESS || ( pass == PASS_INIT && addr < ip ) ) {
+		if ( v >= -126 && v <= 129 ) {
+			if ( shouldNaNCheck ) {
+				Emit1( 0x02 ); // target for NaN branch
+			}
+			EmitString( NearJumpStr( op ) );
+			Emit1( v - 2 );
+			if ( !i->njump )
+				jumpSizeChanged++;
+			i->njump = 1;
 			return;
 		}
 	}
-
-	EmitString("8B 0C 9F");		// mov ecx, dword ptr [edi + ebx * 4]
-}
-
-
-void EmitMovEDXStack(vm_t *vm, int andit)
-{
-	if(!jlabel)
-	{
-		if(LastCommand == LAST_COMMAND_MOV_STACK_EAX)
-		{	// mov dword ptr [edi + ebx * 4], eax
-			compiledOfs -= 3;
-			vm->instructionPointers[instruction - 1] = compiledOfs;
-
-			EmitString("8B D0");	// mov edx, eax
-		}
-		else if(pop1 == OP_DIVI || pop1 == OP_DIVU || pop1 == OP_MULI || pop1 == OP_MULU ||
-			pop1 == OP_STORE4 || pop1 == OP_STORE2 || pop1 == OP_STORE1)
-		{	
-			EmitString("8B D0");	// mov edx, eax
-		}
-		else if(pop1 == OP_CONST && buf[compiledOfs-7] == 0xC7 && buf[compiledOfs-6] == 0x07 && buf[compiledOfs - 5] == 0x9F)
-		{	// mov dword ptr [edi + ebx * 4], 0x12345678
-			compiledOfs -= 7;
-			vm->instructionPointers[instruction - 1] = compiledOfs;
-			EmitString("BA");		// mov edx, 0x12345678
-
-			if(andit)
-				Emit4(lastConst & andit);
-			else
-				Emit4(lastConst);
-			
-			return;
-		}
-		else
-			EmitString("8B 14 9F");	// mov edx, dword ptr [edi + ebx * 4]
-		
-	}
-	else
-		EmitString("8B 14 9F");		// mov edx, dword ptr [edi + ebx * 4]
-	
-	if(andit)
-		MASK_REG("E2", andit);		// and edx, 0x12345678
-}
-
-#define JUSED(x) \
-	do { \
-		if (x < 0 || x >= vm->instructionCount) { \
-			VMFREE_BUFFERS(); \
-			Com_Error( ERR_DROP, \
-					"VM_CompileX86: jump target out of range at offset %d", pc ); \
-		} \
-		jused[x] = 1; \
-	} while(0)
-
-#define SET_JMPOFS(x) do { buf[(x)] = compiledOfs - ((x) + 1); } while(0)
-
-
-/*
-=================
-ErrJump
-Error handler for jump/call to invalid instruction number
-=================
-*/
-
-static void Q_NO_RETURN ErrJump(void)
-{ 
-	Com_Error(ERR_DROP, "program tried to execute code outside VM");
-}
-
-/*
-=================
-DoSyscall
-
-Assembler helper routines will write its arguments directly to global variables so as to
-work around different calling conventions
-=================
-*/
-
-int vm_syscallNum;
-int vm_programStack;
-int *vm_opStackBase;
-uint8_t vm_opStackOfs;
-intptr_t vm_arg;
-
-static void DoSyscall(void)
-{
-	vm_t *savedVM;
-
-	// save currentVM so as to allow for recursive VM entry
-	savedVM = currentVM;
-	// modify VM stack pointer for recursive VM entry
-	currentVM->programStack = vm_programStack - 4;
-
-	if(vm_syscallNum < 0)
-	{
-		int *data, *ret;
-#if idx64
-		int index;
-		intptr_t args[MAX_VMSYSCALL_ARGS];
 #endif
-		
-		data = (int *) (savedVM->dataBase + vm_programStack + 4);
-		ret = &vm_opStackBase[vm_opStackOfs + 1];
 
+	str = FarJumpStr( op, &jump_size );
+	if ( jump_size == 0 ) {
+		Com_Error( ERR_DROP, "VM_CompileX86 error: %s\n", "bad jump size" );
+		return;
+	}
+	if ( shouldNaNCheck ) {
+		Emit1( jump_size + 4 ); // target for NaN branch
+	}
+	EmitString( str );
+	Emit4( v - 4 - jump_size );
+}
+
+
+static void EmitCallAddr( vm_t *vm, int addr )
+{
+	const int v = instructionOffsets[ addr ] - compiledOfs;
+	Emit1( 0xE8 );
+	Emit4( v - 5 );
+}
+
+
+static void EmitCallOffset( func_t Func )
+{
+	const int v = funcOffset[ Func ] - compiledOfs;
+	Emit1( 0xE8 );		// call +funcOffset[ Func ]
+	Emit4( v - 5 );
+}
+
+
+static void emit_CheckReg( vm_t *vm, uint32_t reg, func_t func )
+{
+	if ( forceDataMask )
+	{
 #if idx64
-		args[0] = ~vm_syscallNum;
-		for(index = 1; index < ARRAY_LEN(args); index++)
-			args[index] = data[index];
-			
-		*ret = savedVM->systemCall(args);
+		emit_and_rx( reg, R_DATAMASK );					// reg = reg & dataMask
 #else
-		data[0] = ~vm_syscallNum;
-		*ret = savedVM->systemCall((intptr_t *) data);
+		emit_op_rx_imm32( X_AND, reg, vm->dataMask );	// reg = reg & vm->dataMask
 #endif
-	}
-	else
-	{
-		switch(vm_syscallNum)
-		{
-		case VM_JMP_VIOLATION:
-			ErrJump();
-		break;
-		case VM_BLOCK_COPY: 
-			if(vm_opStackOfs < 1)
-				Com_Error(ERR_DROP, "VM_BLOCK_COPY failed due to corrupted opStack");
-			
-			VM_BlockCopy(vm_opStackBase[(vm_opStackOfs - 1)], vm_opStackBase[vm_opStackOfs], vm_arg);
-		break;
-		default:
-			Com_Error(ERR_DROP, "Unknown VM operation %d", vm_syscallNum);
-		break;
-		}
+		return;
 	}
 
-	currentVM = savedVM;
-}
-
-/*
-=================
-EmitCallRel
-Relative call to vm->codeBase + callOfs
-=================
-*/
-
-void EmitCallRel(vm_t *vm, int callOfs)
-{
-	EmitString("E8");			// call 0x12345678
-	Emit4(callOfs - compiledOfs - 4);
-}
-
-/*
-=================
-EmitCallDoSyscall
-Call to DoSyscall()
-=================
-*/
-
-int EmitCallDoSyscall(vm_t *vm)
-{
-	// use edx register to store DoSyscall address
-	EmitRexString(0x48, "BA");		// mov edx, DoSyscall
-	EmitPtr(DoSyscall);
-
-	// Push important registers to stack as we can't really make
-	// any assumptions about calling conventions.
-	EmitString("51");			// push ebx
-	EmitString("56");			// push esi
-	EmitString("57");			// push edi
 #if idx64
-	EmitRexString(0x41, "50");		// push r8
-	EmitRexString(0x41, "51");		// push r9
-#endif
-
-	// write arguments to global vars
-	// syscall number
-	EmitString("A3");			// mov [0x12345678], eax
-	EmitPtr(&vm_syscallNum);
-	// vm_programStack value
-	EmitString("89 F0");			// mov eax, esi
-	EmitString("A3");			// mov [0x12345678], eax
-	EmitPtr(&vm_programStack);
-	// vm_opStackOfs 
-	EmitString("88 D8");			// mov al, bl
-	EmitString("A2");			// mov [0x12345678], al
-	EmitPtr(&vm_opStackOfs);
-	// vm_opStackBase
-	EmitRexString(0x48, "89 F8");		// mov eax, edi
-	EmitRexString(0x48, "A3");		// mov [0x12345678], eax
-	EmitPtr(&vm_opStackBase);
-	// vm_arg
-	EmitString("89 C8");			// mov eax, ecx
-	EmitString("A3");			// mov [0x12345678], eax
-	EmitPtr(&vm_arg);
-	
-	// align the stack pointer to a 16-byte-boundary
-	EmitString("55");			// push ebp
-	EmitRexString(0x48, "89 E5");		// mov ebp, esp
-	EmitRexString(0x48, "83 E4 F0");	// and esp, 0xFFFFFFF0
-			
-	// call the syscall wrapper function DoSyscall()
-
-	EmitString("FF D2");			// call edx
-
-	// reset the stack pointer to its previous value
-	EmitRexString(0x48, "89 EC");		// mov esp, ebp
-	EmitString("5D");			// pop ebp
-
-#if idx64
-	EmitRexString(0x41, "59");		// pop r9
-	EmitRexString(0x41, "58");		// pop r8
-#endif
-	EmitString("5F");			// pop edi
-	EmitString("5E");			// pop esi
-	EmitString("59");			// pop ebx
-
-	EmitString("C3");			// ret
-
-	return compiledOfs;
-}
-
-/*
-=================
-EmitCallErrJump
-Emit the code that triggers execution of the jump violation handler
-=================
-*/
-
-static void EmitCallErrJump(vm_t *vm, int sysCallOfs)
-{
-	EmitString("B8");			// mov eax, 0x12345678
-	Emit4(VM_JMP_VIOLATION);
-
-	EmitCallRel(vm, sysCallOfs);
-}
-
-/*
-=================
-EmitCallProcedure
-VM OP_CALL procedure for call destinations obtained at runtime
-=================
-*/
-
-int EmitCallProcedure(vm_t *vm, int sysCallOfs)
-{
-	int jmpSystemCall, jmpBadAddr;
-	int retval;
-
-	EmitString("8B 04 9F");		// mov eax, dword ptr [edi + ebx * 4]
-	STACK_POP(1);			// sub bl, 1
-	EmitString("85 C0");		// test eax, eax
-
-	// Jump to syscall code, 1 byte offset should suffice
-	EmitString("7C");		// jl systemCall
-	jmpSystemCall = compiledOfs++;
-		
-	/************ Call inside VM ************/
-	
-	EmitString("81 F8");		// cmp eax, vm->instructionCount
-	Emit4(vm->instructionCount);
-		
-	// Error jump if invalid jump target
-	EmitString("73");		// jae badAddr
-	jmpBadAddr = compiledOfs++;
-
-#if idx64
-	EmitRexString(0x49, "FF 14 C0");	// call qword ptr [r8 + eax * 8]
+	emit_cmp_rx( reg, R_DATAMASK );					// cmp reg, dataMask
 #else
-	EmitString("FF 14 85");			// call dword ptr [vm->instructionPointers + eax * 4]
-	Emit4((intptr_t) vm->instructionPointers);
+	emit_op_rx_imm32( X_CMP, reg, vm->dataMask );	// cmp reg, vm->dataMask
 #endif
-	EmitString("8B 04 9F");			// mov eax, dword ptr [edi + ebx * 4]
-	EmitString("C3");			// ret
-		
-	// badAddr:
-	SET_JMPOFS(jmpBadAddr);
-	EmitCallErrJump(vm, sysCallOfs);
 
-	/************ System Call ************/
-	
+	// error reporting
+	EmitString( "0F 87" );			// ja +errorFunction
+	Emit4( funcOffset[ func ] - compiledOfs - 4 );
+}
+
+
+static void emit_CheckJump( vm_t *vm, uint32_t reg, int32_t proc_base, int32_t proc_len )
+{
+	if ( ( vm_rtChecks->integer & VM_RTCHECK_JUMP ) == 0 ) {
+		return;
+	}
+
+	if ( proc_base != -1 ) {
+		uint32_t rx;
+
+		// allow jump within local function scope only
+		// check if (reg - proc_base) > proc_len
+		rx = alloc_rx( R_EDX | TEMP );
+		emit_lea( rx, reg, -proc_base );			// lea edx, [reg - procBase]
+		emit_op_rx_imm32( X_CMP, rx, proc_len );	// cmp edx, proc_len
+		unmask_rx( rx );
+		EmitString( "0F 87" );						// ja +funcOffset[FUNC_BADJ]
+		Emit4( funcOffset[ FUNC_BADJ ] - compiledOfs - 4 );
+	} else {
+		// check if reg >= instructionCount
+		emit_op_rx_imm32( X_CMP, reg, vm->instructionCount );	// cmp reg, vm->instructionCount
+		EmitString( "0F 83" );									// jae +funcOffset[ FUNC_ERRJ ]
+		Emit4( funcOffset[ FUNC_ERRJ ] - compiledOfs - 4 );
+	}
+}
+
+
+static void emit_CheckProc( vm_t *vm, instruction_t *ins )
+{
+	// programStack overflow check
+	if ( vm_rtChecks->integer & VM_RTCHECK_PSTACK ) {
+#if idx64
+		emit_cmp_rx( R_PSTACK, R_STACKBOTTOM );	// cmp programStack, stackBottom
+#else
+		emit_op_rx_imm32( X_CMP, R_PSTACK, vm->stackBottom ); // cmp programStack, vm->stackBottom
+#endif
+		EmitString( "0F 8C" );					// jl +funcOffset[ FUNC_PSOF ]
+		Emit4( funcOffset[ FUNC_PSOF ] - compiledOfs - 4 );
+	}
+
+	// opStack overflow check
+	if ( vm_rtChecks->integer & VM_RTCHECK_OPSTACK ) {
+		uint32_t rx = alloc_rx( R_EDX | TEMP );
+
+		// proc->opStack carries max.used opStack value
+		emit_lea( rx | R_REX, R_OPSTACK, ins->opStack ); // rdx = opStack + max.opStack
+		
+		// check if rdx > opstackTop
+#if idx64
+		emit_cmp_rx( rx | R_REX, R_OPSTACKTOP );			// cmp rdx, opStackTop
+#else
+		emit_cmp_rx_mem( rx, (intptr_t) &vm->opStackTop );	// cmp edx, [&vm->opStackTop]
+#endif
+
+		EmitString( "0F 87" );			// ja +funcOffset[FUNC_OSOF]
+		Emit4( funcOffset[ FUNC_OSOF ] - compiledOfs - 4 );
+
+		unmask_rx( rx );
+	}
+}
+
+
+#ifdef _WIN32
+#define SHADOW_BASE 40
+#else // linux/*BSD ABI
+#define SHADOW_BASE 8
+#endif
+
+#define PUSH_STACK  32
+
+#define PARAM_STACK 128
+
+
+static void EmitCallFunc( vm_t *vm )
+{
+	static int sysCallOffset = 0;
+
+	init_opstack(); // to avoid any side-effects on emit_CheckJump()
+
+	emit_test_rx( R_EAX, R_EAX );		// test eax, eax
+	Emit1( 0x7C );					// jl +offset (SystemCall)
+	Emit1( sysCallOffset );				// will be valid after first pass
+	sysCallOffset = compiledOfs;
+
+	// jump target range check
+	mask_rx( R_EAX );
+	emit_CheckJump( vm, R_EAX, -1, 0 );
+	unmask_rx( R_EAX );
+
+	// calling another vm function
+#if idx64
+	emit_call_index( R_INSPOINTERS, R_EAX ); // call qword ptr [instructionPointers+rax*8]
+#else
+	emit_call_index_offset( (intptr_t)instructionPointers, R_EAX ); // call dword ptr [vm->instructionPointers + eax*8]
+#endif
+
+	emit_ret();	// ret
+
+	sysCallOffset = compiledOfs - sysCallOffset;
+
 	// systemCall:
-	SET_JMPOFS(jmpSystemCall);
-	retval = compiledOfs;
+	// convert negative num to system call number
+	// and store right before the first arg
+	emit_not_rx( R_EAX );				// not eax
 
-	EmitCallRel(vm, sysCallOfs);
+	// we may jump here from ConstOptimize() also
+	funcOffset[FUNC_SYSC] = compiledOfs;
 
-	// have opStack reg point at return value
-	STACK_PUSH(1);			// add bl, 1
-	EmitString("C3");		// ret
+#if idx64
+	// allocate stack for shadow(win32)+parameters
+	emit_op_rx_imm32( X_SUB, R_ESP | R_REX, SHADOW_BASE + PUSH_STACK + PARAM_STACK ); // sub rsp, 200
 
-	return retval;
+	emit_lea( R_EDX | R_REX, R_ESP, SHADOW_BASE ); // lea rdx, [ rsp + SHADOW_BASE ]
+
+	// save scratch registers
+	emit_store_rx( R_ESI | R_REX, R_EDX, 0 );	// mov [rdx+00], rsi
+	emit_store_rx( R_EDI | R_REX, R_EDX, 8 );	// mov [rdx+08], rdi
+	emit_store_rx( R_R11 | R_REX, R_EDX, 16 );	// mov [rdx+16], r11 - dataMask
+
+	// ecx = &int64_params[0]
+	emit_lea( R_ECX | R_REX, R_ESP, SHADOW_BASE + PUSH_STACK ); // lea rcx, [rsp+SHADOW_BASE+PUSH_STACK]
+
+	// save 64-bit syscallNum
+	emit_store_rx( R_EAX | R_REX, R_ECX, 0 );	// mov [rcx], rax
+
+	// vm->programStack = programStack - 4; // or 8
+	mov_rx_ptr( R_EDX, &vm->programStack ); // mov rdx, &vm->programStack
+
+	emit_lea( R_EAX, R_PSTACK, -8 );		// lea eax, [programStack-8]
+	emit_store_rx( R_EAX, R_EDX, 0 );		// mov [rdx], eax
+
+	// params = procBase + 8
+	emit_lea( R_ESI | R_REX, R_PROCBASE, 8 );	// lea rsi, [procBase + 8]
+
+	// rcx = &int64_params[1]
+	emit_op_rx_imm32( X_ADD, R_ECX | R_REX, 8 ); // add rcx, 8
+
+	// dest_params[1-15] = params[1-15];
+	emit_xor_rx( R_EDX, R_EDX );			// xor edx, edx
+	// loop
+	EmitString( "48 63 04 96" );			// movsxd rax, dword [rsi+rdx*4]
+	EmitString( "48 89 04 D1" );			// mov qword ptr[rcx+rdx*8], rax
+	EmitString( "83 C2 01" );				// add edx, 1
+	EmitString( "83 FA" );					// cmp edx, 15
+	Emit1( ( PARAM_STACK / 8 ) - 1 );
+	EmitString( "7C F0" );					// jl -16
+
+#ifdef _WIN32
+	// rcx = &int64_params[0]
+	emit_op_rx_imm32( X_SUB, R_ECX | R_REX, 8 );	// sub rcx, 8
+#else // linux/*BSD ABI
+	// rdi = &int64_params[0]
+	emit_lea( R_EDI | R_REX, R_ECX, -8 );		// lea rdi, [rcx-8]
+#endif
+
+	// currentVm->systemCall( param );
+	emit_call_rx( R_SYSCALL );					// call r12
+
+	// restore registers
+	emit_lea( R_EDX | R_REX, R_ESP, SHADOW_BASE ); // lea rdx, [rsp + SHADOW_BASE]
+
+	emit_load4( R_ESI | R_REX, R_EDX, 0 );	// mov rsi, [rdx+00]
+	emit_load4( R_EDI | R_REX, R_EDX, 8 );	// mov rdi, [rdx+08]
+	emit_load4( R_R11 | R_REX, R_EDX, 16 );	// mov r11, [rdx+16]
+
+	// store result in opStack[4]
+	store4_rx( R_EAX, 4 );					// *opstack[ opStack + 4 ] = eax
+
+	// return stack
+	emit_op_rx_imm32( X_ADD, R_ESP | R_REX, SHADOW_BASE + PUSH_STACK + PARAM_STACK ); // add rsp, 200
+
+	emit_ret();								// ret
+
+#else // id386
+
+	// params = (int *)((byte *)currentVM->dataBase + programStack + 4);
+	emit_lea( R_ECX, R_EBP, 4 );			// lea ecx, [ebp+4]
+
+	// function prologue
+	emit_push( R_EBP );						// push ebp
+	mov_rx( R_EBP, R_ESP );					// mov ebp, esp
+	emit_op_rx_imm32( X_SUB, R_ESP, 4 );	// sub esp, 4
+
+	// align stack before call
+	emit_op_rx_imm32( X_AND, R_ESP, -16 );	// and esp, -16
+
+	// ABI note: esi/edi must not change during call!
+
+	// currentVM->programStack = programStack - 4;
+	emit_lea( R_EDX, R_PSTACK, -8 );		// lea edx, [esi-8]
+	emit_store_rx_offset( R_EDX, (intptr_t) &vm->programStack ); // mov[ &vm->programStack ], edx
+
+	// params[0] = syscallNum
+	emit_store_rx( R_EAX, R_ECX, 0 );		// mov [ecx], eax
+
+	// cdecl - set params
+	emit_store_rx( R_ECX, R_ESP, 0 );		// mov [esp], ecx
+
+	// currentVm->systemCall( param );
+	emit_call_indir( (intptr_t) &vm->systemCall ); // call dword ptr [&currentVM->systemCall]
+
+	// store result in opStack[4]
+	store4_rx( R_EAX, 4 );					// *opstack[ 4 ] = eax
+
+	// function epilogue
+	mov_rx( R_ESP, R_EBP );					// mov esp, ebp
+	emit_pop( R_EBP );						// pop ebp
+	emit_ret();								// ret
+#endif
 }
 
-/*
-=================
-EmitJumpIns
-Jump to constant instruction number
-=================
-*/
 
-void EmitJumpIns(vm_t *vm, const char *jmpop, int cdest)
+static void EmitBCPYFunc( vm_t *vm )
 {
-	JUSED(cdest);
+	emit_push( R_ESI );						// push esi
+	emit_push( R_EDI );						// push edi
 
-	EmitString(jmpop);	// j??? 0x12345678
+	emit_mov_rx( R_ESI, R_EDX );			// mov esi, edx // top of opstack
+	emit_mov_rx( R_EDI, R_EAX );			// mov edi, eax // bottom of opstack
 
-	// we only know all the jump addresses in the third pass
-	if(pass == 2)
-		Emit4(vm->instructionPointers[cdest] - compiledOfs - 4);
-	else
-		compiledOfs += 4;
-}
-
-/*
-=================
-EmitCallIns
-Call to constant instruction number
-=================
-*/
-
-void EmitCallIns(vm_t *vm, int cdest)
-{
-	JUSED(cdest);
-
-	EmitString("E8");	// call 0x12345678
-
-	// we only know all the jump addresses in the third pass
-	if(pass == 2)
-		Emit4(vm->instructionPointers[cdest] - compiledOfs - 4);
-	else
-		compiledOfs += 4;
-}
-
-/*
-=================
-EmitCallConst
-Call to constant instruction number or syscall
-=================
-*/
-
-void EmitCallConst(vm_t *vm, int cdest, int callProcOfsSyscall)
-{
-	if(cdest < 0)
+	if ( vm_rtChecks->integer & VM_RTCHECK_DATA )
 	{
-		EmitString("B8");	// mov eax, cdest
-		Emit4(cdest);
+		mov_rx_imm32( R_EAX, vm->dataMask );	// mov eax, datamask
 
-		EmitCallRel(vm, callProcOfsSyscall);
-	}
-	else
-		EmitCallIns(vm, cdest);
-}
+		emit_and_rx( R_ESI, R_EAX );			// and esi, eax
+		emit_and_rx( R_EDI, R_EAX );			// and edi, eax
 
-/*
-=================
-EmitBranchConditions
-Emits x86 branch condition as given in op
-=================
-*/
-void EmitBranchConditions(vm_t *vm, int op)
-{
-	switch(op)
-	{
-	case OP_EQ:
-		EmitJumpIns(vm, "0F 84", Constant4());	// je 0x12345678
-	break;
-	case OP_NE:
-		EmitJumpIns(vm, "0F 85", Constant4());	// jne 0x12345678
-	break;
-	case OP_LTI:
-		EmitJumpIns(vm, "0F 8C", Constant4());	// jl 0x12345678
-	break;
-	case OP_LEI:
-		EmitJumpIns(vm, "0F 8E", Constant4());	// jle 0x12345678
-	break;
-	case OP_GTI:
-		EmitJumpIns(vm, "0F 8F", Constant4());	// jg 0x12345678
-	break;
-	case OP_GEI:
-		EmitJumpIns(vm, "0F 8D", Constant4());	// jge 0x12345678
-	break;
-	case OP_LTU:
-		EmitJumpIns(vm, "0F 82", Constant4());	// jb 0x12345678
-	break;
-	case OP_LEU:
-		EmitJumpIns(vm, "0F 86", Constant4());	// jbe 0x12345678
-	break;
-	case OP_GTU:
-		EmitJumpIns(vm, "0F 87", Constant4());	// ja 0x12345678
-	break;
-	case OP_GEU:
-		EmitJumpIns(vm, "0F 83", Constant4());	// jae 0x12345678
-	break;
+		emit_lea_base_index( R_EDX, R_ESI, R_ECX ); // lea edx, [esi + ecx]
+		emit_and_rx( R_EDX, R_EAX );			// and edx, eax - apply data mask
+		emit_sub_rx( R_EDX, R_ESI );			// sub edx, esi - source-adjusted counter
+
+		emit_add_rx( R_EDX, R_EDI );			// add edx, edi
+		emit_and_rx( R_EDX, R_EAX );			// and edx, eax - apply data mask
+		emit_sub_rx( R_EDX, R_EDI );			// sub edx, edi - destination-adjusted counter
+		emit_mov_rx( R_ECX, R_EDX );			// mov ecx, edx
 	}
+
+	emit_add_rx( R_ESI | R_REX, R_EBX );	// add rsi, rbx
+	emit_add_rx( R_EDI | R_REX, R_EBX );	// add rdi, rbx
+
+	EmitString( "F3 A5" );					// rep movsd
+	emit_pop( R_EDI );						// pop edi
+	emit_pop( R_ESI );						// pop esi
+	emit_ret();								// ret
 }
 
 
-/*
-=================
-ConstOptimize
-Constant values for immediately following instructions may be translated to immediate values
-instead of opStack operations, which will save expensive operations on memory
-=================
-*/
-
-qboolean ConstOptimize(vm_t *vm, int callProcOfsSyscall)
+static void EmitFloatJump( instruction_t *i, int op, int addr )
 {
-	int v;
-	int op1;
+	switch ( op ) {
+		case OP_EQF:
+			EmitString( "80 E4 44" );	// and ah,0x44 (preserve C2 too)
+			EmitJump( i, OP_NE, addr );
+			break;
 
-	// we can safely perform optimizations only in case if 
-	// we are 100% sure that next instruction is not a jump label
-	if (vm->jumpTableTargets && !jused[instruction])
-		op1 = code[pc+4];
-	else
+		case OP_NEF:
+			EmitString( "80 E4 40" );	// and ah,0x40 
+			EmitJump( i, OP_EQ, addr );
+			break;
+
+		case OP_LTF:
+			EmitString( "80 E4 05" );	// and ah,0x05 (preserve C2 too)
+			EmitJump( i, OP_NE, addr );
+			break;
+
+		case OP_LEF:
+			EmitString( "80 E4 45" );	// and ah,0x45 (preserve C2 too)
+			EmitJump( i, OP_NE, addr );
+			break;
+
+		case OP_GTF:
+			EmitString( "80 E4 41" );	// and ah,0x41
+			EmitJump( i, OP_EQ, addr );
+			break;
+
+		case OP_GEF:
+			EmitString( "80 E4 01" );	// and ah,0x01
+			EmitJump( i, OP_EQ, addr );
+			break;
+	};
+}
+
+
+static void EmitPSOFFunc( vm_t *vm )
+{
+	mov_rx_ptr( R_EAX, &badStackPtr ); // mov eax, &badStackPtr
+	EmitString( "FF 10" );		// call [eax]
+	emit_ret();					// ret
+}
+
+
+static void EmitOSOFFunc( vm_t *vm )
+{
+	mov_rx_ptr( R_EAX, &badOpStackPtr ); // mov eax, &badOpStackPtr
+	EmitString( "FF 10" );		// call [eax]
+	emit_ret();					// ret
+}
+
+
+static void EmitBADJFunc( vm_t *vm )
+{
+	mov_rx_ptr( R_EAX, &badJumpPtr ); // mov eax, &badJumpPtr
+	EmitString( "FF 10" );		// call [eax]
+	emit_ret();					// ret
+}
+
+
+static void EmitERRJFunc( vm_t *vm )
+{
+	mov_rx_ptr( R_EAX, &errJumpPtr ); // mov eax, &errJumpPtr
+	EmitString( "FF 10" );		// call [eax]
+	emit_ret();					// ret
+}
+
+
+static void EmitDATRFunc( vm_t *vm )
+{
+	mov_rx_ptr( R_EAX, &badDataReadPtr ); // mov eax, &badDataReadPtr
+	EmitString( "FF 10" );		// call [eax]
+	emit_ret();					// ret
+}
+
+
+static void EmitDATWFunc( vm_t *vm )
+{
+	mov_rx_ptr( R_EAX, &badDataWritePtr ); // mov eax, &badDataWritePtr
+	EmitString( "FF 10" );		// call [eax]
+	emit_ret();					// ret
+}
+
+
+#ifdef CONST_OPTIMIZE
+
+static qboolean IsFloorTrap( const vm_t *vm, const int trap )
+{
+#ifndef DEDICATED
+	if ( trap == ~CG_FLOOR && vm->index == VM_CGAME )
+		return qtrue;
+
+	if ( trap == ~UI_FLOOR && vm->index == VM_UI )
+		return qtrue;
+#endif
+
+	// [vm_vr]: game uses shared TRAP_FLOOR/TRAP_CEIL, not per-module G_FLOOR/G_CEIL
+	if ( trap == ~TRAP_FLOOR && vm->index == VM_GAME )
+		return qtrue;
+
+	return qfalse;
+}
+
+
+static qboolean IsCeilTrap( const vm_t *vm, const int trap )
+{
+#ifndef DEDICATED
+	if ( trap == ~CG_CEIL && vm->index == VM_CGAME )
+		return qtrue;
+
+	if ( trap == ~UI_CEIL && vm->index == VM_UI )
+		return qtrue;
+#endif
+
+	// [vm_vr]: game uses shared TRAP_FLOOR/TRAP_CEIL, not per-module G_FLOOR/G_CEIL
+	if ( trap == ~TRAP_CEIL && vm->index == VM_GAME )
+		return qtrue;
+
+	return qfalse;
+}
+
+
+static qboolean VarIsReferenced( const var_addr_t *v, const instruction_t *i, int op )
+{
+	while ( i->op == OP_IGNORE && !i->jused ) {
+		i++;
+	}
+	if ( i->jused ) {
 		return qfalse;
+	}
 
-	switch ( op1 ) {
-
-	case OP_LOAD4:
-		EmitPushStack(vm);
-#if idx64
-		EmitRexString(0x41, "8B 81");			// mov eax, dword ptr [r9 + 0x12345678]
-		Emit4(Constant4() & vm->dataMask);
-#else
-		EmitString("B8");				// mov eax, 0x12345678
-		EmitPtr(vm->dataBase + (Constant4() & vm->dataMask));
-		EmitString("8B 00");				// mov eax, dword ptr [eax]
-#endif
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);	// mov dword ptr [edi + ebx * 4], eax
-
-		pc++;						// OP_LOAD4
-		instruction += 1;
-		return qtrue;
-
-	case OP_LOAD2:
-		EmitPushStack(vm);
-#if idx64
-		EmitRexString(0x41, "0F B7 81");		// movzx eax, word ptr [r9 + 0x12345678]
-		Emit4(Constant4() & vm->dataMask);
-#else
-		EmitString("B8");				// mov eax, 0x12345678
-		EmitPtr(vm->dataBase + (Constant4() & vm->dataMask));
-		EmitString("0F B7 00");				// movzx eax, word ptr [eax]
-#endif
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);	// mov dword ptr [edi + ebx * 4], eax
-
-		pc++;						// OP_LOAD2
-		instruction += 1;
-		return qtrue;
-
-	case OP_LOAD1:
-		EmitPushStack(vm);
-#if idx64
-		EmitRexString(0x41, "0F B6 81");		// movzx eax, byte ptr [r9 + 0x12345678]
-		Emit4(Constant4() & vm->dataMask);
-#else
-		EmitString("B8");				// mov eax, 0x12345678
-		EmitPtr(vm->dataBase + (Constant4() & vm->dataMask));
-		EmitString("0F B6 00");				// movzx eax, byte ptr [eax]
-#endif
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);	// mov dword ptr [edi + ebx * 4], eax
-
-		pc++;						// OP_LOAD1
-		instruction += 1;
-		return qtrue;
-
-	case OP_STORE4:
-		EmitMovEAXStack(vm, vm->dataMask);
-#if idx64
-		EmitRexString(0x41, "C7 04 01");		// mov dword ptr [r9 + eax], 0x12345678
-		Emit4(Constant4());
-#else
-		EmitString("C7 80");				// mov dword ptr [eax + 0x12345678], 0x12345678
-		Emit4((intptr_t) vm->dataBase);
-		Emit4(Constant4());
-#endif
-		EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-		pc++;						// OP_STORE4
-		instruction += 1;
-		return qtrue;
-
-	case OP_STORE2:
-		EmitMovEAXStack(vm, vm->dataMask);
-#if idx64
-		Emit1(0x66);					// mov word ptr [r9 + eax], 0x1234
-		EmitRexString(0x41, "C7 04 01");
-		Emit2(Constant4());
-#else
-		EmitString("66 C7 80");				// mov word ptr [eax + 0x12345678], 0x1234
-		Emit4((intptr_t) vm->dataBase);
-		Emit2(Constant4());
-#endif
-		EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-
-		pc++;						// OP_STORE2
-		instruction += 1;
-		return qtrue;
-
-	case OP_STORE1:
-		EmitMovEAXStack(vm, vm->dataMask);
-#if idx64
-		EmitRexString(0x41, "C6 04 01");		// mov byte [r9 + eax], 0x12
-		Emit1(Constant4());
-#else
-		EmitString("C6 80");				// mov byte ptr [eax + 0x12345678], 0x12
-		Emit4((intptr_t) vm->dataBase);
-		Emit1(Constant4());
-#endif
-		EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-
-		pc++;						// OP_STORE1
-		instruction += 1;
-		return qtrue;
-
-	case OP_ADD:
-		v = Constant4();
-
-		EmitMovEAXStack(vm, 0);
-		if(iss8(v))
-		{
-			EmitString("83 C0");			// add eax, 0x7F
-			Emit1(v);
+	if ( v->addr == i->value ) {
+		if ( i->op == OP_CONST ) {
+			if ( v->base == R_DATABASE && (i+1)->op == op ) {
+				return qtrue;
+			}
 		}
-		else
-		{
-			EmitString("05");			// add eax, 0x12345678
-			Emit4(v);
+		if ( i->op == OP_LOCAL ) {
+			if ( v->base == R_PROCBASE && (i+1)->op == op ) {
+				return qtrue;
+			}
 		}
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);
+	}
+	return qfalse;
+}
 
-		pc++;						// OP_ADD
-		instruction += 1;
-		return qtrue;
 
-	case OP_SUB:
-		v = Constant4();
+static qboolean ConstOptimize( vm_t *vm, instruction_t *ci, instruction_t *ni )
+{
+	var_addr_t var;
 
-		EmitMovEAXStack(vm, 0);
-		if(iss8(v))
-		{
-			EmitString("83 E8");			// sub eax, 0x7F
-			Emit1(v);
+	if ( ni->jused ) {
+		return qfalse;
+	}
+
+	switch ( ni->op ) {
+
+		case OP_STORE4:	{
+			if ( ci->value == 0 ) {
+				// "xor eax, eax" + non-const path is shorter
+				return qfalse;
+			}
+			if ( addr_on_top( &var, R_DATABASE, R_PROCBASE ) ) {
+				// address is a global/local variable
+				if ( VarIsReferenced( &var, ni + 1, OP_LOAD4 ) ) {
+					// it will be referenced/loaded afterwards
+					// so store value in a register, do not optimize
+					return qfalse;
+				}
+				discard_top(); dec_opstack();						// v = *opstack; opstack -= 4
+				emit_store_imm32( ci->value, var.base, var.addr );	// (dword*)base_reg[ v ] = 0x12345678
+				var.size = 4;
+				wipe_var_range( &var );
+			} else {
+				// address is specified by register
+				int rx = load_rx_opstack( forceDataMask ? R_EAX : R_EAX | RCONST );
+				dec_opstack(); // eax = *opStack; opStack -= 4
+				emit_CheckReg( vm, rx, FUNC_DATW );
+				emit_store_imm32_index( ci->value, R_DATABASE, rx ); // (dword*)dataBase[ eax ] = 0x12345678
+				unmask_rx( rx );
+				wipe_vars();
+			}
+			ip += 1; // OP_STORE4
+			return qtrue;
 		}
-		else
-		{
-			EmitString("2D");			// sub eax, 0x12345678
-			Emit4(v);
+
+		case OP_STORE2:	{
+			if ( addr_on_top( &var, R_DATABASE, R_PROCBASE ) ) {
+				if ( VarIsReferenced( &var, ni + 1, OP_LOAD2 ) || find_rx_const_mask( ci->value, 0xFFFF ) ) {
+					return qfalse; // store value in a register
+				}
+				discard_top(); dec_opstack();						// v = *opstack; opstack -= 4
+				emit_store2_imm16( ci->value, var.base, var.addr );	// (short*)var.base[ v ] = 0x1234
+				var.size = 2;
+				wipe_var_range( &var );
+			} else {
+				int rx = load_rx_opstack( forceDataMask ? R_EAX : R_EAX | RCONST );
+				dec_opstack(); // eax = *opStack; opStack -= 4
+				emit_CheckReg( vm, rx, FUNC_DATW );
+				emit_store2_imm16_index( ci->value, R_DATABASE, rx ); // (word*)dataBase[ eax ] = 0x12345678
+				unmask_rx( rx );
+				wipe_vars();
+			}
+			ip += 1; // OP_STORE2
+			return qtrue;
 		}
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);
 
-		pc++;						// OP_SUB
-		instruction += 1;
-		return qtrue;
-
-	case OP_MULI:
-		v = Constant4();
-
-		EmitMovEAXStack(vm, 0);
-		if(iss8(v))
-		{
-			EmitString("6B C0");			// imul eax, 0x7F
-			Emit1(v);
+		case OP_STORE1: {
+			if ( addr_on_top( &var, R_DATABASE, R_PROCBASE ) ) {
+				if ( VarIsReferenced( &var, ni + 1, OP_LOAD1 ) || find_rx_const_mask( ci->value, 0xFF ) ) {
+					return qfalse; // store value in a register
+				}
+				discard_top(); dec_opstack();						// v = *opstack; opstack -= 4
+				emit_store1_imm8( ci->value, var.base, var.addr );	// (byte*)base_reg[ v ] = 0x12
+				var.size = 1;
+				wipe_var_range( &var );
+			} else {
+				int rx = load_rx_opstack( forceDataMask ? R_EAX : R_EAX | RCONST );
+				dec_opstack(); // eax = *opStack; opStack -= 4
+				emit_CheckReg( vm, rx, FUNC_DATW );
+				emit_store1_imm8_index( ci->value, R_DATABASE, rx ); // (char*)dataBase[ eax ] = 0x12345678
+				unmask_rx( rx );
+				wipe_vars();
+			}
+			ip += 1; // OP_STORE1
+			return qtrue;
 		}
-		else
-		{
-			EmitString("69 C0");			// imul eax, 0x12345678
-			Emit4(v);
+
+		case OP_ADD: {
+			int rx = load_rx_opstack( R_EAX );				// eax = *opstack
+			if ( ci->value == 128 ) {
+				// small trick to use 1-byte immediate value :P
+				emit_op_rx_imm32( X_SUB, rx, -128 );		// sub eax, -128
+			} else {
+				emit_op_rx_imm32( X_ADD, rx, ci->value );	// add eax, 0x12345678
+			}
+			store_rx_opstack( rx );							// *opstack = eax
+			ip += 1; // OP_ADD
+			return qtrue;
 		}
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);
-		pc++;						// OP_MULI
-		instruction += 1;
 
-		return qtrue;
+		case OP_SUB: {
+			int rx = load_rx_opstack( R_EAX );			// eax = *opstack
+			emit_op_rx_imm32( X_SUB, rx, ci->value );	// sub eax, 0x12345678
+			store_rx_opstack( rx );						// *opstack = eax
+			ip += 1; // OP_SUB
+			return qtrue;
+		}
 
-	case OP_LSH:
-		v = NextConstant4();
-		if(v < 0 || v > 31)
+		case OP_MULI:
+		case OP_MULU: {
+			int rx = load_rx_opstack( R_EAX );		// eax = *opstack
+			emit_mul_rx_imm( rx, ci->value );		// imul eax, eax, 0x12345678
+			store_rx_opstack( rx );					// *opstack = eax
+			ip += 1; // OP_MUL
+			return qtrue;
+		}
+
+		case OP_BAND: {
+			int rx = load_rx_opstack( R_EAX );			// eax = *opstack
+			if ( !(ni+1)->jused && (ni+1)->op == OP_CONST && (ni+1)->value == 0 && ops[(ni+2)->op].flags & JUMP ) {
+				if ( (ni+2)->op == OP_EQ || (ni+2)->op == OP_NE ) {
+					dec_opstack();
+					emit_test_rx_imm32( rx, ci->value );// test eax, mask
+					EmitJump( ni+2, (ni+2)->op, (ni+2)->value ); // jcc
+					unmask_rx( rx );
+					ip += 3; // OP_BAND + OP_CONST + OP_EQ/OP_NE
+					return qtrue;
+				}
+			}
+			emit_op_rx_imm32( X_AND, rx, ci->value );	// and eax, 0x12345678
+			store_rx_opstack( rx );						// *opstack = eax
+			ip += 1; // OP_BAND
+			return qtrue;
+		}
+
+		case OP_BOR: {
+			int rx = load_rx_opstack( R_EAX );			// eax = *opstack
+			emit_op_rx_imm32( X_OR, rx, ci->value );	// or eax, 0x12345678
+			store_rx_opstack( rx );						// *opstack = eax
+			ip += 1; // OP_BOR
+			return qtrue;
+		}
+
+		case OP_BXOR: {
+			int rx = load_rx_opstack( R_EAX );			// eax = *opstack
+			emit_op_rx_imm32( X_XOR, rx, ci->value );	// xor eax, 0x12345678
+			store_rx_opstack( rx );						// *opstack = eax
+			ip += 1; // OP_BXOR
+			return qtrue;
+		}
+
+		case OP_LSH:
+			if ( ci->value < 0 || ci->value > 31 )
+				break; // undefined behavior
+			if ( ci->value ) {
+				int rx = load_rx_opstack( R_EAX );		// eax = *opstack
+				emit_shl_rx_imm( rx, ci->value );		// eax = (unsigned)eax << x
+				store_rx_opstack( rx );					// *opstack = eax
+			}
+			ip += 1; // OP_LSH
+			return qtrue;
+
+		case OP_RSHI:
+			if ( ci->value < 0 || ci->value > 31 )
+				break; // undefined behavior
+			if ( ci->value ) {
+				int rx = load_rx_opstack( R_EAX );		// eax = *opstack
+				emit_sar_rx_imm( rx, ci->value );		// eax = eax >> x
+				store_rx_opstack( rx );					// *opstack = eax
+			}
+			ip += 1; // OP_RSHI
+			return qtrue;
+
+		case OP_RSHU:
+			if ( ci->value < 0 || ci->value > 31 )
+				break; // undefined behavior
+			if ( ci->value ) {
+				int rx = load_rx_opstack( R_EAX );		// eax = *opstack
+				emit_shr_rx_imm( rx, ci->value );		// eax = (unsigned)eax >> x
+				store_rx_opstack( rx );					// *opstack = eax
+			}
+			ip += 1; // OP_RSHU
+			return qtrue;
+
+		case OP_CALL: {
+			inc_opstack(); // opstack += 4
+
+			if ( HasSSEFP() ) {
+				if ( ci->value == ~TRAP_SQRT ) {
+					int sx = alloc_sx( R_XMM0 );
+					emit_sqrt( sx, R_PROCBASE, 8 );		// sqrtss xmm0, dword ptr [ebp + 8]
+					store_sx_opstack( sx );				// *opstack = xmm0
+					ip += 1; // OP_CALL
+					return qtrue;
+				}
+
+				if ( IsFloorTrap( vm, ci->value ) && ( CPU_Flags & CPU_SSE41 ) ) {
+					int sx = alloc_sx( R_XMM0 );
+					emit_floor( sx, R_PROCBASE, 8 );	// roundss xmm0, dword ptr [ebp + 8], 1
+					store_sx_opstack( sx );				// *opstack = xmm0
+					ip += 1; // OP_CALL
+					return qtrue;
+				}
+
+				if ( IsCeilTrap( vm, ci->value ) && ( CPU_Flags & CPU_SSE41 ) ) {
+					int sx = alloc_sx( R_XMM0 );
+					emit_ceil( sx, R_PROCBASE, 8 );		// roundss xmm0, dword ptr [ebp + 8], 2
+					store_sx_opstack( sx );				// *opstack = xmm0
+					ip += 1; // OP_CALL
+					return qtrue;
+				}
+			} else {
+				// legacy x87 path
+			}
+
+			flush_volatile();
+
+			if ( ci->value < 0 ) { // syscall
+				mask_rx( R_EAX );
+				mov_rx_imm32( R_EAX, ~ci->value ); // eax - syscall number
+				if ( opstack != 1 ) {
+					emit_op_rx_imm32( X_ADD, R_OPSTACK | R_REX, (opstack-1) * sizeof( int32_t ) );
+					EmitCallOffset( FUNC_SYSC );
+					emit_op_rx_imm32( X_SUB, R_OPSTACK | R_REX, (opstack-1) * sizeof( int32_t ) );
+				} else {
+					EmitCallOffset( FUNC_SYSC );
+				}
+				ip += 1; // OP_CALL
+				store_syscall_opstack( R_EAX );
+				return qtrue;
+			}
+			emit_push( R_OPSTACK );	// push edi
+			if ( opstack != 1 ) {
+				emit_op_rx_imm32( X_ADD, R_OPSTACK | R_REX, (opstack-1) * sizeof( int32_t ) ); // add rdi, opstack-4
+			}
+			EmitCallAddr( vm, ci->value );	// call +addr
+			emit_pop( R_OPSTACK );	// pop edi
+			ip += 1; // OP_CALL
+			return qtrue;
+		}	
+
+		case OP_JUMP:
+			flush_opstack();
+			EmitJump( ni, ni->op, ci->value );
+			ip += 1; // OP_JUMP
+			return qtrue;
+
+		case OP_EQ:
+		case OP_NE:
+		case OP_GEI:
+		case OP_GTI:
+		case OP_GTU:
+		case OP_GEU:
+		case OP_LTU:
+		case OP_LEU:
+		case OP_LEI:
+		case OP_LTI: {
+			int rx = load_rx_opstack( R_EAX | RCONST ); dec_opstack(); // eax = *opstack; opstack -= 4
+			flush_nonvolatile();
+			if ( ci->value == 0 && ( ni->op == OP_EQ || ni->op == OP_NE ) ) {
+				emit_test_rx( rx, rx );						// test eax, eax
+			} else{
+				emit_op_rx_imm32( X_CMP, rx, ci->value );	// cmp eax, 0x12345678
+			}
+			unmask_rx( rx );
+			EmitJump( ni, ni->op, ni->value );			// jcc
+			ip += 1; // OP_cond
+			return qtrue;
+		}
+
+	}
+	return qfalse;
+}
+#endif
+
+
+#ifdef MACRO_OPTIMIZE
+/*
+=================
+VM_FindSameInst
+
+Search for the same base instruction ahead
+=================
+*/
+static qboolean VM_FindSameLoad4( const instruction_t *base, int offset ) {
+	const instruction_t *next = base + offset;
+	while ( !next->jused ) {
+		if ( next->op == base->op && next->value == base->value ) {
+			if ( !(next + 1)->jused && (next + 1)->op == OP_LOAD4 ) {
+				return qtrue;
+			}
+		}
+		next++;
+	}
+	return qfalse;
+}
+#endif
+
+
+/*
+=================
+VM_FindMOps
+
+Search for known macro-op sequences
+=================
+*/
+#ifdef MACRO_OPTIMIZE
+
+static int VM_IsMopSequence( const  instruction_t *i )
+{
+	int n;
+
+	// OP_LOCAL|OP_CONST + OP_LOCAL|OP_CONST + OP_LOAD4 + OP_CONST + OP_XXX + OP_STORE4
+
+	if ( i->op != OP_LOCAL && i->op != OP_CONST ) {
+		return OP_UNDEF;
+	}
+
+	if ( i->op != (i + 1)->op ) {
+		return OP_UNDEF;
+	}
+
+	if ( i->value != (i + 1)->value ) {
+		return OP_UNDEF;
+	}
+
+	for ( n = 1; n < 6; n++ ) {
+		if ( i[n].jused ) {
+			return OP_UNDEF;
+		}
+	}
+
+	if ( (i + 2)->op != OP_LOAD4 || (i + 3)->op != OP_CONST || (i + 5)->op != OP_STORE4 ) {
+		return OP_UNDEF;
+	}
+
+	switch ( (i + 4)->op ) {
+		case OP_ADD:	return MOP_ADD;
+		case OP_SUB:	return MOP_SUB;
+		case OP_BAND:	return MOP_BAND;
+		case OP_BOR:	return MOP_BOR;
+		case OP_BXOR:	return MOP_BXOR;
+		default: 
 			break;
+	}
 
-		EmitMovEAXStack(vm, 0);
-		EmitString("C1 E0");				// shl eax, 0x12
-		Emit1(v);
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);
+	return OP_UNDEF;
+}
 
-		pc += 5;					// CONST + OP_LSH
-		instruction += 1;
-		return qtrue;
 
-	case OP_RSHI:
-		v = NextConstant4();
-		if(v < 0 || v > 31)
-			break;
-			
-		EmitMovEAXStack(vm, 0);
-		EmitString("C1 F8");				// sar eax, 0x12
-		Emit1(v);
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);
+static void VM_FindMOps( instruction_t *buf, int instructionCount )
+{
+	instruction_t *i;
+	int n;
 
-		pc += 5;					// CONST + OP_RSHI
-		instruction += 1;
-		return qtrue;
+	i = buf;
+	n = 0;
 
-	case OP_RSHU:
-		v = NextConstant4();
-		if(v < 0 || v > 31)
-			break;
-			
-		EmitMovEAXStack(vm, 0);
-		EmitString("C1 E8");				// shr eax, 0x12
-		Emit1(v);
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);
-
-		pc += 5;					// CONST + OP_RSHU
-		instruction += 1;
-		return qtrue;
-	
-	case OP_BAND:
-		v = Constant4();
-
-		EmitMovEAXStack(vm, 0);
-		if(iss8(v))
-		{
-			EmitString("83 E0");			// and eax, 0x7F
-			Emit1(v);
+	while ( n < instructionCount )
+	{
+		int v = VM_IsMopSequence( i );
+		if ( v != OP_UNDEF && !VM_FindSameLoad4( i, 6 ) ) {
+			i->op = v;
+			i += 6;
+			n += 6;
+			continue;
 		}
-		else
-		{
-			EmitString("25");			// and eax, 0x12345678
-			Emit4(v);
-		}
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);
-		
-		pc += 1;					// OP_BAND
-		instruction += 1;
-		return qtrue;
 
-	case OP_BOR:
-		v = Constant4();
-
-		EmitMovEAXStack(vm, 0);
-		if(iss8(v))
-		{
-			EmitString("83 C8");			// or eax, 0x7F
-			Emit1(v);
-		}
-		else
-		{
-			EmitString("0D");			// or eax, 0x12345678
-			Emit4(v);
-		}
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);
-		
-		pc += 1;				 	// OP_BOR
-		instruction += 1;
-		return qtrue;
-
-	case OP_BXOR:
-		v = Constant4();
-		
-		EmitMovEAXStack(vm, 0);
-		if(iss8(v))
-		{
-			EmitString("83 F0");			// xor eax, 0x7F
-			Emit1(v);
-		}
-		else
-		{
-			EmitString("35");			// xor eax, 0x12345678
-			Emit4(v);
-		}
-		EmitCommand(LAST_COMMAND_MOV_STACK_EAX);
-		
-		pc += 1;					// OP_BXOR
-		instruction += 1;
-		return qtrue;
-
-	case OP_EQ:
-	case OP_NE:
-	case OP_LTI:
-	case OP_LEI:
-	case OP_GTI:
-	case OP_GEI:
-	case OP_LTU:
-	case OP_LEU:
-	case OP_GTU:
-	case OP_GEU:
-		EmitMovEAXStack(vm, 0);
-		EmitCommand(LAST_COMMAND_SUB_BL_1);
-		EmitString("3D");				// cmp eax, 0x12345678
-		Emit4(Constant4());
-
-		pc++;						// OP_*
-		EmitBranchConditions(vm, op1);
-		instruction++;
-
-		return qtrue;
-
-	case OP_EQF:
-	case OP_NEF:
-		if(NextConstant4())
-			break;
-		pc += 5;					// CONST + OP_EQF|OP_NEF
-
-		EmitMovEAXStack(vm, 0);
-		EmitCommand(LAST_COMMAND_SUB_BL_1);
-		// floating point hack :)
-		EmitString("25");				// and eax, 0x7FFFFFFF
-		Emit4(0x7FFFFFFF);
-		if(op1 == OP_EQF)
-			EmitJumpIns(vm, "0F 84", Constant4());	// jz 0x12345678
-		else
-			EmitJumpIns(vm, "0F 85", Constant4());	// jnz 0x12345678
-		
-		instruction += 1;
-		return qtrue;
+		i++;
+		n++;
+	}
+}
 
 
-	case OP_JUMP:
-		EmitJumpIns(vm, "E9", Constant4());		// jmp 0x12345678
+/*
+=================
+EmitMOPs
+=================
+*/
+static qboolean EmitMOPs( vm_t *vm, instruction_t *ci, macro_op_t op )
+{
+	uint32_t reg_base;
+	var_addr_t var;
+	int n;
 
-		pc += 1;                  // OP_JUMP
-		instruction += 1;
-		return qtrue;
+	if ( (ci + 1 )->op == OP_LOCAL )
+		reg_base = R_PROCBASE;
+	else
+		reg_base = R_DATABASE;
 
-	case OP_CALL:
-		v = Constant4();
-		EmitCallConst(vm, v, callProcOfsSyscall);
+	var.base = reg_base;
+	var.addr = ci->value;
+	var.size = 4;
 
-		pc += 1;                  // OP_CALL
-		instruction += 1;
-		return qtrue;
+	wipe_var_range( &var );
 
-	default:
-		break;
+	switch ( op )
+	{
+		//[var] += CONST
+		case MOP_ADD:
+			n = inst[ ip + 2 ].value;
+			emit_op_mem_imm( X_ADD, reg_base, ci->value, n );
+			ip += 5;
+			return qtrue;
+
+		//[var] -= CONST
+		case MOP_SUB:
+			n = inst[ ip + 2 ].value;
+			emit_op_mem_imm( X_SUB, reg_base, ci->value, n );
+			ip += 5;
+			return qtrue;
+
+		//[var] &= CONST
+		case MOP_BAND:
+			n = inst[ ip + 2 ].value;
+			emit_op_mem_imm( X_AND, reg_base, ci->value, n );
+			ip += 5;
+			return qtrue;
+
+		//[var] |= CONST
+		case MOP_BOR:
+			n = inst[ ip + 2 ].value;
+			emit_op_mem_imm( X_OR, reg_base, ci->value, n );
+			ip += 5;
+			return qtrue;
+
+		//[var] ^= CONST
+		case MOP_BXOR:
+			n = inst[ ip + 2 ].value;
+			emit_op_mem_imm( X_XOR, reg_base, ci->value, n );
+			ip += 5;
+			return qtrue;
 	}
 
 	return qfalse;
 }
+#endif // MACRO_OPTIMIZE
+
+
+#ifdef DUMP_CODE
+static void dump_code( const char *vmname, uint8_t *c, int32_t code_len )
+{
+	const char *filename = va( "vm-%s.hex", vmname );
+	fileHandle_t fh = FS_FOpenFileWrite( filename );
+	if ( fh != FS_INVALID_HANDLE ) {
+		while ( code_len >= 8 ) {
+			FS_Printf( fh, "%02x %02x %02x %02x %02x %02x %02x %02x\n", c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7] );
+			code_len -= 8;
+			c += 8;
+		}
+		while ( code_len > 0 ) {
+			FS_Printf( fh, "%02x", c[0] );
+			if ( code_len > 1 )
+				FS_Write( " ", 1, fh );
+			code_len -= 1;
+			c += 1;
+		}
+		FS_FCloseFile( fh );
+	}
+}
+#endif
+
 
 /*
 =================
 VM_Compile
 =================
 */
-void VM_Compile(vm_t *vm, vmHeader_t *header)
-{
-	int		op;
-	int		maxLength;
-	int		v;
-	int		i;
-        int		callProcOfsSyscall, callProcOfs, callDoSyscallOfs;
+qboolean VM_Compile( vm_t *vm, vmHeader_t *header ) {
+	const char	*errMsg;
+	int		instructionCount;
+	instruction_t *ci;
+	int		i, n;
+	uint32_t rx[3];
+	uint32_t sx[2];
+	int proc_base;
+	int proc_len;
+#ifdef RET_OPTIMIZE
+	int proc_end;
+#endif
+	var_addr_t var;
+	opcode_t sign_extend;
+	int var_size;
+	reg_t *reg;
+#if JUMP_OPTIMIZE
+	int num_compress;
+#ifdef NUM_PROC_COMPRESSIONS
+	int proc_compressions;
+#endif
+#endif
 
-	jusedSize = header->instructionCount + 2;
+	inst = (instruction_t*)Z_Malloc( (header->instructionCount + 8 ) * sizeof( instruction_t ) );
+	instructionOffsets = (int*)Z_Malloc( header->instructionCount * sizeof( int ) );
 
-	// allocate a very large temp buffer, we will shrink it later
-	maxLength = header->codeLength * 8 + 64;
-	buf = Z_Malloc(maxLength);
-	jused = Z_Malloc(jusedSize);
-	code = Z_Malloc(header->codeLength+32);
-	
-	Com_Memset(jused, 0, jusedSize);
-	Com_Memset(buf, 0, maxLength);
-
-	// copy code in larger buffer and put some zeros at the end
-	// so we can safely look ahead for a few instructions in it
-	// without a chance to get false-positive because of some garbage bytes
-	Com_Memset(code, 0, header->codeLength+32);
-	Com_Memcpy(code, (byte *)header + header->codeOffset, header->codeLength );
-
-	// ensure that the optimisation pass knows about all the jump
-	// table targets
-	pc = -1; // a bogus value to be printed in out-of-bounds error messages
-	for( i = 0; i < vm->numJumpTableTargets; i++ ) {
-		JUSED( *(int *)(vm->jumpTableTargets + ( i * sizeof( int ) ) ) );
+	errMsg = VM_LoadInstructions( (byte *) header + header->codeOffset, header->codeLength, header->instructionCount, inst );
+	if ( !errMsg ) {
+		errMsg = VM_CheckInstructions( inst, vm->instructionCount, vm->jumpTableTargets, vm->numJumpTableTargets, vm->exactDataLength );
+	}
+	if ( errMsg ) {
+		VM_FreeBuffers();
+		Com_Printf( "VM_CompileX86 error: %s\n", errMsg );
+		return qfalse;
 	}
 
-	// Start buffer with x86-VM specific procedures
-	compiledOfs = 0;
+#ifdef USE_LITERAL_POOL
+	VM_InitLiterals();
+#endif
 
-	callDoSyscallOfs = compiledOfs;
-	callProcOfs = EmitCallDoSyscall(vm);
-	callProcOfsSyscall = EmitCallProcedure(vm, callDoSyscallOfs);
-	vm->entryOfs = compiledOfs;
+	VM_ReplaceInstructions( vm, inst );
 
-	for(pass=0; pass < 3; pass++) {
-	oc0 = -23423;
-	oc1 = -234354;
-	pop0 = -43435;
-	pop1 = -545455;
+	// terminator for look-ahead parsers/optimizations
+	inst[ header->instructionCount ].jused = 1;
+	inst[ header->instructionCount ].endp = 1;
+	inst[ header->instructionCount ].op = OP_IGNORE;
+
+#ifdef MACRO_OPTIMIZE
+	VM_FindMOps( inst, vm->instructionCount );
+#endif
+
+#if JUMP_OPTIMIZE
+	for ( i = 0; i < header->instructionCount; i++ ) {
+		if ( ops[inst[i].op].flags & JUMP ) {
+			int d = inst[i].value - i;
+			// we can correctly calculate backward jump offsets even at initial pass
+			// but for forward jumps we do some estimation
+			// too low threshold will reduce compression
+			// too high threshold may invoke extra expansion passes
+			if ( d > 0 && d <= FJUMP_THRESHOLD ) {
+				inst[i].njump = 1;
+			}
+		}
+	}
+	num_compress = 0;
+#endif
+
+	code = NULL; // we will allocate memory later, after last defined pass
+	instructionPointers = NULL;
+
+	if ( vm->forceDataMask || ( vm_rtChecks->integer & VM_RTCHECK_DATA ) == 0 ) {
+		forceDataMask = qtrue;
+	} else {
+		forceDataMask = qfalse;
+	}
+
+	memset( funcOffset, 0, sizeof( funcOffset ) );
+
+	instructionCount = header->instructionCount;
+
+	for( pass = 0; pass < NUM_PASSES; pass++ )
+	{
+__compile:
 
 	// translate all instructions
-	pc = 0;
-	instruction = 0;
-	//code = (byte *)header + header->codeOffset;
-	compiledOfs = vm->entryOfs;
+	ip = 0;
+	compiledOfs = 0;
+#if JUMP_OPTIMIZE
+	jumpSizeChanged = 0;
+#ifdef NUM_PROC_COMPRESSIONS
+	proc_compressions = 0;
+#endif
+#endif
 
-	LastCommand = LAST_COMMAND_NONE;
+	proc_base = -1;
+	proc_len = 0;
+#ifdef RET_OPTIMIZE
+	proc_end = 0;
+#endif
 
-	while(instruction < header->instructionCount)
-	{
-		if(compiledOfs > maxLength - 16)
+	init_opstack();
+
+#ifdef DEBUG_INT
+	emit_brk();
+#endif
+
+#if idx64
+
+	emit_push( R_EBP );				// push rbp
+	emit_push( R_EBX );				// push rbx
+	emit_push( R_ESI );				// push rsi
+	emit_push( R_EDI );				// push rdi
+	emit_push( R_R12 );				// push r12
+	emit_push( R_R13 );				// push r13
+	emit_push( R_R14 );				// push r14
+	emit_push( R_R15 );				// push r15
+
+	mov_rx_ptr( R_DATABASE, vm->dataBase );			// mov rbx, vm->dataBase
+
+	// do not use wrapper, force constant size there
+	emit_mov_rx_imm64( R_INSPOINTERS, (intptr_t) instructionPointers ); // mov r8, vm->instructionPointers
+
+	mov_rx_imm32( R_DATAMASK, vm->dataMask );		// mov r11d, vm->dataMask
+	mov_rx_imm32( R_STACKBOTTOM, vm->stackBottom );	// mov r14d, vm->stackBottom
+
+	mov_rx_ptr( R_EAX, &vm->opStack );				// mov rax, &vm->opStack
+
+	emit_load4( R_OPSTACK | R_REX, R_EAX, 0 );		// mov rdi, [rax]
+
+	mov_rx_ptr( R_SYSCALL, vm->systemCall );		// mov r13, vm->systemCall
+
+	mov_rx_ptr( R_EAX, &vm->programStack );			// mov rax, &vm->programStack
+
+	emit_load4( R_PSTACK, R_EAX, 0 ); // mov esi, dword ptr [rax]
+
+	emit_lea( R_OPSTACKTOP | R_REX, R_OPSTACK, sizeof( int32_t ) * ( MAX_OPSTACK_SIZE - 1 ) ); // lea r15, [opStack + opStackSize - 4]
+
+	EmitCallOffset( FUNC_ENTR );
+
+#ifdef DEBUG_VM
+	mov_rx_ptr( R_EAX, &vm->programStack );		// mov rax, &vm->programStack
+	emit_store_rx( R_PSTACK, R_EAX, 0 );		// mov [rax], esi
+#endif
+
+	emit_pop( R_R15 );				// pop r15
+	emit_pop( R_R14 );				// pop r14
+	emit_pop( R_R13 );				// pop r13
+	emit_pop( R_R12 );				// pop r12
+	emit_pop( R_EDI );				// pop rdi
+	emit_pop( R_ESI );				// pop rsi
+	emit_pop( R_EBX );				// pop rbx
+	emit_pop( R_EBP );				// pop rbp
+	emit_ret();						// ret
+
+#else // id386
+
+	emit_pushad();					// pushad
+
+	mov_rx_ptr( R_DATABASE, vm->dataBase );	// mov ebx, vm->dataBase
+
+	emit_load_rx_offset( R_PSTACK, (intptr_t) &vm->programStack ); // mov esi, [&vm->programStack]
+
+	emit_load_rx_offset( R_OPSTACK, (intptr_t) &vm->opStack ); // mov edi, [&vm->opStack]
+
+	EmitCallOffset( FUNC_ENTR );
+
+#ifdef DEBUG_VM
+	emit_store_rx_offset( R_PSTACK, (intptr_t) &vm->programStack ); // mov [&vm->programStack], esi 
+#endif
+
+	// emit_store_rx_offset( R_OPSTACK, (intptr_t) &vm->opStack ); // // [&vm->opStack], edi
+
+	emit_popad();					// popad
+	emit_ret();						// ret
+
+#endif // id386
+
+	EmitAlign( FUNC_ALIGN );
+
+	// main function entry offset
+	funcOffset[FUNC_ENTR] = compiledOfs;
+
+	while ( ip < instructionCount ) {
+		ci = &inst[ip + 0];
+
+#ifdef REGS_OPTIMIZE
+		if ( ci->jused )
+#endif
 		{
-	        	VMFREE_BUFFERS();
-			Com_Error(ERR_DROP, "VM_CompileX86: maxLength exceeded");
+			// we can safely perform register optimizations only in case if
+			// we are 100% sure that current instruction is not a jump label
+			flush_opstack();
 		}
 
-		vm->instructionPointers[ instruction ] = compiledOfs;
+		instructionOffsets[ ip++ ] = compiledOfs;
 
-		if ( !vm->jumpTableTargets )
-			jlabel = 1;
-		else 
-			jlabel = jused[ instruction ];
+		switch ( ci->op ) {
 
-		instruction++;
-
-		if(pc > header->codeLength)
-		{
-		        VMFREE_BUFFERS();
-			Com_Error(ERR_DROP, "VM_CompileX86: pc > header->codeLength");
-		}
-
-		op = code[ pc ];
-		pc++;
-		switch ( op ) {
-		case 0:
-			break;
-		case OP_BREAK:
-			EmitString("CC");				// int 3
-			break;
-		case OP_ENTER:
-			EmitString("81 EE");				// sub esi, 0x12345678
-			Emit4(Constant4());
-			break;
-		case OP_CONST:
-			if(ConstOptimize(vm, callProcOfsSyscall))
+			case OP_UNDEF:
+				emit_brk();			// int 3
 				break;
 
-			EmitPushStack(vm);
-			EmitString("C7 04 9F");				// mov dword ptr [edi + ebx * 4], 0x12345678
-			lastConst = Constant4();
-
-			Emit4(lastConst);
-			if(code[pc] == OP_JUMP)
-				JUSED(lastConst);
-
-			break;
-		case OP_LOCAL:
-			EmitPushStack(vm);
-			EmitString("8D 86");				// lea eax, [0x12345678 + esi]
-			oc0 = oc1;
-			oc1 = Constant4();
-			Emit4(oc1);
-			EmitCommand(LAST_COMMAND_MOV_STACK_EAX);	// mov dword ptr [edi + ebx * 4], eax
-			break;
-		case OP_ARG:
-			EmitMovEAXStack(vm, 0);				// mov eax, dword ptr [edi + ebx * 4]
-			EmitString("8B D6");				// mov edx, esi
-			EmitString("81 C2");				// add edx, 0x12345678
-			Emit4((Constant1() & 0xFF));
-			MASK_REG("E2", vm->dataMask);			// and edx, 0x12345678
-#if idx64
-			EmitRexString(0x41, "89 04 11");		// mov dword ptr [r9 + edx], eax
-#else
-			EmitString("89 82");				// mov dword ptr [edx + 0x12345678], eax
-			Emit4((intptr_t) vm->dataBase);
-#endif
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_CALL:
-			EmitCallRel(vm, callProcOfs);
-			break;
-		case OP_PUSH:
-			EmitPushStack(vm);
-			break;
-		case OP_POP:
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_LEAVE:
-			v = Constant4();
-			EmitString("81 C6");				// add	esi, 0x12345678
-			Emit4(v);
-			EmitString("C3");				// ret
-			break;
-		case OP_LOAD4:
-			if (code[pc] == OP_CONST && code[pc+5] == OP_ADD && code[pc+6] == OP_STORE4)
-			{
-				if(oc0 == oc1 && pop0 == OP_LOCAL && pop1 == OP_LOCAL)
-				{
-					compiledOfs -= 12;
-					vm->instructionPointers[instruction - 1] = compiledOfs;
-				}
-
-				pc++;				// OP_CONST
-				v = Constant4();
-
-				EmitMovEDXStack(vm, vm->dataMask);
-				if(v == 1 && oc0 == oc1 && pop0 == OP_LOCAL && pop1 == OP_LOCAL)
-				{
-#if idx64
-					EmitRexString(0x41, "FF 04 11");	// inc dword ptr [r9 + edx]
-#else
-					EmitString("FF 82");			// inc dword ptr [edx + 0x12345678]
-					Emit4((intptr_t) vm->dataBase);
-#endif
-				}
-				else
-				{
-#if idx64
-					EmitRexString(0x41, "8B 04 11");	// mov eax, dword ptr [r9 + edx]
-#else
-					EmitString("8B 82");			// mov eax, dword ptr [edx + 0x12345678]
-					Emit4((intptr_t) vm->dataBase);
-#endif
-					EmitString("05");			// add eax, v
-					Emit4(v);
-					
-					if (oc0 == oc1 && pop0 == OP_LOCAL && pop1 == OP_LOCAL)
-					{
-#if idx64
-						EmitRexString(0x41, "89 04 11");	// mov dword ptr [r9 + edx], eax
-#else
-						EmitString("89 82");			// mov dword ptr [edx + 0x12345678], eax
-						Emit4((intptr_t) vm->dataBase);
-#endif
-					}
-					else
-					{
-						EmitCommand(LAST_COMMAND_SUB_BL_1);	// sub bl, 1
-						EmitString("8B 14 9F");			// mov edx, dword ptr [edi + ebx * 4]
-						MASK_REG("E2", vm->dataMask);		// and edx, 0x12345678
-#if idx64
-						EmitRexString(0x41, "89 04 11");	// mov dword ptr [r9 + edx], eax
-#else
-						EmitString("89 82");			// mov dword ptr [edx + 0x12345678], eax
-						Emit4((intptr_t) vm->dataBase);
-#endif
-					}
-				}
-
-				EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-				pc++;						// OP_ADD
-				pc++;						// OP_STORE
-				instruction += 3;
+			case OP_IGNORE:
+				ip += ci->value;
 				break;
-			}
 
-			if(code[pc] == OP_CONST && code[pc+5] == OP_SUB && code[pc+6] == OP_STORE4)
-			{
-				if(oc0 == oc1 && pop0 == OP_LOCAL && pop1 == OP_LOCAL)
-				{
-					compiledOfs -= 12;
-					vm->instructionPointers[instruction - 1] = compiledOfs;
-				}
-				
-				pc++;					// OP_CONST
-				v = Constant4();
+			case OP_BREAK:
+				emit_brk();			// int 3
+				break;
 
-				EmitMovEDXStack(vm, vm->dataMask);
-				if(v == 1 && oc0 == oc1 && pop0 == OP_LOCAL && pop1 == OP_LOCAL)
-				{
-#if idx64
-					EmitRexString(0x41, "FF 0C 11");	// dec dword ptr [r9 + edx]
-#else
-					EmitString("FF 8A");			// dec dword ptr [edx + 0x12345678]
-					Emit4((intptr_t) vm->dataBase);
+			case OP_ENTER:
+				EmitAlign( FUNC_ALIGN );
+
+				instructionOffsets[ ip-1 ] = compiledOfs;
+
+				proc_base = ip; // this points on next instruction after OP_ENTER
+
+				// locate endproc
+				for ( proc_len = -1, i = ip; i < header->instructionCount; i++ ) {
+					if ( inst[ i ].op == OP_PUSH && inst[ i + 1 ].op == OP_LEAVE ) {
+						proc_len = i - proc_base;
+#ifdef RET_OPTIMIZE
+						proc_end = i + 1;
 #endif
-				}
-				else
-				{
-#if idx64
-					EmitRexString(0x41, "8B 04 11");	// mov eax, dword ptr [r9 + edx]
-#else
-					EmitString("8B 82");			// mov eax, dword ptr [edx + 0x12345678]
-					Emit4((intptr_t) vm->dataBase);
-#endif
-					EmitString("2D");			// sub eax, v
-					Emit4(v);
-					
-					if(oc0 == oc1 && pop0 == OP_LOCAL && pop1 == OP_LOCAL)
-					{
-#if idx64
-						EmitRexString(0x41, "89 04 11");	// mov dword ptr [r9 + edx], eax
-#else
-						EmitString("89 82");			// mov dword ptr [edx + 0x12345678], eax
-						Emit4((intptr_t) vm->dataBase);
-#endif
-					}
-					else
-					{
-						EmitCommand(LAST_COMMAND_SUB_BL_1);	// sub bl, 1
-						EmitString("8B 14 9F");			// mov edx, dword ptr [edi + ebx * 4]
-						MASK_REG("E2", vm->dataMask);		// and edx, 0x12345678
-#if idx64
-						EmitRexString(0x41, "89 04 11");	// mov dword ptr [r9 + edx], eax
-#else
-						EmitString("89 82");			// mov dword ptr [edx + 0x12345678], eax
-						Emit4((intptr_t) vm->dataBase);
-#endif
+						break;
 					}
 				}
-				EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-				pc++;						// OP_SUB
-				pc++;						// OP_STORE
-				instruction += 3;
+
+				if ( proc_len == 0 ) {
+					// empty function, just return
+					emit_ret();
+					proc_base = -1;
+					ip += 2; // OP_PUSH + OP_LEAVE
+					break;
+				}
+
+				emit_push( R_PROCBASE );				// procBase
+				emit_push( R_PSTACK );					// programStack
+
+				emit_op_rx_imm32( X_SUB, R_PSTACK, ci->value );	// sub programStack, 0x12
+
+				emit_lea_base_index( R_PROCBASE | R_REX, R_DATABASE, R_PSTACK ); // procBase = dataBase + programStack
+
+				emit_CheckProc( vm, ci );
+#ifdef NUM_PROC_COMPRESSIONS
+				proc_compressions = 0;
+#endif
+				break;
+
+			case OP_LEAVE:
+				flush_opstack();
+				dec_opstack(); // opstack -= 4
+#ifdef DEBUG_VM
+				if ( opstack != 0 )
+					DROP( "opStack corrupted on OP_LEAVE" );
+#endif
+
+#ifdef RET_OPTIMIZE
+				if ( !ci->endp && proc_base >= 0 ) {
+					// jump to last OP_LEAVE instruction in this function
+					if ( inst[ ip + 0 ].op == OP_PUSH && inst[ ip + 1 ].op == OP_LEAVE ) {
+						// next instruction is proc_end
+					} else {
+						EmitJump( ci, OP_JUMP, proc_end );
+					}
+					break;
+				}
+#endif
+
+				emit_pop( R_PSTACK );			// pop rsi // programStack
+				emit_pop( R_PROCBASE );			// pop rbp // procBase
+
+				emit_ret();						// ret
+				break;
+
+			case OP_CALL:
+				rx[0] = load_rx_opstack( R_EAX | FORCED ); // eax = *opstack
+				flush_volatile();
+				if ( opstack != 1 ) {
+					emit_op_rx_imm32( X_ADD, R_OPSTACK | R_REX, ( opstack - 1 ) * sizeof( int32_t ) );
+					EmitCallOffset( FUNC_CALL ); // call +FUNC_CALL
+					emit_op_rx_imm32( X_SUB, R_OPSTACK | R_REX, ( opstack - 1 ) * sizeof( int32_t ) );
+				} else {
+					EmitCallOffset( FUNC_CALL ); // call +FUNC_CALL
+				}
+				unmask_rx( rx[0] );
+				break;
+
+			case OP_PUSH:
+				inc_opstack(); // opstack += 4
+				if ( (ci + 1)->op == OP_LEAVE ) {
+#ifdef NUM_PROC_COMPRESSIONS
+					if ( jumpSizeChanged != 0 && pass == PASS_COMPRESS ) {
+						if ( proc_base >= 0 && proc_compressions++ < NUM_PROC_COMPRESSIONS ) {
+							jumpSizeChanged = 0;
+							compiledOfs = instructionOffsets[ proc_base ];
+							ip = proc_base;
+							init_opstack();
+							break;
+						}
+					}
+#endif
+					proc_base = -1;
+				}
+				break;
+
+			case OP_POP:
+				dec_opstack_discard(); // opstack -= 4
+				break;
+
+			case OP_CONST:
+#ifdef CONST_OPTIMIZE
+				if ( ConstOptimize( vm, ci + 0, ci + 1 ) )
+					break;
+#endif
+				inc_opstack(); // opstack += 4
+				store_item_opstack( ci );
+				break;
+
+			case OP_LOCAL:
+				inc_opstack(); // opstack += 4
+				store_item_opstack( ci );
+				break;
+
+			case OP_JUMP:
+				rx[0] = load_rx_opstack( R_EAX | RCONST ); dec_opstack(); // eax = *opstack; opstack -= 4
+				emit_CheckJump( vm, rx[0], proc_base, proc_len );		// check if eax is within current proc
+				flush_opstack();
+#if idx64
+				emit_jump_index( R_INSPOINTERS, rx[0] );				// jmp qword ptr [instructionPointers + rax*8]
+#else
+				emit_jump_index_offset( (intptr_t) instructionPointers, rx[0] ); // jmp dword ptr [instructionPointers + eax*4]
+#endif
+				unmask_rx( rx[0] );
+				break;
+
+			case OP_EQ:
+			case OP_NE:
+			case OP_LTI:
+			case OP_LEI:
+			case OP_GTI:
+			case OP_GEI:
+			case OP_LTU:
+			case OP_LEU:
+			case OP_GTU:
+			case OP_GEU: {
+				rx[0] = load_rx_opstack( R_EAX | RCONST ); dec_opstack(); // eax = *opstack; opstack -= 4
+				rx[1] = load_rx_opstack( R_EDX | RCONST ); dec_opstack(); // edx = *opstack; opstack -= 4
+				flush_nonvolatile();
+				emit_cmp_rx( rx[1], rx[0] ); // cmp edx, eax
+				unmask_rx( rx[0] );
+				unmask_rx( rx[1] );
+				EmitJump( ci, ci->op, ci->value );
 				break;
 			}
 
-			if(buf[compiledOfs - 3] == 0x89 && buf[compiledOfs - 2] == 0x04 && buf[compiledOfs - 1] == 0x9F)
-			{
-				compiledOfs -= 3;
-				vm->instructionPointers[instruction - 1] = compiledOfs;
-				MASK_REG("E0", vm->dataMask);			// and eax, 0x12345678
-#if idx64
-				EmitRexString(0x41, "8B 04 01");		// mov eax, dword ptr [r9 + eax]
-#else
-				EmitString("8B 80");				// mov eax, dword ptr [eax + 0x1234567]
-				Emit4((intptr_t) vm->dataBase);
-#endif
-				EmitCommand(LAST_COMMAND_MOV_STACK_EAX);	// mov dword ptr [edi + ebx * 4], eax
-				break;
-			}
-			
-			EmitMovEAXStack(vm, vm->dataMask);
-#if idx64
-			EmitRexString(0x41, "8B 04 01");		// mov eax, dword ptr [r9 + eax]
-#else
-			EmitString("8B 80");				// mov eax, dword ptr [eax + 0x12345678]
-			Emit4((intptr_t) vm->dataBase);
-#endif
-			EmitCommand(LAST_COMMAND_MOV_STACK_EAX);	// mov dword ptr [edi + ebx * 4], eax
-			break;
-		case OP_LOAD2:
-			EmitMovEAXStack(vm, vm->dataMask);
-#if idx64
-			EmitRexString(0x41, "0F B7 04 01");		// movzx eax, word ptr [r9 + eax]
-#else
-			EmitString("0F B7 80");				// movzx eax, word ptr [eax + 0x12345678]
-			Emit4((intptr_t) vm->dataBase);
-#endif
-			EmitCommand(LAST_COMMAND_MOV_STACK_EAX);	// mov dword ptr [edi + ebx * 4], eax
-			break;
-		case OP_LOAD1:
-			EmitMovEAXStack(vm, vm->dataMask);
-#if idx64
-			EmitRexString(0x41, "0F B6 04 01");		// movzx eax, byte ptr [r9 + eax]
-#else
-			EmitString("0F B6 80");				// movzx eax, byte ptr [eax + 0x12345678]
-			Emit4((intptr_t) vm->dataBase);
-#endif
-			EmitCommand(LAST_COMMAND_MOV_STACK_EAX);	// mov dword ptr [edi + ebx * 4], eax
-			break;
-		case OP_STORE4:
-			EmitMovEAXStack(vm, 0);	
-			EmitString("8B 54 9F FC");			// mov edx, dword ptr -4[edi + ebx * 4]
-			MASK_REG("E2", vm->dataMask);		// and edx, 0x12345678
-#if idx64
-			EmitRexString(0x41, "89 04 11");		// mov dword ptr [r9 + edx], eax
-#else
-			EmitString("89 82");				// mov dword ptr [edx + 0x12345678], eax
-			Emit4((intptr_t) vm->dataBase);
-#endif
-			EmitCommand(LAST_COMMAND_SUB_BL_2);		// sub bl, 2
-			break;
-		case OP_STORE2:
-			EmitMovEAXStack(vm, 0);	
-			EmitString("8B 54 9F FC");			// mov edx, dword ptr -4[edi + ebx * 4]
-			MASK_REG("E2", vm->dataMask);		// and edx, 0x12345678
-#if idx64
-			Emit1(0x66);					// mov word ptr [r9 + edx], eax
-			EmitRexString(0x41, "89 04 11");
-#else
-			EmitString("66 89 82");				// mov word ptr [edx + 0x12345678], eax
-			Emit4((intptr_t) vm->dataBase);
-#endif
-			EmitCommand(LAST_COMMAND_SUB_BL_2);		// sub bl, 2
-			break;
-		case OP_STORE1:
-			EmitMovEAXStack(vm, 0);	
-			EmitString("8B 54 9F FC");			// mov edx, dword ptr -4[edi + ebx * 4]
-			MASK_REG("E2", vm->dataMask);			// and edx, 0x12345678
-#if idx64
-			EmitRexString(0x41, "88 04 11");		// mov byte ptr [r9 + edx], eax
-#else
-			EmitString("88 82");				// mov byte ptr [edx + 0x12345678], eax
-			Emit4((intptr_t) vm->dataBase);
-#endif
-			EmitCommand(LAST_COMMAND_SUB_BL_2);		// sub bl, 2
-			break;
-
-		case OP_EQ:
-		case OP_NE:
-		case OP_LTI:
-		case OP_LEI:
-		case OP_GTI:
-		case OP_GEI:
-		case OP_LTU:
-		case OP_LEU:
-		case OP_GTU:
-		case OP_GEU:
-			EmitMovEAXStack(vm, 0);
-			EmitCommand(LAST_COMMAND_SUB_BL_2);		// sub bl, 2
-			EmitString("39 44 9F 04");			// cmp	eax, dword ptr 4[edi + ebx * 4]
-
-			EmitBranchConditions(vm, op);
-		break;
-		case OP_EQF:
-		case OP_NEF:
-		case OP_LTF:
-		case OP_LEF:
-		case OP_GTF:
-		case OP_GEF:
-			EmitCommand(LAST_COMMAND_SUB_BL_2);		// sub bl, 2
-			EmitString("D9 44 9F 04");			// fld dword ptr 4[edi + ebx * 4]
-			EmitString("D8 5C 9F 08");			// fcomp dword ptr 8[edi + ebx * 4]
-			EmitString("DF E0");				// fnstsw ax
-
-			switch(op)
-			{
 			case OP_EQF:
-				EmitString("F6 C4 40");			// test	ah,0x40
-				EmitJumpIns(vm, "0F 85", Constant4());	// jne 0x12345678
-			break;
 			case OP_NEF:
-				EmitString("F6 C4 40");			// test	ah,0x40
-				EmitJumpIns(vm, "0F 84", Constant4());	// je 0x12345678
-			break;
 			case OP_LTF:
-				EmitString("F6 C4 01");			// test	ah,0x01
-				EmitJumpIns(vm, "0F 85", Constant4());	// jne 0x12345678
-			break;
 			case OP_LEF:
-				EmitString("F6 C4 41");			// test	ah,0x41
-				EmitJumpIns(vm, "0F 85", Constant4());	// jne 0x12345678
-			break;
 			case OP_GTF:
-				EmitString("F6 C4 41");			// test	ah,0x41
-				EmitJumpIns(vm, "0F 84", Constant4());	// je 0x12345678
-			break;
-			case OP_GEF:
-				EmitString("F6 C4 01");			// test	ah,0x01
-				EmitJumpIns(vm, "0F 84", Constant4());	// je 0x12345678
-			break;
+			case OP_GEF: {
+				if ( HasSSEFP() ) {
+					sx[0] = load_sx_opstack( R_XMM0 | RCONST ); dec_opstack(); // xmm0 = *opstack; opstack -= 4
+					sx[1] = load_sx_opstack( R_XMM1 | RCONST ); dec_opstack(); // xmm1 = *opstack; opstack -= 4
+					flush_nonvolatile();
+					if ( ci->op == OP_EQF || ci->op == OP_NEF ) {
+						emit_ucomiss( sx[1], sx[0] );	// ucomiss xmm1, xmm0
+					} else {
+						emit_comiss( sx[1], sx[0] );	// comiss xmm1, xmm0
+					}
+					unmask_sx( sx[0] );
+					unmask_sx( sx[1] );
+					EmitJump( ci, ci->op, ci->value );
+					break;
+				} else {
+					// legacy x87 path
+					flush_opstack_top(); dec_opstack();
+					flush_opstack_top(); dec_opstack();
+					flush_nonvolatile();
+					if ( HasFCOM() ) {
+						emit_fld( R_OPSTACK, 8 );		// fld dword ptr [opStack+8]
+						emit_fld( R_OPSTACK, 4 );		// fld dword ptr [opStack+4]
+						EmitString( "DF E9" );			// fucomip
+						EmitString( "DD D8" );			// fstp st(0)
+						EmitJump( ci, ci->op, ci->value );
+					} else {
+						alloc_rx( R_EAX | FORCED );
+						emit_fld( R_OPSTACK, 4 );		// fld dword ptr [opStack+4]
+						emit_fcomp( R_OPSTACK, 8 );		// fcomp dword ptr [opStack+8]
+						EmitString( "DF E0" );			// fnstsw ax
+						EmitFloatJump( ci, ci->op, ci->value );
+						unmask_rx( R_EAX );
+					}
+					break;
+				}
 			}
-		break;			
-		case OP_NEGI:
-			EmitMovEAXStack(vm, 0);
-			EmitString("F7 D8");				// neg eax
-			EmitCommand(LAST_COMMAND_MOV_STACK_EAX);
-			break;
-		case OP_ADD:
-			EmitMovEAXStack(vm, 0);				// mov eax, dword ptr [edi + ebx * 4]
-			EmitString("01 44 9F FC");			// add dword ptr -4[edi + ebx * 4], eax
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_SUB:
-			EmitMovEAXStack(vm, 0);				// mov eax, dword ptr [edi + ebx * 4]
-			EmitString("29 44 9F FC");			// sub dword ptr -4[edi + ebx * 4], eax
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_DIVI:
-			EmitString("8B 44 9F FC");			// mov eax,dword ptr -4[edi + ebx * 4]
-			EmitString("99");				// cdq
-			EmitString("F7 3C 9F");				// idiv dword ptr [edi + ebx * 4]
-			EmitString("89 44 9F FC");			// mov dword ptr -4[edi + ebx * 4],eax
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_DIVU:
-			EmitString("8B 44 9F FC");			// mov eax,dword ptr -4[edi + ebx * 4]
-			EmitString("33 D2");				// xor edx, edx
-			EmitString("F7 34 9F");				// div dword ptr [edi + ebx * 4]
-			EmitString("89 44 9F FC");			// mov dword ptr -4[edi + ebx * 4],eax
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_MODI:
-			EmitString("8B 44 9F FC");			// mov eax,dword ptr -4[edi + ebx * 4]
-			EmitString("99" );				// cdq
-			EmitString("F7 3C 9F");				// idiv dword ptr [edi + ebx * 4]
-			EmitString("89 54 9F FC");			// mov dword ptr -4[edi + ebx * 4],edx
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_MODU:
-			EmitString("8B 44 9F FC");			// mov eax,dword ptr -4[edi + ebx * 4]
-			EmitString("33 D2");				// xor edx, edx
-			EmitString("F7 34 9F");				// div dword ptr [edi + ebx * 4]
-			EmitString("89 54 9F FC");			// mov dword ptr -4[edi + ebx * 4],edx
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_MULI:
-			EmitString("8B 44 9F FC");			// mov eax,dword ptr -4[edi + ebx * 4]
-			EmitString("F7 2C 9F");				// imul dword ptr [edi + ebx * 4]
-			EmitString("89 44 9F FC");			// mov dword ptr -4[edi + ebx * 4],eax
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_MULU:
-			EmitString("8B 44 9F FC");			// mov eax,dword ptr -4[edi + ebx * 4]
-			EmitString("F7 24 9F");				// mul dword ptr [edi + ebx * 4]
-			EmitString("89 44 9F FC");			// mov dword ptr -4[edi + ebx * 4],eax
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_BAND:
-			EmitMovEAXStack(vm, 0);				// mov eax, dword ptr [edi + ebx * 4]
-			EmitString("21 44 9F FC");			// and dword ptr -4[edi + ebx * 4],eax
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_BOR:
-			EmitMovEAXStack(vm, 0);				// mov eax, dword ptr [edi + ebx * 4]
-			EmitString("09 44 9F FC");			// or dword ptr -4[edi + ebx * 4],eax
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_BXOR:
-			EmitMovEAXStack(vm, 0);				// mov eax, dword ptr [edi + ebx * 4]
-			EmitString("31 44 9F FC");			// xor dword ptr -4[edi + ebx * 4],eax
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_BCOM:
-			EmitString("F7 14 9F");				// not dword ptr [edi + ebx * 4]
-			break;
-		case OP_LSH:
-			EmitMovECXStack(vm);
-			EmitString("D3 64 9F FC");			// shl dword ptr -4[edi + ebx * 4], cl
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_RSHI:
-			EmitMovECXStack(vm);
-			EmitString("D3 7C 9F FC");			// sar dword ptr -4[edi + ebx * 4], cl
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_RSHU:
-			EmitMovECXStack(vm);
-			EmitString("D3 6C 9F FC");			// shr dword ptr -4[edi + ebx * 4], cl
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_NEGF:
-			EmitString("D9 04 9F");				// fld dword ptr [edi + ebx * 4]
-			EmitString("D9 E0");				// fchs
-			EmitString("D9 1C 9F");				// fstp dword ptr [edi + ebx * 4]
-			break;
-		case OP_ADDF:
-			EmitString("D9 44 9F FC");			// fld dword ptr -4[edi + ebx * 4]
-			EmitString("D8 04 9F");				// fadd dword ptr [edi + ebx * 4]
-			EmitString("D9 5C 9F FC");			// fstp dword ptr -4[edi + ebx * 4]
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			break;
-		case OP_SUBF:
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			EmitString("D9 04 9F");				// fld dword ptr [edi + ebx * 4]
-			EmitString("D8 64 9F 04");			// fsub dword ptr 4[edi + ebx * 4]
-			EmitString("D9 1C 9F");				// fstp dword ptr [edi + ebx * 4]
-			break;
-		case OP_DIVF:
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			EmitString("D9 04 9F");				// fld dword ptr [edi + ebx * 4]
-			EmitString("D8 74 9F 04");			// fdiv dword ptr 4[edi + ebx * 4]
-			EmitString("D9 1C 9F");				// fstp dword ptr [edi + ebx * 4]
-			break;
-		case OP_MULF:
-			EmitCommand(LAST_COMMAND_SUB_BL_1);		// sub bl, 1
-			EmitString("D9 04 9F");				// fld dword ptr [edi + ebx * 4]
-			EmitString("D8 4C 9F 04");			// fmul dword ptr 4[edi + ebx * 4]
-			EmitString("D9 1C 9F");				// fstp dword ptr [edi + ebx * 4]
-			break;
-		case OP_CVIF:
-			EmitString("DB 04 9F");				// fild dword ptr [edi + ebx * 4]
-			EmitString("D9 1C 9F");				// fstp dword ptr [edi + ebx * 4]
-			break;
-		case OP_CVFI:
-#ifndef FTOL_PTR // WHENHELLISFROZENOVER
-			// not IEEE complient, but simple and fast
-			EmitString("D9 04 9F");				// fld dword ptr [edi + ebx * 4]
-			EmitString("DB 1C 9F");				// fistp dword ptr [edi + ebx * 4]
-#else // FTOL_PTR
-			// call the library conversion function
-			EmitRexString(0x48, "BA");			// mov edx, Q_VMftol
-			EmitPtr(Q_VMftol);
-			EmitRexString(0x48, "FF D2");			// call edx
-			EmitCommand(LAST_COMMAND_MOV_STACK_EAX);	// mov dword ptr [edi + ebx * 4], eax
+			case OP_LOAD1:
+			case OP_LOAD2:
+			case OP_LOAD4:
+#ifdef FPU_OPTIMIZE
+				if ( ci->op == OP_LOAD4 && ci->fpu && HasSSEFP() ) {
+					if ( addr_on_top( &var, R_DATABASE, R_PROCBASE ) ) {
+						// address specified by CONST/LOCAL
+						discard_top();
+						var.size = 4;
+						if ( find_sx_var( &sx[0], &var ) ) {
+							// already cached in some register
+							mask_sx( sx[0] );
+						} else {
+							// not cached, perform load
+							sx[0] = alloc_sx( R_XMM0 );
+							emit_load_sx( sx[0], var.base, var.addr );	// xmmm0 = var.base[var.addr]
+							set_sx_var( sx[0], &var );
+						}
+					} else {
+						// address stored in register
+						rx[0] = load_rx_opstack( forceDataMask ? R_EAX : R_EAX | RCONST );		// eax = *opstack
+						emit_CheckReg( vm, rx[0], FUNC_DATR );
+						sx[0] = alloc_sx( R_XMM0 );
+						emit_load_sx_index( sx[0], R_DATABASE, rx[0] ); // xmmm0 = dataBase[eax]
+						unmask_rx( rx[0] );
+					}
+					store_sx_opstack( sx[0] );							// *opstack = xmm0
+					break;
+				}
 #endif
-			break;
-		case OP_SEX8:
-			EmitString("0F BE 04 9F");			// movsx eax, byte ptr [edi + ebx * 4]
-			EmitCommand(LAST_COMMAND_MOV_STACK_EAX);	// mov dword ptr [edi + ebx * 4], eax
-			break;
-		case OP_SEX16:
-			EmitString("0F BF 04 9F");			// movsx eax, word ptr [edi + ebx * 4]
-			EmitCommand(LAST_COMMAND_MOV_STACK_EAX);	// mov dword ptr [edi + ebx * 4], eax
-			break;
+				switch ( ci->op ) {
+					case OP_LOAD1: var_size = 1; sign_extend = OP_SEX8; break;
+					case OP_LOAD2: var_size = 2; sign_extend = OP_SEX16; break;
+					default:       var_size = 4; sign_extend = OP_UNDEF; break;
+				}
+				// integer path
+				if ( addr_on_top( &var, R_DATABASE, R_PROCBASE ) ) {
+					// address specified by CONST/LOCAL
+					discard_top();
+					var.size = var_size;
+					if ( ( reg = find_rx_var( &rx[0], &var ) ) != NULL ) {
+						// already cached in some register
+						// do zero extension if needed
+						switch ( ci->op ) {
+							case OP_LOAD1:
+								if ( reg->ext != Z_EXT8 ) {
+									if ( search_opstack( TYPE_RX, rx[0] ) ) {
+										rx[1] = split_rx( rx[0] ); // alloc rx[1], unmask r[0]
+										emit_zex8( rx[1], rx[0] ); // movzx edx, al
+										set_rx_ext( rx[1], Z_EXT8 );
+										rx[0] = rx[1]; // remap rx[0] to the copy
+									} else {
+										emit_zex8( rx[0], rx[0] );  // movzx eax, al 
+										reduce_map_size( reg, 1 );
+									}
+								}
+								break;
+							case OP_LOAD2:
+								if ( reg->ext != Z_EXT16 ) {
+									if ( search_opstack( TYPE_RX, rx[0] ) ) {
+										rx[1] = split_rx( rx[0] );
+										emit_zex16( rx[1], rx[0] );  // movzx edx, ax
+										set_rx_ext( rx[1], Z_EXT16 );
+										rx[0] = rx[1]; // remap rx[0] to the copy
+									} else {
+										emit_zex16( rx[0], rx[0] );  // movzx eax, ax
+										reduce_map_size( reg, 2 );
+									}
+								}
+								break;
+							case OP_LOAD4:
+								reg->ext = Z_NONE;
+								break;
+						}
+						mask_rx( rx[0] );
+					} else {
+						// not cached, perform load
+						rx[0] = alloc_rx( R_EAX );			// allocate new register, wipe its metadata
+						if ( (ci+1)->op == sign_extend && sign_extend != OP_UNDEF ) {
+							// merge with following sign-extension instruction
+							switch ( ci->op ) {
+								case OP_LOAD1: emit_load1_sex( rx[0], var.base, var.addr );	var.size = 1; set_rx_ext( rx[0], S_EXT8 ); break; // eax = (signed byte)var.base[var.addr]
+								case OP_LOAD2: emit_load2_sex( rx[0], var.base, var.addr );	var.size = 2; set_rx_ext( rx[0], S_EXT16 ); break; // eax = (signed short)var.base[var.addr]
+							}
+							ip += 1; // OP_SEX/OP_SEX16
+						} else {
+							// usual load with zero-extension
+							switch ( ci->op ) {
+								case OP_LOAD1: emit_load1( rx[0], var.base, var.addr );	var.size = 1; set_rx_ext( rx[0], Z_EXT8 ); break; // eax = (unsigned byte)var.base[var.addr]
+								case OP_LOAD2: emit_load2( rx[0], var.base, var.addr );	var.size = 2; set_rx_ext( rx[0], Z_EXT16 ); break; // eax = (unsigned short)var.base[var.addr]
+								case OP_LOAD4: emit_load4( rx[0], var.base, var.addr ); var.size = 4; set_rx_ext( rx[0], Z_NONE ); break; // eax = (dword)var.base[var.addr]
+							}
+						} // load with zero-extension
+						set_rx_var( rx[0], &var );
+					} // not cached, perform load
+				} else {
+					// address stored in register
+					if ( forceDataMask ) {
+						rx[0] = rx[1] = load_rx_opstack( R_EAX );			// target = address = *opStack
+					} else {
+						load_rx_opstack2( &rx[0], R_EDX, &rx[1], R_EAX );	// target, address (const) = *opStack
+					}
 
-		case OP_BLOCK_COPY:
-			EmitString("B8");				// mov eax, 0x12345678
-			Emit4(VM_BLOCK_COPY);
-			EmitString("B9");				// mov ecx, 0x12345678
-			Emit4(Constant4());
+					emit_CheckReg( vm, rx[1], FUNC_DATR );			// check address bounds
+					if ( (ci+1)->op == sign_extend && sign_extend != OP_UNDEF ) {
+						// merge with following sign-extension instruction
+						switch ( ci->op ) {
+							case OP_LOAD1: emit_load1_sex_index( rx[0], R_DATABASE, rx[1] ); set_rx_ext( rx[0], S_EXT8 ); break; // target = (signed byte)[dataBase + address]
+							case OP_LOAD2: emit_load2_sex_index( rx[0], R_DATABASE, rx[1] ); set_rx_ext( rx[0], S_EXT16 ); break; // target = (unsigned short)[dataBase + address]
+						}
+						ip += 1; // OP_SEX8/OP_SEX16
+					} else {
+						// usual load with zero-extension
+						switch ( ci->op ) {
+							case OP_LOAD1: emit_load1_index( rx[0], R_DATABASE, rx[1] ); set_rx_ext( rx[0], Z_EXT8 ); break; // target = (unsigned byte)[dataBase + address]
+							case OP_LOAD2: emit_load2_index( rx[0], R_DATABASE, rx[1] ); set_rx_ext( rx[0], Z_EXT16 ); break; // target = (unsigned short)[dataBase + address]
+							default:       emit_load4_index( rx[0], R_DATABASE, rx[1] ); set_rx_ext( rx[0], Z_NONE ); break; // target = (dword)dataBase[dataBase + address]
+						}
+					}
+					if ( rx[1] != rx[0] ) {
+						unmask_rx( rx[1] );
+					}
+				}
+				store_rx_opstack( rx[0] ); // *opstack = target
+				break;
 
-			EmitCallRel(vm, callDoSyscallOfs);
+			case OP_STORE1:
+			case OP_STORE2:
+			case OP_STORE4:
+				if ( scalar_on_top() && ci->op == OP_STORE4 && HasSSEFP() ) {
+					sx[0] = load_sx_opstack( R_XMM0 | RCONST );	dec_opstack();		// xmm0 = *opstack; opstack -= 4
+					if ( addr_on_top( &var, R_DATABASE, R_PROCBASE ) ) {
+						// address specified by CONST/LOCAL
+						discard_top(); dec_opstack();
+						emit_store_sx( sx[0], var.base, var.addr );					// baseReg[n] = xmm0
+						var.size = 4;
+						wipe_var_range( &var );
+						set_sx_var( sx[0], &var );									// update metadata
+					} else {
+						rx[1] = load_rx_opstack( forceDataMask ? R_EDX : R_EDX | RCONST );
+						dec_opstack();												// edx = *opStack; opStack -= 4
+						emit_CheckReg( vm, rx[1], FUNC_DATW );
+						emit_store_sx_index( sx[0], R_DATABASE, rx[1] );			// dataBase[edx] = xmm0
+						unmask_rx( rx[1] );
+						wipe_vars(); // unknown/dynamic address, wipe all register mappings
+					}
+					unmask_sx( sx[0] );
+				} else {
+					// integer path
+					rx[0] = load_rx_opstack( R_EAX | RCONST );	dec_opstack();		// eax = *opstack; opstack -= 4
+					if ( addr_on_top( &var, R_DATABASE, R_PROCBASE ) ) {
+						// address specified by CONST/LOCAL
+						discard_top(); dec_opstack();
+						switch ( ci->op ) {
+							case OP_STORE1:	emit_store1_rx( rx[0], var.base, var.addr ); var.size = 1; break; // (byte*)var.base[var.addr] = al
+							case OP_STORE2:	emit_store2_rx( rx[0], var.base, var.addr ); var.size = 2; break; // (short*)var.base[var.addr] = ax
+							default:        emit_store_rx( rx[0], var.base, var.addr ); var.size = 4; break;  // (dword*)var.base[var.addr] = eax
+						}
+						wipe_var_range( &var );
+						set_rx_var( rx[0], &var ); // update metadata
+					} else {
+						// address specified by register
+						rx[1] = load_rx_opstack( forceDataMask ? R_EDX : R_EDX | RCONST );
+						dec_opstack();	// edx = *opStack; opStack -= 4
+						emit_CheckReg( vm, rx[1], FUNC_DATW );
+						switch ( ci->op ) {
+							case OP_STORE1: emit_store1_index( rx[0], R_DATABASE, rx[1] ); break;	// (byte*)dataBase[edx] = al
+							case OP_STORE2: emit_store2_index( rx[0], R_DATABASE, rx[1] ); break;	// (short*)dataBase[edx] = ax
+							default:        emit_store4_index( rx[0], R_DATABASE, rx[1] ); break;	// (dword*)dataBase[edx] = eax
+						}
+						unmask_rx( rx[1] );
+						wipe_vars(); // unknown/dynamic address, wipe all register mappings
+					}
+					unmask_rx( rx[0] );
+				}
+				break;
 
-			EmitCommand(LAST_COMMAND_SUB_BL_2);		// sub bl, 2
-			break;
+			case OP_ARG:
+				var.base = R_PROCBASE;
+				var.addr = ci->value;
+				var.size = 4;
+				wipe_var_range( &var );
+				if ( scalar_on_top() && HasSSEFP() ) {
+					sx[0] = load_sx_opstack( R_XMM0 | RCONST ); dec_opstack();	// xmm0 = *opstack; opstack -=4
+					emit_store_sx( sx[0], var.base, var.addr );					// [procBase + v] = xmm0
+					unmask_sx( sx[0] );
+				} else {
+					if ( const_on_top() && top_value() != 0 ) {
+						n = top_value(); discard_top(); dec_opstack();
+						emit_store_imm32( n, var.base, var.addr );					// [procBase + v] = n
+					} else {
+						rx[0] = load_rx_opstack( R_EAX | RCONST ); dec_opstack();	// eax = *opstack; opstack -=4
+						emit_store_rx( rx[0], var.base, var.addr );					// [procBase + v] = eax
+						unmask_rx( rx[0] );
+					}
+				}
+				break;
 
-		case OP_JUMP:
-			EmitCommand(LAST_COMMAND_SUB_BL_1);	// sub bl, 1
-			EmitString("8B 44 9F 04");		// mov eax, dword ptr 4[edi + ebx * 4]
-			EmitString("81 F8");			// cmp eax, vm->instructionCount
-			Emit4(vm->instructionCount);
-#if idx64
-			EmitString("73 04");			// jae +4
-			EmitRexString(0x49, "FF 24 C0");        // jmp qword ptr [r8 + eax * 8]
-#else
-			EmitString("73 07");			// jae +7
-			EmitString("FF 24 85");			// jmp dword ptr [instructionPointers + eax * 4]
-			Emit4((intptr_t) vm->instructionPointers);
+			case OP_BLOCK_COPY:
+				rx[0] = load_rx_opstack( R_EDX | FORCED ); dec_opstack(); // edx - src
+				rx[1] = load_rx_opstack( R_EAX | FORCED ); dec_opstack(); // eax - dst
+				rx[2] = alloc_rx( R_ECX | FORCED );		// flush and reserve ecx register
+				mov_rx_imm32( rx[2], ci->value >> 2 );	// mov ecx, 0x12345678 / 4
+				EmitCallOffset( FUNC_BCPY );
+				unmask_rx( rx[2] );
+				unmask_rx( rx[1] );
+				unmask_rx( rx[0] );
+				wipe_vars();
+				break;
+
+			case OP_SEX8:
+			case OP_SEX16:
+			case OP_NEGI:
+			case OP_BCOM:
+				rx[0] = load_rx_opstack( R_EAX ); // eax = *opstack
+				switch ( ci->op ) {
+					case OP_SEX8:  emit_sex8( rx[0], rx[0] ); break;	// movsx eax, al
+					case OP_SEX16: emit_sex16( rx[0], rx[0] ); break;	// movsx eax, ax
+					case OP_NEGI:  emit_neg_rx( rx[0] ); break;			// neg eax
+					case OP_BCOM:  emit_not_rx( rx[0] ); break;			// not eax
+				}
+				store_rx_opstack( rx[0] ); // *opstack = eax
+				break;
+
+			case OP_ADD:
+				rx[0] = load_rx_opstack( R_EAX | RCONST ); dec_opstack(); // eax = *opstack
+				rx[1] = load_rx_opstack( R_ECX ); // opstack-=4; ecx = *opstack
+#ifdef CONST_OPTIMIZE
+				// optimize OP_ADD + OP_CONST + OP_ADD
+				if ( !(ci+1)->jused && (ci+1)->op == OP_CONST && (ci+2)->op == OP_ADD ) {
+					emit_lea_base_index_offset( rx[1], rx[1], rx[0], (ci+1)->value ); // lea ecx, [ecx + eax + const]
+					ip += 2; // OP_CONST + OP_ADD
+				} else
 #endif
-			EmitCallErrJump(vm, callDoSyscallOfs);
-			break;
-		default:
-		        VMFREE_BUFFERS();
-			Com_Error(ERR_DROP, "VM_CompileX86: bad opcode %i at offset %i", op, pc);
+				emit_add_rx( rx[1], rx[0] ); // add ecx, eax
+				unmask_rx( rx[0] );
+				store_rx_opstack( rx[1] ); // *opstack = ecx
+				break;
+
+			//case OP_ADD:
+			case OP_SUB:
+			case OP_MULI:
+			case OP_MULU:
+			case OP_BAND:
+			case OP_BOR:
+			case OP_BXOR:
+				rx[0] = load_rx_opstack( R_EAX | RCONST ); dec_opstack(); // eax = *opstack
+				rx[1] = load_rx_opstack( R_ECX ); // opstack-=4; ecx = *opstack
+				switch ( ci->op ) {
+					//case OP_ADD: emit_add_rx( rx[1], rx[0] ); break;	// add ecx, eax
+					case OP_SUB: emit_sub_rx( rx[1], rx[0] ); break;	// sub ecx, eax
+					case OP_MULI: emit_mul_rx( rx[1], rx[0] ); break;	// imul ecx, eax
+					case OP_MULU: emit_mul_rx( rx[1], rx[0] ); break;	// imul ecx, eax
+					case OP_BAND: emit_and_rx( rx[1], rx[0] ); break;	// and ecx, eax
+					case OP_BOR:  emit_or_rx(  rx[1], rx[0] ); break;	// or ecx, eax
+					case OP_BXOR: emit_xor_rx( rx[1], rx[0] ); break;	// xor ecx, eax
+				}
+				unmask_rx( rx[0] );
+				store_rx_opstack( rx[1] ); // *opstack = ecx
+				break;
+
+			case OP_LSH:
+			case OP_RSHU:
+			case OP_RSHI:
+				rx[0] = load_rx_opstack( R_ECX | FORCED | RCONST ); dec_opstack(); // ecx = *opstack
+				rx[1] = load_rx_opstack( R_EAX ); // opstack-=4; eax = *opstack
+				switch ( ci->op ) {
+					case OP_LSH: emit_shl_rx( rx[1] ); break;	// shl eax, cl
+					case OP_RSHU: emit_shr_rx( rx[1] ); break;	// shr eax, cl
+					case OP_RSHI: emit_sar_rx( rx[1] ); break;	// sar eax, cl
+				}
+				unmask_rx( rx[0] );
+				store_rx_opstack( rx[1] ); // *opstack = eax
+				break;
+
+			case OP_DIVI:
+			case OP_DIVU:
+			case OP_MODI:
+			case OP_MODU:
+				rx[1] = load_rx_opstack( R_EAX | FORCED | SHIFT4 );	// eax = *(opstack-4)
+				rx[2] = alloc_rx( R_EDX | FORCED );	// flush and reserve edx register
+				rx[0] = load_rx_opstack( R_ECX | RCONST | XMASK ); dec_opstack(); // ecx = *opstack; opstack -= 4
+#ifdef DYN_ALLOC_RX
+				if ( rx[0] == rx[2] || rx[1] == rx[2] )
+					DROP( "incorrect register setup, rx_mask=%04x", build_rx_mask() );
+#endif
+				if ( ci->op == OP_DIVI || ci->op == OP_MODI ) {
+					emit_cdq();						// cdq
+					emit_idiv_rx( rx[0] );			// idiv eax, ecx
+				} else {
+					emit_xor_rx( rx[2], rx[2] );	// xor edx, edx
+					emit_udiv_rx( rx[0] );			// div ecx
+				}
+				unmask_rx( rx[0] );
+				if ( ci->op == OP_DIVI || ci->op == OP_DIVU ) {
+					unmask_rx( rx[2] );
+					store_rx_opstack( rx[1] );	// *opstack = eax
+				} else {
+					unmask_rx( rx[1] );
+					store_rx_opstack( rx[2] );	// *opstack = edx
+				}
+				break;
+
+			case OP_ADDF:
+			case OP_SUBF:
+			case OP_MULF:
+			case OP_DIVF:
+				if ( HasSSEFP() ) {
+					sx[0] = load_sx_opstack( R_XMM0 | RCONST ); dec_opstack(); // xmm0 = *opstack
+					sx[1] = load_sx_opstack( R_XMM1 ); // opstack -= 4; xmm1 = *opstack
+					switch ( ci->op ) {
+						case OP_ADDF: emit_add_sx( sx[1], sx[0] ); break; // xmm1 = xmm1 + xmm0
+						case OP_SUBF: emit_sub_sx( sx[1], sx[0] ); break; // xmm1 = xmm1 - xmm0
+						case OP_MULF: emit_mul_sx( sx[1], sx[0] ); break; // xmm1 = xmm1 * xmm0
+						case OP_DIVF: emit_div_sx( sx[1], sx[0] ); break; // xmm1 = xmm1 / xmm0
+					}
+					unmask_sx( sx[0] );
+					store_sx_opstack( sx[1] ); // *opstack = xmm1
+				} else {
+					// legacy x87 path
+					flush_opstack_top(); dec_opstack(); // value
+					flush_opstack_top(); // target
+					emit_fld( R_OPSTACK, opstack * sizeof( int32_t ) );
+					switch ( ci->op ) {
+						case OP_ADDF: emit_fadd( R_OPSTACK, ( opstack + 1 ) * sizeof( int32_t ) ); break;
+						case OP_SUBF: emit_fsub( R_OPSTACK, ( opstack + 1 ) * sizeof( int32_t ) ); break;
+						case OP_MULF: emit_fmul( R_OPSTACK, ( opstack + 1 ) * sizeof( int32_t ) ); break;
+						case OP_DIVF: emit_fdiv( R_OPSTACK, ( opstack + 1 ) * sizeof( int32_t ) ); break;
+					}
+					emit_fstp( R_OPSTACK, opstack * sizeof( int32_t ) );
+				}
+				break;
+
+			case OP_NEGF:
+				if ( HasSSEFP() ) {
+					sx[0] = load_sx_opstack( R_XMM0 | RCONST );	// xmm0 = *opstack
+					sx[1] = alloc_sx( R_XMM1 );
+					emit_xor_sx( sx[1], sx[1] );			// xorps xmm1, xmm1
+					emit_sub_sx( sx[1], sx[0] );			// subps xmm1, xmm0
+					unmask_sx( sx[0] );
+					store_sx_opstack( sx[1] );				// *opstack = xmm1
+				} else {
+					// legacy x87 path
+					flush_opstack_top();
+					emit_fld( R_OPSTACK, opstack * sizeof( int32_t ) ); // fld dword ptr [opStack]
+					EmitString( "D9 E0" );					// fchs
+					emit_fstp( R_OPSTACK, opstack * sizeof( int32_t ) ); // fstp dword ptr [opStack]
+				}
+				break;
+
+			case OP_CVIF:
+				if ( HasSSEFP() ) {
+					sx[0] = alloc_sx( R_XMM0 );
+					rx[0] = load_rx_opstack( R_EAX | RCONST ); // eax = *opstack
+					emit_cvtsi2ss( sx[0], rx[0] );			// cvtsi2ss xmm0, eax
+					unmask_rx( rx[0] );
+					store_sx_opstack( sx[0] );				// *opstack = xmm0
+				} else {
+					flush_opstack_top();
+					emit_fild( R_OPSTACK, opstack * sizeof( int32_t ) ); // fild dword ptr [opStack]
+					emit_fstp( R_OPSTACK, opstack * sizeof( int32_t ) ); // fstp dword ptr [opStack]
+				}
+				break;
+
+			case OP_CVFI:
+				if ( HasSSEFP() ) {
+					rx[0] = alloc_rx( R_EAX );
+					sx[0] = load_sx_opstack( R_XMM0 | RCONST ); // xmm0 = *opstack
+					emit_cvttss2si( rx[0], sx[0] );		// cvttss2si xmm0, eax
+					unmask_sx( sx[0] );
+					store_rx_opstack( rx[0] );				// *opstack = eax
+				} else {
+					static int32_t fp_cw[2] = { 0x0000, 0x0F7F }; // [0] - current value, [1] - round towards zero
+					flush_opstack_top();
+					alloc_rx( R_EAX | FORCED );
+					emit_fld( R_OPSTACK, opstack * sizeof( int32_t ) ); // fld dword ptr [opStack]
+					mov_rx_ptr( R_EAX, &fp_cw );
+					EmitString( "9B D9 38" );	// fnstcw word ptr [eax]
+					EmitString( "D9 68 04" );	// fldcw word ptr [eax+4]
+					emit_fistp( R_OPSTACK, opstack * sizeof( int32_t ) ); // fistp dword ptr [opStack]
+					EmitString( "D9 28" );		// fldcw word ptr [eax]
+					unmask_rx( R_EAX );
+				}
+				break;
+
+#ifdef MACRO_OPTIMIZE
+			case MOP_ADD:
+			case MOP_SUB:
+			case MOP_BAND:
+			case MOP_BOR:
+			case MOP_BXOR:
+				if ( !EmitMOPs( vm, ci, ci->op ) )
+					Com_Error( ERR_FATAL, "VM_CompileX86: bad opcode %02X", ci->op );
+				break;
+#endif
+			default:
+				Com_Error( ERR_FATAL, "VM_CompileX86: bad opcode %02X", ci->op );
+				VM_FreeBuffers();
+				return qfalse;
+			} // switch ( ci->op )
+		} // while ( ip < instructionCount )
+
+		flush_opstack();
+
+		// ****************
+		// system functions
+		// ****************
+		EmitAlign( FUNC_ALIGN );
+		funcOffset[FUNC_CALL] = compiledOfs;
+		EmitCallFunc( vm );
+
+		EmitAlign( FUNC_ALIGN );
+		funcOffset[FUNC_BCPY] = compiledOfs;
+		EmitBCPYFunc( vm );
+
+		// ***************
+		// error functions
+		// ***************
+
+		if ( vm_rtChecks->integer & VM_RTCHECK_JUMP ) {
+			// bad jump
+			EmitAlign( FUNC_ALIGN );
+			funcOffset[FUNC_BADJ] = compiledOfs;
+			EmitBADJFunc( vm );
+
+			// error jump
+			EmitAlign( FUNC_ALIGN );
+			funcOffset[FUNC_ERRJ] = compiledOfs;
+			EmitERRJFunc( vm );
 		}
-		pop0 = pop1;
-		pop1 = op;
-	}
+
+		if ( vm_rtChecks->integer & VM_RTCHECK_PSTACK ) {
+			// programStack overflow
+			EmitAlign( FUNC_ALIGN );
+			funcOffset[FUNC_PSOF] = compiledOfs;
+			EmitPSOFFunc( vm );
+		}
+
+		if ( vm_rtChecks->integer & VM_RTCHECK_OPSTACK ) {
+			// opStack overflow
+			EmitAlign( FUNC_ALIGN );
+			funcOffset[FUNC_OSOF] = compiledOfs;
+			EmitOSOFFunc( vm );
+		}
+
+		if ( vm_rtChecks->integer & VM_RTCHECK_DATA && !vm->forceDataMask ) {
+			// read access range violation
+			EmitAlign( FUNC_ALIGN );
+			funcOffset[FUNC_DATR] = compiledOfs;
+			EmitDATRFunc( vm );
+
+			// write access range violation
+			EmitAlign( FUNC_ALIGN );
+			funcOffset[FUNC_DATW] = compiledOfs;
+			EmitDATWFunc( vm );
+		}
+
+		EmitAlign( sizeof( intptr_t ) ); // for instructionPointers
+
+#if JUMP_OPTIMIZE
+		if ( pass == PASS_COMPRESS && ++num_compress < NUM_COMPRESSIONS && jumpSizeChanged ) {
+			goto __compile;
+		}
+		if ( jumpSizeChanged ) {
+			if ( pass == PASS_EXPAND_ONLY ) {
+				goto __compile;
+			}
+		}
+#endif
+	} // for( pass = 0; pass < n; pass++ )
+
+	n = header->instructionCount * sizeof( intptr_t );
+
+	if ( code == NULL ) {
+#ifdef USE_LITERAL_POOL
+		code = (byte*)VM_Alloc_Compiled( vm, PAD( compiledOfs, 8 ) + PAD( numLiterals * 4, 8 ), n );
+		if ( code == NULL ) {
+			return qfalse;
+		}
+		instructionPointers = (intptr_t*)(byte*)(code + PAD( compiledOfs, 8 ) + PAD( numLiterals * 4, 8 ));
+		if ( numLiterals != 0 ) {
+			uint32_t* litPtr = (uint32_t*)(code + PAD( compiledOfs, 8 ));
+			for ( i = 0; i < numLiterals; i++ ) {
+				litPtr[i] = litList[i].value;
+			}
+		}
+#if idx64
+		litBase = PAD( compiledOfs, 8 ); // RIP-relative
+#else
+		litBase = (intptr_t)(code + PAD( compiledOfs, 8 )); // absolute
+#endif
+#else // !USE_LITERAL_POOL
+		code = (byte*)VM_Alloc_Compiled( vm, PAD( compiledOfs, 8 ), n );
+		if ( code == NULL ) {
+			return qfalse;
+		}
+		instructionPointers = (intptr_t*)(byte*)(code + PAD( compiledOfs, 8 ));
+#endif
+		//vm->instructionPointers = instructionPointers; // for debug purposes?
+		pass = NUM_PASSES-1; // repeat last pass
+		goto __compile;
 	}
 
-	// copy to an exact sized buffer with the appropriate permission bits
-	vm->codeLength = compiledOfs;
-#ifdef VM_X86_MMAP
-	vm->codeBase = mmap(NULL, compiledOfs, PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
-	if(vm->codeBase == MAP_FAILED)
-		Com_Error(ERR_FATAL, "VM_CompileX86: can't mmap memory");
-#elif _WIN32
-	// allocate memory with EXECUTE permissions under windows.
-	vm->codeBase = VirtualAlloc(NULL, compiledOfs, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-	if(!vm->codeBase)
-		Com_Error(ERR_FATAL, "VM_CompileX86: VirtualAlloc failed");
-#else
-	vm->codeBase = malloc(compiledOfs);
-	if(!vm->codeBase)
-	        Com_Error(ERR_FATAL, "VM_CompileX86: malloc failed");
+#ifdef DUMP_CODE
+	dump_code( vm->name, code, compiledOfs );
 #endif
 
-	Com_Memcpy( vm->codeBase, buf, compiledOfs );
+	// offset all the instruction pointers for the new location
+	for ( i = 0; i < header->instructionCount; i++ ) {
+		if ( !inst[i].jused ) {
+			instructionPointers[ i ] = (intptr_t)badJumpPtr;
+			continue;
+		}
+		instructionPointers[ i ] = (intptr_t)vm->codeBase.ptr + instructionOffsets[ i ];
+	}
+
+	VM_FreeBuffers();
 
 #ifdef VM_X86_MMAP
-	if(mprotect(vm->codeBase, compiledOfs, PROT_READ|PROT_EXEC))
-		Com_Error(ERR_FATAL, "VM_CompileX86: mprotect failed");
+	if ( mprotect( vm->codeBase.ptr, vm->codeSize, PROT_READ|PROT_EXEC ) ) {
+		VM_Destroy_Compiled( vm );
+		Com_Printf( S_COLOR_WARNING "VM_CompileX86: mprotect failed\n" );
+		return qfalse;
+	}
 #elif _WIN32
 	{
 		DWORD oldProtect = 0;
-		
+
 		// remove write permissions.
-		if(!VirtualProtect(vm->codeBase, compiledOfs, PAGE_EXECUTE_READ, &oldProtect))
-			Com_Error(ERR_FATAL, "VM_CompileX86: VirtualProtect failed");
+		if ( !VirtualProtect( vm->codeBase.ptr, vm->codeSize, PAGE_EXECUTE_READ, &oldProtect ) ) {
+			VM_Destroy_Compiled( vm );
+			Com_Printf( S_COLOR_WARNING "%s(%s): VirtualProtect failed\n", __func__, vm->name );
+			return qfalse;
+		}
 	}
 #endif
-
-	Z_Free( code );
-	Z_Free( buf );
-	Z_Free( jused );
-	Com_Printf( "VM file %s compiled to %i bytes of code\n", vm->name, compiledOfs );
 
 	vm->destroy = VM_Destroy_Compiled;
 
-	// offset all the instruction pointers for the new location
-	for ( i = 0 ; i < header->instructionCount ; i++ ) {
-		vm->instructionPointers[i] += (intptr_t) vm->codeBase;
-	}
+	Com_Printf( "VM file %s compiled to %i bytes of code\n", vm->name, compiledOfs );
+
+	return qtrue;
 }
 
-void VM_Destroy_Compiled(vm_t* self)
+
+/*
+=================
+VM_Alloc_Compiled
+=================
+*/
+static void *VM_Alloc_Compiled( vm_t *vm, int codeLength, int tableLength )
+{
+	void	*ptr;
+	int		length;
+
+	length = codeLength + tableLength;
+#ifdef VM_X86_MMAP
+	ptr = mmap( NULL, length, PROT_READ|PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0 );
+	if ( ptr == MAP_FAILED ) {
+		Com_Error( ERR_FATAL, "VM_CompileX86: mmap failed" );
+		return NULL;
+	}
+#elif _WIN32
+	// allocate memory with EXECUTE permissions under windows.
+	ptr = VirtualAlloc( NULL, length, MEM_COMMIT, PAGE_EXECUTE_READWRITE );
+	if ( !ptr ) {
+		Com_Error( ERR_FATAL, "VM_CompileX86: VirtualAlloc failed" );
+		return NULL;
+	}
+#else
+	ptr = malloc( length );
+	if ( !ptr ) {
+		Com_Error( ERR_FATAL, "VM_CompileX86: malloc failed" );
+		return NULL;
+	}
+#endif
+	vm->codeBase.ptr = (byte*)ptr;
+	vm->codeLength = codeLength;
+	vm->codeSize = length;
+
+	return vm->codeBase.ptr;
+}
+
+
+/*
+==============
+VM_Destroy_Compiled
+==============
+*/
+static void VM_Destroy_Compiled( vm_t* vm )
 {
 #ifdef VM_X86_MMAP
-	munmap(self->codeBase, self->codeLength);
+	munmap( vm->codeBase.ptr, vm->codeSize );
 #elif _WIN32
-	VirtualFree(self->codeBase, 0, MEM_RELEASE);
+	VirtualFree( vm->codeBase.ptr, 0, MEM_RELEASE );
 #else
-	free(self->codeBase);
+	free( vm->codeBase.ptr );
 #endif
+	vm->codeBase.ptr = NULL;
 }
+
 
 /*
 ==============
@@ -1710,103 +3753,63 @@ VM_CallCompiled
 This function is called directly by the generated code
 ==============
 */
-
-#if defined(_MSC_VER) && defined(idx64)
-extern uint8_t qvmcall64(int *programStack, int *opStack, intptr_t *instructionPointers, byte *dataBase);
-#endif
-
-int VM_CallCompiled(vm_t *vm, int *args)
+int32_t VM_CallCompiled( vm_t *vm, int nargs, int32_t *args )
 {
-	byte	stack[OPSTACK_SIZE + 15];
-	void	*entryPoint;
-	int		programStack, stackOnEntry;
-	byte	*image;
-	int	*opStack;
-	int		opStackOfs;
-	int		arg;
-
-	currentVM = vm;
-
-	// interpret the code
-	vm->currentlyInterpreting = qtrue;
+	int32_t	opStack[MAX_OPSTACK_SIZE];
+	int32_t	stackOnEntry;
+	int32_t	*image;
+#if id386
+	int32_t	*oldOpTop;
+#endif
+	int		i;
 
 	// we might be called recursively, so this might not be the very top
-	programStack = stackOnEntry = vm->programStack;
+	stackOnEntry = vm->programStack;
 
-	// set up the stack frame 
-	image = vm->dataBase;
-
-	programStack -= ( 8 + 4 * MAX_VMMAIN_ARGS );
-
-	for ( arg = 0; arg < MAX_VMMAIN_ARGS; arg++ )
-		*(int *)&image[ programStack + 8 + arg * 4 ] = args[ arg ];
-
-	*(int *)&image[ programStack + 4 ] = 0;	// return stack
-	*(int *)&image[ programStack ] = -1;	// will terminate the loop on return
-
-	// off we go into generated code...
-	entryPoint = vm->codeBase + vm->entryOfs;
-	opStack = PADP(stack, 16);
-	*opStack = 0xDEADBEEF;
-	opStackOfs = 0;
-
-#ifdef _MSC_VER
-  #if idx64
-	opStackOfs = qvmcall64(&programStack, opStack, vm->instructionPointers, vm->dataBase);
-  #else
-	__asm
-	{
-		pushad
-
-		mov	esi, dword ptr programStack
-		mov	edi, dword ptr opStack
-		mov	ebx, dword ptr opStackOfs
-
-		call	entryPoint
-
-		mov	dword ptr opStackOfs, ebx
-		mov	dword ptr opStack, edi
-		mov	dword ptr programStack, esi
-		
-		popad
-	}
-  #endif		
-#elif idx64
-	__asm__ volatile(
-		"movq %5, %%rax\n"
-		"movq %3, %%r8\n"
-		"movq %4, %%r9\n"
-		"push %%r15\n"
-		"push %%r14\n"
-		"push %%r13\n"
-		"push %%r12\n"
-		"callq *%%rax\n"
-		"pop %%r12\n"
-		"pop %%r13\n"
-		"pop %%r14\n"
-		"pop %%r15\n"
-		: "+S" (programStack), "+D" (opStack), "+b" (opStackOfs)
-		: "g" (vm->instructionPointers), "g" (vm->dataBase), "g" (entryPoint)
-		: "cc", "memory", "%rax", "%rcx", "%rdx", "%r8", "%r9", "%r10", "%r11"
-	);
-#else
-	__asm__ volatile(
-		"calll *%3\n"
-		: "+S" (programStack), "+D" (opStack), "+b" (opStackOfs)
-		: "g" (entryPoint)
-		: "cc", "memory", "%eax", "%ecx", "%edx"
-	);
+#if id386
+	oldOpTop = vm->opStackTop;
 #endif
 
-	if(opStackOfs != 1 || *opStack != 0xDEADBEEF)
-	{
-		Com_Error(ERR_DROP, "opStack corrupted in compiled code");
+	vm->programStack -= ( MAX_VMMAIN_CALL_ARGS + 2 ) * sizeof( int32_t );
+
+	// set up the stack frame
+	image = (int32_t*) ( vm->dataBase + vm->programStack );
+	for ( i = 0; i < nargs; i++ ) {
+		image[i + 2] = args[i];
 	}
-	if(programStack != stackOnEntry - (8 + 4 * MAX_VMMAIN_ARGS))
-		Com_Error(ERR_DROP, "programStack corrupted in compiled code");
+
+	// these only needed for interpreter:
+	// image[1] =  0; // return stack
+	// image[0] = -1; // will terminate loop on return
+
+#ifdef DEBUG_VM
+	opStack[0] = 0xDEADC0DE;
+#endif
+	opStack[1] = 0;
+
+	vm->opStack = opStack;
+
+#if id386
+	vm->opStackTop = opStack + ARRAY_LEN( opStack ) - 1;
+#endif
+
+	vm->codeBase.func(); // go into generated code
+
+#ifdef DEBUG_VM
+	if ( opStack[0] != 0xDEADC0DE ) {
+		Com_Error( ERR_DROP, "%s(%s): opStack corrupted in compiled code", __func__, vm->name );
+	}
+
+	if ( vm->programStack != (int32_t)( stackOnEntry - ( MAX_VMMAIN_CALL_ARGS + 2 ) * sizeof( int32_t ) ) ) {
+		Com_Error( ERR_DROP, "%s(%s): programStack corrupted in compiled code", __func__, vm->name );
+	}
+#endif
 
 	vm->programStack = stackOnEntry;
 
-	return opStack[opStackOfs];
-}
+#if id386
+	vm->opStackTop = oldOpTop;
 #endif
+
+	return opStack[1];
+}
