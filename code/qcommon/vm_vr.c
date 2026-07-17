@@ -2,9 +2,6 @@
 #include "vm_vr.h"
 #include "../vrcommon/vr_shared.h"
 
-void VM_VRInit( void ) {
-}
-
 /*
 ==============
 VM_VRLoadNative
@@ -146,13 +143,21 @@ Module handed us its vr_shared_t mirror. Validate the handshake, translate
 the address (QVM: offset into dataBase; DLL: host pointer), and start syncing.
 ==============
 */
-void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize, int apiVersion ) {
+void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize, int apiMajor, int apiMinor ) {
 	const char *pakName = FS_VMSearchPathName( vm->searchPath );
-	// The version gate already ran at load, so the handshake is trusted. structSize
-	// comes from (possibly hostile) module memory, so clamp it to [0,sizeof] ONCE
-	// here and drive every sync from the stored value - never re-read it from the
-	// module (TOCTOU). The engine only ever touches structSize bytes of the block.
-	(void)apiVersion;
+	// Registration is the module's version advertisement: the major.minor pair
+	// it was compiled against. Enforce the same contract as the load gate - run
+	// a module whose major matches and whose minor the engine can meet. For
+	// native modules, which never pass the QVM sentinel scan, this is the only
+	// version check; for QVMs it holds the compiled-in pair to the sentinel's word.
+	if ( apiMajor != VR_API_MAJOR || apiMinor > VR_API_MINOR ) {
+		Com_Error( ERR_DROP, "%s: VR API incompatible: engine %d.%d, mod %d.%d",
+			vm->name, VR_API_MAJOR, VR_API_MINOR, apiMajor, apiMinor );
+	}
+	// structSize comes from (possibly hostile) module memory, so clamp it to
+	// [0,sizeof] ONCE here and drive every sync from the stored value - never
+	// re-read it from the module (TOCTOU). The engine only ever touches
+	// structSize bytes of the block.
 	if ( structSize < 0 )
 		structSize = 0;
 	if ( structSize > (int)sizeof( vr_shared_t ) )
@@ -173,8 +178,8 @@ void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize,
 		vm->vrShared = (struct vr_shared_s *)( vm->dataBase + dest );
 	}
 	vm->vrWriter = writer;
-	Com_Printf( "%s: VR shared state registered (VR API %d.%d, %s)\n",
-		vm->name, VR_API_MAJOR, VR_API_MINOR, vm->entryPoint ? "native" : "QVM" );
+	Com_Printf( "%s: VR shared state registered (mod VR API %d.%d, %s)\n",
+		vm->name, apiMajor, apiMinor, vm->entryPoint ? "native" : "QVM" );
 	// module registered mid-call; give it fresh state immediately so init code
 	// after the register call reads live values
 	VR_SharedSyncIn( (vr_shared_t *)vm->vrShared, vm->vrStructSize );

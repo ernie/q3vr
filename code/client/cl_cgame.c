@@ -927,7 +927,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		return 0;
 
 	case CG_VR_REGISTERSTATE:
-		VM_RegisterVRShared( cgvm, VR_WRITER_CGAME, args[1], args[2], args[3] );
+		VM_RegisterVRShared( cgvm, VR_WRITER_CGAME, args[1], args[2], args[3], args[4] );
 		return 0;
 
 	default:

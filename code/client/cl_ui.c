@@ -1145,7 +1145,7 @@ intptr_t CL_UISystemCalls( intptr_t *args ) {
 		return CL_UIGetValue( VMA(1), args[2], VMA(3) );
 
 	case UI_VR_REGISTERSTATE:
-		VM_RegisterVRShared( uivm, VR_WRITER_UI, args[1], args[2], args[3] );
+		VM_RegisterVRShared( uivm, VR_WRITER_UI, args[1], args[2], args[3], args[4] );
 		return 0;
 
 	default:
@@ -1227,9 +1227,6 @@ void CL_InitUI( void ) {
 //		Com_Printf(S_COLOR_YELLOW "WARNING: loading old Quake III Arena User Interface version %d\n", v );
 		// init for this gamestate
 		VM_Call( uivm, 1, UI_INIT, (clc.state >= CA_AUTHORIZING && clc.state < CA_ACTIVE) );
-		if ( VM_VRSentinel( uivm ) && !VM_VRRegistered( uivm ) ) {
-			Com_Error( ERR_DROP, "UI QVM declared VR API support but never registered VR state" );
-		}
 	}
 	else if (v != UI_API_VERSION) {
 		// Free uivm now, so UI_SHUTDOWN doesn't get called later.
@@ -1242,9 +1239,10 @@ void CL_InitUI( void ) {
 	else {
 		// init for this gamestate
 		VM_Call( uivm, 1, UI_INIT, (clc.state >= CA_AUTHORIZING && clc.state < CA_ACTIVE) );
-		if ( VM_VRSentinel( uivm ) && !VM_VRRegistered( uivm ) ) {
-			Com_Error( ERR_DROP, "UI QVM declared VR API support but never registered VR state" );
-		}
+	}
+
+	if ( uivm && VM_VRSentinel( uivm ) && !VM_VRRegistered( uivm ) ) {
+		Com_Error( ERR_DROP, "ui QVM declared VR API support but never registered VR state" );
 	}
 }
 

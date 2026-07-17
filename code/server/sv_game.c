@@ -896,7 +896,7 @@ intptr_t SV_GameSystemCalls( intptr_t *args ) {
 		return SV_GetValue( VMA(1), args[2], VMA(3) );
 
 	case G_VR_REGISTERSTATE:
-		VM_RegisterVRShared( gvm, VR_WRITER_GAME, args[1], args[2], args[3] );
+		VM_RegisterVRShared( gvm, VR_WRITER_GAME, args[1], args[2], args[3], args[4] );
 		return 0;
 
 	default:
