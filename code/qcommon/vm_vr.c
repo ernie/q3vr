@@ -3,66 +3,21 @@
 #include "../vrcommon/vr_shared.h"
 
 void VM_VRInit( void ) {
-	Cvar_Get( "vm_forceNative", "0", 0 );
 }
 
 /*
 ==============
-VM_VRSelectModule
+VM_VRLoadNative
 
-Owns module selection for the VR engine.
-Phase 1: prefer a VR-aware QVM from the search path (uniform ladder).
-vm_forceNative 1 is the kill-switch that restores DLL-only loading.
-Phase 2: native DLL fallback, or fail. A plain (non-VR) QVM never loads:
-it would replace VR-specific function implementations with flatscreen ones.
+Walk the search paths for the native module; used by vm_* 0 and the
+no-QVM fallback.
 ==============
 */
-qboolean VM_VRSelectModule( vm_t *vm, vmHeader_t **header ) {
+static qboolean VM_VRLoadNative( vm_t *vm ) {
 	char filename[MAX_OSPATH];
-	void *startSearch;
-	const char *name = vm->name;
-	const vmIndex_t index = vm->index;
-	const syscall_t systemCall = vm->systemCall;
-	const dllSyscall_t dllSyscall = vm->dllSyscall;
-	const int privateFlag = vm->privateFlag;
+	void *startSearch = NULL;
 
-	*header = NULL;
-
-	if ( Cvar_VariableIntegerValue( "vm_forceNative" ) == 0 ) {
-		startSearch = NULL;
-		while ( FS_FindVM( &startSearch, filename, sizeof( filename ), name, qtrue ) == VMI_COMPILED ) {
-			int minor = 0;
-			int major = FS_GetVMVRAPIVersion( name, startSearch, &minor );
-			const char *pakName = FS_VMSearchPathName( startSearch );
-			if ( major == 0 ) {
-				// a plain non-VR QVM: fall through to the native module
-				Com_Printf( "%s.qvm in %s is not VR-aware; using native %s\n", name, pakName, name );
-			} else if ( major == VR_API_MAJOR && minor <= VR_API_MINOR ) {
-				Com_Printf( "%s: loading VR-aware QVM (VR API %d.%d) from %s\n", name, major, minor, pakName );
-				vm->searchPath = startSearch;
-				if ( ( *header = VM_LoadQVM( vm, qtrue ) ) != NULL ) {
-					vm->vrSentinel = qtrue;
-					return qtrue;
-				}
-				// VM_LoadQVM wipes the vm slot on failure; restore its
-				// identity and keep walking
-				vm->name = name;
-				vm->index = index;
-				vm->systemCall = systemCall;
-				vm->dllSyscall = dllSyscall;
-				vm->privateFlag = privateFlag;
-			} else {
-				// a VR module the engine can't satisfy: drop, so the native
-				// module (a different game) never runs silently in its place
-				Com_Error( ERR_DROP, "%s.qvm (from %s): VR API incompatible: engine %d.%d, mod %d.%d",
-					name, pakName, VR_API_MAJOR, VR_API_MINOR, major, minor );
-			}
-		}
-	}
-
-	// Phase 2: native DLL fallback (previous behavior)
-	startSearch = NULL;
-	while ( FS_FindVM( &startSearch, filename, sizeof( filename ), name, qfalse ) == VMI_NATIVE ) {
+	while ( FS_FindVM( &startSearch, filename, sizeof( filename ), vm->name, qfalse ) == VMI_NATIVE ) {
 		Com_Printf( "Try loading dll file %s\n", filename );
 		vm->dllHandle = Sys_LoadGameDll( filename, &vm->entryPoint, vm->dllSyscall );
 		if ( vm->dllHandle ) {
@@ -75,6 +30,87 @@ qboolean VM_VRSelectModule( vm_t *vm, vmHeader_t **header ) {
 		Com_Printf( "Failed loading dll, trying next\n" );
 	}
 	return qfalse;
+}
+
+/*
+==============
+VM_VRSelectModule
+
+Module selection for the VR engine. vm_* 0 wants native first (stock);
+otherwise prefer a VR-aware QVM with native as fallback. qvmOnly (pure
+server) forbids native: bytecode or fail. A plain non-VR QVM never
+loads - it would swap VR functions for flatscreen ones.
+==============
+*/
+qboolean VM_VRSelectModule( vm_t *vm, vmInterpret_t *interpret, qboolean qvmOnly, vmHeader_t **header ) {
+	char filename[MAX_OSPATH];
+	void *startSearch;
+	qboolean triedNative = qfalse;
+	const char *name = vm->name;
+	const vmIndex_t index = vm->index;
+	const syscall_t systemCall = vm->systemCall;
+	const dllSyscall_t dllSyscall = vm->dllSyscall;
+	const int privateFlag = vm->privateFlag;
+
+	*header = NULL;
+
+	// vm_* 0: honor native (pure servers excepted)
+	if ( *interpret == VMI_NATIVE && !qvmOnly ) {
+		if ( VM_VRLoadNative( vm ) )
+			return qtrue;
+		// stock fallthrough: no native, run bytecode
+		triedNative = qtrue;
+	}
+
+	startSearch = NULL;
+	while ( FS_FindVM( &startSearch, filename, sizeof( filename ), name, qtrue ) == VMI_COMPILED ) {
+		int minor = 0;
+		int major = FS_GetVMVRAPIVersion( name, startSearch, &minor );
+		const char *pakName = FS_VMSearchPathName( startSearch );
+		if ( major == 0 ) {
+			// plain non-VR QVM: fall through to native
+			Com_Printf( "%s.qvm in %s is not VR-aware; skipping\n", name, pakName );
+		} else if ( major == VR_API_MAJOR && minor <= VR_API_MINOR ) {
+			Com_Printf( "%s: loading VR-aware QVM (VR API %d.%d) from %s\n", name, major, minor, pakName );
+			vm->searchPath = startSearch;
+			if ( ( *header = VM_LoadQVM( vm, qtrue ) ) != NULL ) {
+				vm->vrSentinel = qtrue;
+				// a QVM can't run native; execute under the JIT
+				if ( *interpret == VMI_NATIVE )
+					*interpret = VMI_COMPILED;
+				return qtrue;
+			}
+			// VM_LoadQVM wipes the slot on failure; restore identity and keep walking
+			vm->name = name;
+			vm->index = index;
+			vm->systemCall = systemCall;
+			vm->dllSyscall = dllSyscall;
+			vm->privateFlag = privateFlag;
+		} else {
+			// VR module the engine can't satisfy: drop, so native
+			// never silently runs a different game in its place
+			Com_Error( ERR_DROP, "%s.qvm (from %s): VR API incompatible: engine %d.%d, mod %d.%d",
+				name, pakName, VR_API_MAJOR, VR_API_MINOR, major, minor );
+		}
+	}
+
+	// native fallback, unless the server demands bytecode
+	if ( !qvmOnly && !triedNative && VM_VRLoadNative( vm ) )
+		return qtrue;
+	return qfalse;
+}
+
+/*
+==============
+VM_VRLoadQVMFile
+
+Read the QVM from the ladder-pinned search path, not the FS-priority winner.
+==============
+*/
+int VM_VRLoadQVMFile( vm_t *vm, const char *filename, void **buffer ) {
+	if ( vm->searchPath )
+		return (int)FS_ReadFileDir( filename, vm->searchPath, qfalse, buffer );
+	return (int)FS_ReadFile( filename, buffer );
 }
 
 void VM_VRModuleUnloaded( vm_t *vm ) {

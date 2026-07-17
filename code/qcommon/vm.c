@@ -797,12 +797,7 @@ vmHeader_t *VM_LoadQVM( vm_t *vm, qboolean alloc ) {
 	// load the image
 	Com_sprintf( filename, sizeof(filename), "vm/%s.qvm", vm->name );
 	Com_Printf( "Loading vm file %s...\n", filename );
-	// [vm_vr]: the VR ladder pins the search path that supplied this QVM;
-	// read from it instead of the FS-priority winner
-	if ( vm->searchPath )
-		length = FS_ReadFileDir( filename, vm->searchPath, qfalse, (void **)&header );
-	else
-		length = FS_ReadFile( filename, (void **)&header );
+	length = VM_VRLoadQVMFile( vm, filename, (void **)&header );	// [vm_vr]
 	if ( !header ) {
 		Com_Printf( "Failed.\n" );
 		VM_Free( vm );
@@ -1748,7 +1743,7 @@ vm_t *VM_Restart( vm_t *vm ) {
 
 		VM_Free( vm );
 
-		vm = VM_Create( index, systemCall, dllSyscall, VMI_NATIVE );
+		vm = VM_Create( index, systemCall, dllSyscall, VMI_NATIVE, qfalse );
 		return vm;
 	}
 
@@ -1780,7 +1775,8 @@ If image ends in .qvm it will be interpreted, otherwise
 it will attempt to load as a system dll
 ================
 */
-vm_t *VM_Create( vmIndex_t index, syscall_t systemCalls, dllSyscall_t dllSyscalls, vmInterpret_t interpret ) {
+// [vm_vr]: qvmOnly = pure-server intent (bytecode or fail), read in vm_vr.c
+vm_t *VM_Create( vmIndex_t index, syscall_t systemCalls, dllSyscall_t dllSyscalls, vmInterpret_t interpret, qboolean qvmOnly ) {
 	int			remaining;
 	const char	*name;
 	vmHeader_t	*header;
@@ -1815,19 +1811,13 @@ vm_t *VM_Create( vmIndex_t index, syscall_t systemCalls, dllSyscall_t dllSyscall
 	vm->dllSyscall = dllSyscalls;
 	vm->privateFlag = CVAR_PRIVATE;
 
-	// [vm_vr]: module selection (VR QVM ladder / native DLL).
-	// A plain QVM must never load in a VR engine, so the stock
-	// VMI_NATIVE/VM_LoadDll/load-by-name path is replaced wholesale;
-	// interpret only chooses JIT-vs-interpreter for a ladder-loaded QVM.
-	if ( !VM_VRSelectModule( vm, &header ) ) {
-		VM_Free( vm );	// [vm_vr]: never leave a named-but-empty slot behind
+	// [vm_vr]: selection policy lives in vm_vr.c, one per engine
+	if ( !VM_VRSelectModule( vm, &interpret, qvmOnly, &header ) ) {
+		VM_Free( vm );	// [vm_vr]: never leave a named-but-empty slot
 		return NULL;
 	}
 	if ( vm->dllHandle ) {
 		return vm;
-	}
-	if ( interpret == VMI_NATIVE ) {
-		interpret = VMI_COMPILED;
 	}
 
 	// allocate space for the jump targets, which will be filled in by the compile/prep functions

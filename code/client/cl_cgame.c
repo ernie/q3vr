@@ -985,13 +985,16 @@ void CL_InitCGame( void ) {
 	mapname = Info_ValueForKey( info, "mapname" );
 	Com_sprintf( cl.mapname, sizeof( cl.mapname ), "maps/%s.bsp", mapname );
 
-	// interpreter-vs-JIT preference when the ladder selects a QVM;
-	// QVM-vs-native itself is decided in VM_Create
-	interpret = Cvar_VariableValue("vm_cgame");
-	if ( interpret == VMI_NATIVE )
-		interpret = VMI_COMPILED;
+	// load the dll or bytecode
+	interpret = Cvar_VariableIntegerValue( "vm_cgame" );
+	if ( cl_connectedToPureServer ) {
+		// if sv_pure is set we only allow qvms to be loaded
+		if ( interpret != VMI_COMPILED && interpret != VMI_BYTECODE )
+			interpret = VMI_COMPILED;
+	}
 
-	cgvm = VM_Create( VM_CGAME, CL_CgameSystemCalls, CL_DllSyscall, interpret );
+	cgvm = VM_Create( VM_CGAME, CL_CgameSystemCalls, CL_DllSyscall, interpret,
+		cl_connectedToPureServer ? qtrue : qfalse );
 	if ( !cgvm ) {
 		Com_Error( ERR_DROP, "VM_Create on cgame failed" );
 	}

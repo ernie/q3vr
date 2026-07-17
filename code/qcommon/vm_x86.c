@@ -2234,7 +2234,6 @@ static qboolean IsFloorTrap( const vm_t *vm, const int trap )
 		return qtrue;
 #endif
 
-	// [vm_vr]: game uses shared TRAP_FLOOR/TRAP_CEIL, not per-module G_FLOOR/G_CEIL
 	if ( trap == ~TRAP_FLOOR && vm->index == VM_GAME )
 		return qtrue;
 
@@ -2252,7 +2251,6 @@ static qboolean IsCeilTrap( const vm_t *vm, const int trap )
 		return qtrue;
 #endif
 
-	// [vm_vr]: game uses shared TRAP_FLOOR/TRAP_CEIL, not per-module G_FLOOR/G_CEIL
 	if ( trap == ~TRAP_CEIL && vm->index == VM_GAME )
 		return qtrue;
 

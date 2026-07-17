@@ -1021,7 +1021,7 @@ void SV_InitGameProgs( void ) {
 
 	// load the dll or bytecode
 	gvm = VM_Create( VM_GAME, SV_GameSystemCalls, SV_DllSyscall,
-		Cvar_VariableValue( "vm_game" ) == VMI_BYTECODE ? VMI_BYTECODE : VMI_COMPILED );
+		Cvar_VariableIntegerValue( "vm_game" ), qfalse );
 	if ( !gvm ) {
 		Com_Error( ERR_FATAL, "VM_Create on game failed" );
 	}

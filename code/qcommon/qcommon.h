@@ -348,6 +348,9 @@ typedef enum {
 	TRAP_TESTPRINTFLOAT
 } sharedTraps_t;
 
+// [vm_vr]: the shared vm_x86.c inlines floor/ceil by syscall number; three engines share these values
+typedef char vm_sharedTraps_assert[ ( TRAP_FLOOR == 110 && TRAP_CEIL == 111 ) ? 1 : -1 ];
+
 typedef enum {
 	VM_BAD = -1,
 	VM_GAME = 0,
@@ -368,7 +371,7 @@ typedef intptr_t (QDECL *dllSyscall_t)( intptr_t callNum, ... );
 typedef void (QDECL *dllEntry_t)( dllSyscall_t syscallptr );
 
 void	VM_Init( void );
-vm_t	*VM_Create( vmIndex_t index, syscall_t systemCalls, dllSyscall_t dllSyscalls, vmInterpret_t interpret );
+vm_t	*VM_Create( vmIndex_t index, syscall_t systemCalls, dllSyscall_t dllSyscalls, vmInterpret_t interpret, qboolean qvmOnly );
 
 void	VM_Free( vm_t *vm );
 void	VM_Clear(void);

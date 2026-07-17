@@ -8,7 +8,8 @@
 // from trinity-engine (end-state: one shared vm.c across all three engines).
 
 void VM_VRInit( void );
-qboolean VM_VRSelectModule( vm_t *vm, vmHeader_t **header );
+qboolean VM_VRSelectModule( vm_t *vm, vmInterpret_t *interpret, qboolean qvmOnly, vmHeader_t **header );
+int VM_VRLoadQVMFile( vm_t *vm, const char *filename, void **buffer );
 void VM_VRModuleUnloaded( vm_t *vm );
 void VM_VRCallEnter( vm_t *vm );
 void VM_VRCallLeave( vm_t *vm );
