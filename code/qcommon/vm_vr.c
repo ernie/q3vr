@@ -165,6 +165,9 @@ void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize,
 	vm->vrStructSize = structSize;
 	if ( vm->entryPoint ) {
 		// native DLL: shared address space
+		if ( vmAddr == 0 ) {
+			Com_Error( ERR_DROP, "%s: VR shared block address invalid", vm->name );
+		}
 		vm->vrShared = (struct vr_shared_s *)vmAddr;
 	} else {
 		unsigned dest = (unsigned)vmAddr;
