@@ -1746,7 +1746,7 @@ static void R_Register( void )
 	r_marksOnTriangleMeshes = ri.Cvar_Get("r_marksOnTriangleMeshes", "0", CVAR_ARCHIVE_ND );
 	ri.Cvar_SetDescription( r_marksOnTriangleMeshes, "Enables impact marks on triangle mesh surfaces (ie: MD3 models.) Requires impact marks to be enabled in the game code." );
 
-	vr_currentHudDrawStatus = ri.Cvar_Get( "vr_currentHudDrawStatus", "1", CVAR_ARCHIVE );
+	vr_currentHudDrawStatus = ri.Cvar_Get( "vr_currentHudDrawStatus", "1", 0 );
 	vr_currentHudDepth = ri.Cvar_Get( "vr_currentHudDepth", "3", 0 );
 
 	r_aviMotionJpegQuality = ri.Cvar_Get( "r_aviMotionJpegQuality", "90", CVAR_ARCHIVE_ND );

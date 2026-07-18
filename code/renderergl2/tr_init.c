@@ -1378,7 +1378,7 @@ void R_Register( void )
 	r_ignoreGLErrors = ri.Cvar_Get( "r_ignoreGLErrors", "1", CVAR_ARCHIVE );
 	r_fastsky = ri.Cvar_Get( "r_fastsky", "0", CVAR_ARCHIVE );
 	vr_thirdPersonSpectator = ri.Cvar_Get( "vr_thirdPersonSpectator", "0", CVAR_TEMP );
-	vr_currentHudDrawStatus = ri.Cvar_Get( "vr_currentHudDrawStatus", "1", CVAR_ARCHIVE );
+	vr_currentHudDrawStatus = ri.Cvar_Get( "vr_currentHudDrawStatus", "1", 0 );
 	vr_currentHudDepth = ri.Cvar_Get( "vr_currentHudDepth", "3", 0 );
 	r_inGameVideo = ri.Cvar_Get( "r_inGameVideo", "1", CVAR_ARCHIVE );
 	r_drawSun = ri.Cvar_Get( "r_drawSun", "1", CVAR_ARCHIVE );

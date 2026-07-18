@@ -81,7 +81,7 @@ void VR_InitCvars( void )
 	vr_weaponSelectorWithHud = Cvar_Get ("vr_weaponSelectorWithHud", "0", CVAR_ARCHIVE);
 	vr_goreLevel = Cvar_Get ("vr_goreLevel", "2", CVAR_ARCHIVE);
 	vr_hudDrawStatus = Cvar_Get ("vr_hudDrawStatus", "1", CVAR_ARCHIVE); // 0 - no hud, 1 - in-world hud, 2 - performance (static HUD)
-	vr_currentHudDrawStatus = Cvar_Get ("vr_currentHudDrawStatus", "1", CVAR_ARCHIVE); // 0 - no hud, 1 - in-world hud, 2 - performance (static HUD)
+	vr_currentHudDrawStatus = Cvar_Get ("vr_currentHudDrawStatus", "1", 0); // 0 - no hud, 1 - in-world hud, 2 - performance (static HUD)
 	vr_currentHudDepth = Cvar_Get ("vr_currentHudDepth", "3", 0 );  // Runtime copy, not archived
 	vr_showConsoleMessages = Cvar_Get ("vr_showConsoleMessages", "1", CVAR_ARCHIVE);
 	vr_desktopContentFit = Cvar_Get ("vr_desktopContentFit", "1", CVAR_ARCHIVE); // 0 - fit/contain, 1 - fill/crop
