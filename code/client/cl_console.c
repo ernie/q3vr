@@ -630,6 +630,11 @@ void Con_DrawNotify (void)
 	int		skip;
 	int		currentColor;
 
+	// scope up: only the minimal HUD draws, so console text hides with the full HUD
+	if ( vr.weapon_zoomed ) {
+		return;
+	}
+
 	currentColor = 7;
 	re.SetColor( g_color_table[currentColor] );
 
@@ -643,10 +648,10 @@ void Con_DrawNotify (void)
 
 	// For HUD mode 2, transform the base position to screen coordinates
 	// and scale character size to try to match floating HUD scaling
-	if (vr_currentHudDrawStatus->integer == 2 || vr.weapon_zoomed) {
+	if (vr_currentHudDrawStatus->integer == 2) {
 		if (vr.virtual_screen) {
 			charScale *= 1.5f;
-		} else if (!vr.weapon_zoomed) {
+		} else {
 			charScale /= 1.5f;
 		}
 		SCR_AdjustFrom640(&xadjust, &yadjust, NULL, NULL);
@@ -721,9 +726,8 @@ void Con_DrawNotify (void)
 
 	// cl_conXOffset is in virtual 640x480 coordinates
 	// Scale it to match HUD buffer coordinates for each mode
-	// Skip offset when weapon zoomed since we don't show the voice chat head
 	float effectiveConXOffset = 0.0f;
-	if (cl_conXOffset->integer > 0 && !vr.weapon_zoomed) {
+	if (cl_conXOffset->integer > 0) {
 		if (vr_currentHudDrawStatus->integer == 1) {
 			// HUD mode 1: fixed 1280x960 buffer = 2x virtual coordinates
 			effectiveConXOffset = cl_conXOffset->integer * 2.0f;
