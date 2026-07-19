@@ -1116,8 +1116,8 @@ void Sys_ApplyPendingUpdate( void )
 	ssize_t exeLen;
 
 	#define MAX_UPDATE_FILES 256
-	char movedDst[MAX_UPDATE_FILES][MAX_OSPATH];
-	char movedBak[MAX_UPDATE_FILES][MAX_OSPATH];
+	static char movedDst[MAX_UPDATE_FILES][MAX_OSPATH];
+	static char movedBak[MAX_UPDATE_FILES][MAX_OSPATH];
 	int movedCount = 0;
 
 	Q_strncpyz( pwd, Sys_Cwd(), sizeof( pwd ) );
