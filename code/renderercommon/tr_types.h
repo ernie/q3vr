@@ -62,6 +62,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 										// animation without needing to know the frame count
 #define RF_WORLD_ORIENTED	0x0400		// sprite uses entity axis instead of billboarding toward camera
 #define	RF_ANIMFRAME		0x0800		// index animMap by refEntity->frame, not time (caller-driven)
+#define RF_VIEW_ORIENTED	0x1000		// sprite billboards on the full view axes (rolls with the
+										// HMD); without it sprites billboard horizon-locked
 
 // refdef flags
 #define RDF_NOWORLDMODEL	0x0001		// used for player configuration screen

@@ -372,12 +372,20 @@ static void AutospriteDeform( void ) {
 	tess.numIndexes = 0;
 	tess.firstIndex = 0;
 
-	if ( backEnd.currentEntity != &tr.worldEntity ) {
-		GlobalVectorToLocal( backEnd.viewParms.or.axis[1], leftDir );
-		GlobalVectorToLocal( backEnd.viewParms.or.axis[2], upDir );
-	} else {
-		VectorCopy( backEnd.viewParms.or.axis[1], leftDir );
-		VectorCopy( backEnd.viewParms.or.axis[2], upDir );
+	{
+		// Same basis policy as RB_SurfaceSprite: horizon-locked by default,
+		// full view axes only for RF_VIEW_ORIENTED (worldEntity has renderfx 0).
+		vec3_t *axis = ( backEnd.currentEntity->e.renderfx & RF_VIEW_ORIENTED )
+			? backEnd.viewParms.or.axis
+			: backEnd.viewParms.sprite_axis;
+
+		if ( backEnd.currentEntity != &tr.worldEntity ) {
+			GlobalVectorToLocal( axis[1], leftDir );
+			GlobalVectorToLocal( axis[2], upDir );
+		} else {
+			VectorCopy( axis[1], leftDir );
+			VectorCopy( axis[2], upDir );
+		}
 	}
 
 	for ( i = 0 ; i < oldVerts ; i+=4 ) {

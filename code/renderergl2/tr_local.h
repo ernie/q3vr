@@ -784,6 +784,9 @@ typedef struct {
 	int			numPolys;
 	struct srfPoly_s	*polys;
 
+	int			numSpritePolys;
+	struct srfSpritePoly_s	*spritePolys;
+
 	int			numDrawSurfs;
 	struct drawSurf_s	*drawSurfs;
 
@@ -850,6 +853,8 @@ typedef enum {
 typedef struct {
 	orientationr_t	or;
 	orientationr_t	world;
+	vec3_t		sprite_axis[3];		// horizon-locked billboard basis ([0]=fwd,[1]=left,[2]=up);
+									// default for sprites/autosprites so they don't roll with the HMD
 	vec3_t		pvsOrigin;			// may be different than or.origin for portals
 	qboolean	isPortal;			// true if this view is through a portal
 	qboolean	isMirror;			// the portal is a mirror, invert the face culling
@@ -908,6 +913,7 @@ typedef enum {
 	SF_ENTITY,				// beams, rails, lightning, etc that can be determined by entity
 	SF_VAO_MDVMESH,
 	SF_VAO_IQM,
+	SF_SPRITE_POLY,			// engine-oriented billboard quad (trap_R_AddSpritePolyToScene)
 
 	SF_NUM_SURFACE_TYPES,
 	SF_MAX = 0x7fffffff			// ensures that sizeof( surfaceType_t ) == sizeof( int )
@@ -933,6 +939,22 @@ typedef struct srfPoly_s {
 	int				numVerts;
 	polyVert_t		*verts;
 } srfPoly_t;
+
+// engine-oriented billboard quad: cgame supplies position/size only and the
+// backend expands it per view with the sprite orientation basis, so it batches
+// like a poly (world entity, no refEntity slot) but orients like RT_SPRITE
+typedef struct srfSpritePoly_s {
+	surfaceType_t	surfaceType;
+	qhandle_t		hShader;
+	int				fogIndex;
+	vec3_t			origin;
+	float			width;
+	float			height;
+	float			rotation;
+	byte			rgba[4];
+} srfSpritePoly_t;
+
+#define MAX_SPRITEPOLYS		1024
 
 
 typedef struct srfFlare_s {
@@ -2358,6 +2380,8 @@ void R_InitNextFrame( void );
 void RE_ClearScene( void );
 void RE_AddRefEntityToScene( const refEntity_t *ent );
 void RE_AddPolyToScene( qhandle_t hShader , int numVerts, const polyVert_t *verts, int num );
+void RE_AddSpritePolyToScene( qhandle_t hShader, const vec3_t origin, float width, float height, float rotation, const byte *rgba );
+void R_AddSpritePolySurfaces( void );
 void RE_AddLightToScene( const vec3_t org, float intensity, float r, float g, float b );
 void RE_AddAdditiveLightToScene( const vec3_t org, float intensity, float r, float g, float b );
 void RE_BeginScene( const refdef_t *fd );
@@ -2596,6 +2620,7 @@ typedef struct {
 	trRefEntity_t	entities[MAX_REFENTITIES];
 	srfPoly_t	*polys;//[MAX_POLYS];
 	polyVert_t	*polyVerts;//[MAX_POLYVERTS];
+	srfSpritePoly_t	spritePolys[MAX_SPRITEPOLYS];
 	pshadow_t pshadows[MAX_CALC_PSHADOWS];
 	renderCommandList_t	commands;
 } backEndData_t;

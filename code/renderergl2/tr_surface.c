@@ -237,6 +237,60 @@ void RB_InstantQuad(vec4_t quadVerts[4])
 
 /*
 ==============
+RB_SpriteEyeAxis
+
+Unit basis for the default sprite tier: faces the eye position (not the
+view plane) with up pinned to the world horizon, so sprites point at the
+viewer without rolling or tilting with the HMD. Falls back to the
+per-view horizon-locked basis when the sprite is (nearly) straight
+above/below the eye, and to the raw view axes when it sits on the eye.
+==============
+*/
+static void RB_SpriteEyeAxis( const vec3_t origin, vec3_t left, vec3_t up ) {
+	static const vec3_t worldUp = { 0.0f, 0.0f, 1.0f };
+	vec3_t fwd, headUp;
+	float d, dv, w;
+
+	VectorSubtract( origin, backEnd.viewParms.or.origin, fwd );
+	if ( VectorNormalize( fwd ) < 1.0f ) {
+		VectorCopy( backEnd.viewParms.or.axis[1], left );
+		VectorCopy( backEnd.viewParms.or.axis[2], up );
+		return;
+	}
+
+	// gravity-frame up: world up projected into the sprite plane
+	d = DotProduct( fwd, worldUp );
+	VectorMA( worldUp, -d, fwd, up );
+	VectorNormalize( up );	// zero only at exactly vertical; weighted out below
+
+	// per-view gravity up (worldUp projected against VIEW forward, not the
+	// sightline), projected into the sprite plane: world-stable under head
+	// roll (roll never moves view forward) and free of the eye-position
+	// bearing, so it carries no parallax wobble. Both references tend to
+	// the same limit direction over the top, so the blend is seamless.
+	dv = DotProduct( backEnd.viewParms.sprite_axis[2], fwd );
+	VectorMA( backEnd.viewParms.sprite_axis[2], -dv, fwd, headUp );
+	VectorNormalize( headUp );
+
+	// reference-power partition: w = sin^2(elevation)
+	w = d * d;
+	VectorScale( up, 1.0f - w, up );
+	VectorMA( up, w, headUp, up );
+
+	if ( VectorNormalize( up ) < 0.001f ) {
+		// both references degenerate (sprite along the head's own up axis
+		// on a world-vertical sightline): last resort, raw view axes
+		VectorCopy( backEnd.viewParms.or.axis[1], left );
+		VectorCopy( backEnd.viewParms.or.axis[2], up );
+		return;
+	}
+
+	CrossProduct( up, fwd, left );
+}
+
+
+/*
+==============
 RB_SurfaceSprite
 ==============
 */
@@ -261,22 +315,37 @@ static void RB_SurfaceSprite( void ) {
 	if ( ent->e.renderfx & RF_WORLD_ORIENTED ) {
 		VectorScale( ent->e.axis[1], radius, left );
 		VectorScale( ent->e.axis[2], ent->e.invert ? -radiusY : radiusY, up );
-	} else if ( ent->e.rotation == 0 ) {
-		VectorScale( backEnd.viewParms.or.axis[1], radius, left );
-		VectorScale( backEnd.viewParms.or.axis[2], ent->e.invert ? -radiusY : radiusY, up );
 	} else {
-		float	s, c;
-		float	ang;
+		// Default tier is eye-facing and horizon-locked so sprites point at
+		// the viewer without rolling or tilting with the HMD;
+		// RF_VIEW_ORIENTED opts back into the full view axes (visor-class
+		// UI: HUD sprite, blend blob, weapon-selector icons).
+		vec3_t axisLeft, axisUp;
 
-		ang = M_PI * ent->e.rotation / 180;
-		s = sin( ang );
-		c = cos( ang );
+		if ( ent->e.renderfx & RF_VIEW_ORIENTED ) {
+			VectorCopy( backEnd.viewParms.or.axis[1], axisLeft );
+			VectorCopy( backEnd.viewParms.or.axis[2], axisUp );
+		} else {
+			RB_SpriteEyeAxis( ent->e.origin, axisLeft, axisUp );
+		}
 
-		VectorScale( backEnd.viewParms.or.axis[1], c * radius, left );
-		VectorMA( left, -s * radiusY, backEnd.viewParms.or.axis[2], left );
+		if ( ent->e.rotation == 0 ) {
+			VectorScale( axisLeft, radius, left );
+			VectorScale( axisUp, ent->e.invert ? -radiusY : radiusY, up );
+		} else {
+			float	s, c;
+			float	ang;
 
-		VectorScale( backEnd.viewParms.or.axis[2], c * radiusY, up );
-		VectorMA( up, s * radius, backEnd.viewParms.or.axis[1], up );
+			ang = M_PI * ent->e.rotation / 180;
+			s = sin( ang );
+			c = cos( ang );
+
+			VectorScale( axisLeft, c * radius, left );
+			VectorMA( left, -s * radiusY, axisUp, left );
+
+			VectorScale( axisUp, c * radiusY, up );
+			VectorMA( up, s * radius, axisLeft, up );
+		}
 	}
 	if ( backEnd.viewParms.isMirror ) {
 		VectorSubtract( vec3_origin, left, left );
@@ -285,6 +354,50 @@ static void RB_SurfaceSprite( void ) {
 	VectorScale4(ent->e.shaderRGBA.rgba, 1.0f / 255.0f, colors);
 
 	RB_AddQuadStamp( ent->e.origin, left, up, colors );
+}
+
+
+/*
+==============
+RB_SurfaceSpritePoly
+
+Backend expansion of an engine-oriented billboard quad
+(trap_R_AddSpritePolyToScene): default-tier basis resolved PER VIEW, so
+mirror/portal views get correctly-facing quads, while batching by shader
+under the world entity like ordinary polys.
+==============
+*/
+static void RB_SurfaceSpritePoly( const srfSpritePoly_t *sp ) {
+	vec3_t	axisLeft, axisUp, left, up;
+	float	colors[4];
+
+	RB_SpriteEyeAxis( sp->origin, axisLeft, axisUp );
+
+	if ( sp->rotation == 0.0f ) {
+		VectorScale( axisLeft, sp->width, left );
+		VectorScale( axisUp, sp->height, up );
+	} else {
+		float	s, c;
+		float	ang;
+
+		ang = M_PI * sp->rotation / 180.0f;
+		s = sin( ang );
+		c = cos( ang );
+
+		VectorScale( axisLeft, c * sp->width, left );
+		VectorMA( left, -s * sp->height, axisUp, left );
+
+		VectorScale( axisUp, c * sp->height, up );
+		VectorMA( up, s * sp->width, axisLeft, up );
+	}
+
+	if ( backEnd.viewParms.isMirror ) {
+		VectorSubtract( vec3_origin, left, left );
+	}
+
+	VectorScale4( sp->rgba, 1.0f / 255.0f, colors );
+
+	RB_AddQuadStamp( (float *)sp->origin, left, up, colors );
 }
 
 
@@ -1370,4 +1483,5 @@ void (*rb_surfaceTable[SF_NUM_SURFACE_TYPES])( void *) = {
 	(void(*)(void*))RB_SurfaceEntity,		// SF_ENTITY
 	(void(*)(void*))RB_SurfaceVaoMdvMesh,   // SF_VAO_MDVMESH
 	(void(*)(void*))RB_IQMSurfaceAnimVao,   // SF_VAO_IQM
+	(void(*)(void*))RB_SurfaceSpritePoly,   // SF_SPRITE_POLY
 };

@@ -133,6 +133,7 @@ typedef struct {
 	void (*TakeVideoFrame)( int h, int w, byte* captureBuffer, byte *encodeBuffer, qboolean motionJpeg );
 
 	// enhanced blood decals: radial projected decal onto nearby world surfaces
+	void	(*AddSpritePolyToScene)( qhandle_t hShader, const vec3_t origin, float width, float height, float rotation, const byte *rgba );
 	void	(*ProjectDecal)( const vec3_t origin, float size, float reach, float orientation,
 				qhandle_t hShader, const float rgba[4], int lifeTime );
 	void	(*ClearDecals)( void );
