@@ -246,7 +246,7 @@ per-view horizon-locked basis when the sprite is (nearly) straight
 above/below the eye, and to the raw view axes when it sits on the eye.
 ==============
 */
-static void RB_SpriteEyeAxis( const vec3_t origin, vec3_t left, vec3_t up ) {
+void RB_SpriteEyeAxis( const vec3_t origin, vec3_t left, vec3_t up ) {
 	static const vec3_t worldUp = { 0.0f, 0.0f, 1.0f };
 	vec3_t fwd, headUp;
 	float d, dv, w;

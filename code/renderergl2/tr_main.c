@@ -1897,8 +1897,8 @@ void R_DebugGraphics( void ) {
 ================
 R_SetupSpriteAxis
 
-Horizon-locked billboard basis for the default sprite/autosprite path:
-still faces the view plane, but up is pinned to world up so sprites do
+Steep-sightline anchor for RB_SpriteEyeAxis (tr_surface.c): world up
+projected against VIEW forward, so up is pinned to world up and does
 not roll with the HMD. Within ~2.5 degrees of straight up/down the
 horizon projection collapses; fall back to the raw view axes there.
 ================
