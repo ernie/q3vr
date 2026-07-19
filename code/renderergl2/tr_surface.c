@@ -239,17 +239,20 @@ void RB_InstantQuad(vec4_t quadVerts[4])
 ==============
 RB_SpriteEyeAxis
 
-Unit basis for the default sprite tier: faces the eye position (not the
-view plane) with up pinned to the world horizon, so sprites point at the
-viewer without rolling or tilting with the HMD. Falls back to the
-per-view horizon-locked basis when the sprite is (nearly) straight
-above/below the eye, and to the raw view axes when it sits on the eye.
+Unit basis for the default sprite tier: faces the eye position with up
+pinned to the world horizon, so sprites neither roll nor tilt with the
+HMD. The horizon-locked up degenerates on vertical sightlines, so above
+POLE_START authority ramps to the per-view up (viewParms.sprite_axis);
+the references are parallel on-gaze, so the handoff cannot flip a
+watched sprite.
 ==============
 */
+#define POLE_START 0.9f		// |sin(elevation)| where the head-frame ramp engages (~64 degrees)
+
 void RB_SpriteEyeAxis( const vec3_t origin, vec3_t left, vec3_t up ) {
 	static const vec3_t worldUp = { 0.0f, 0.0f, 1.0f };
 	vec3_t fwd, headUp;
-	float d, dv, w;
+	float d, ad, dv, w;
 
 	VectorSubtract( origin, backEnd.viewParms.or.origin, fwd );
 	if ( VectorNormalize( fwd ) < 1.0f ) {
@@ -258,28 +261,26 @@ void RB_SpriteEyeAxis( const vec3_t origin, vec3_t left, vec3_t up ) {
 		return;
 	}
 
-	// gravity-frame up: world up projected into the sprite plane
 	d = DotProduct( fwd, worldUp );
 	VectorMA( worldUp, -d, fwd, up );
-	VectorNormalize( up );	// zero only at exactly vertical; weighted out below
+	VectorNormalize( up );	// zero only at exactly vertical; ramped out below
 
-	// per-view gravity up (worldUp projected against VIEW forward, not the
-	// sightline), projected into the sprite plane: world-stable under head
-	// roll (roll never moves view forward) and free of the eye-position
-	// bearing, so it carries no parallax wobble. Both references tend to
-	// the same limit direction over the top, so the blend is seamless.
-	dv = DotProduct( backEnd.viewParms.sprite_axis[2], fwd );
-	VectorMA( backEnd.viewParms.sprite_axis[2], -dv, fwd, headUp );
-	VectorNormalize( headUp );
+	ad = fabsf( d );
+	if ( ad > POLE_START ) {
+		float t = ( ad - POLE_START ) / ( 1.0f - POLE_START );
 
-	// reference-power partition: w = sin^2(elevation)
-	w = d * d;
-	VectorScale( up, 1.0f - w, up );
-	VectorMA( up, w, headUp, up );
+		// bearing-free reference for the pole zone
+		dv = DotProduct( backEnd.viewParms.sprite_axis[2], fwd );
+		VectorMA( backEnd.viewParms.sprite_axis[2], -dv, fwd, headUp );
+		VectorNormalize( headUp );
+
+		w = t * t;
+		VectorScale( up, 1.0f - w, up );
+		VectorMA( up, w, headUp, up );
+	}
 
 	if ( VectorNormalize( up ) < 0.001f ) {
-		// both references degenerate (sprite along the head's own up axis
-		// on a world-vertical sightline): last resort, raw view axes
+		// degenerate near-vertical blend: raw view axes
 		VectorCopy( backEnd.viewParms.or.axis[1], left );
 		VectorCopy( backEnd.viewParms.or.axis[2], up );
 		return;
@@ -287,6 +288,7 @@ void RB_SpriteEyeAxis( const vec3_t origin, vec3_t left, vec3_t up ) {
 
 	CrossProduct( up, fwd, left );
 }
+#undef POLE_START
 
 
 /*

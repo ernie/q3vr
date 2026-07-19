@@ -853,8 +853,7 @@ typedef enum {
 typedef struct {
 	orientationr_t	or;
 	orientationr_t	world;
-	vec3_t		sprite_axis[3];		// horizon-locked billboard basis ([0]=fwd,[1]=left,[2]=up);
-									// default for sprites/autosprites so they don't roll with the HMD
+	vec3_t		sprite_axis[3];		// horizon-locked basis ([0]=fwd,[1]=left,[2]=up) for RB_SpriteEyeAxis
 	vec3_t		pvsOrigin;			// may be different than or.origin for portals
 	qboolean	isPortal;			// true if this view is through a portal
 	qboolean	isMirror;			// the portal is a mirror, invert the face culling

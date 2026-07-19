@@ -1803,12 +1803,9 @@ static void R_GenerateDrawSurfs( void ) {
 ================
 R_SetupSpriteAxis
 
-Steep-sightline anchor for RB_SpriteEyeAxis (tr_surface.c): world up
-projected against VIEW forward. Head roll never moves view forward, so this basis
-is world-stable under roll with no parallax path into it - pure gravity
-needs no head-frame blend here. Only the exact-vertical view (~2.5
-degree cone, which roll cannot traverse) falls back to the raw view
-axes.
+Near-vertical ramp anchor for RB_SpriteEyeAxis: world up projected
+against view forward, so it is stable under head roll. Falls back to
+the raw view axes within ~2.5 degrees of a vertical view.
 ================
 */
 static void R_SetupSpriteAxis( viewParms_t *view ) {
