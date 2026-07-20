@@ -267,7 +267,7 @@ jobs:
           body: |
             Trinity mod: ${{ env.TRINITY_VERSION }}
 
-            Updating an existing install by hand? Delete `baseq3/pakQ3VR.pk3` -
-            its contents ship in the Trinity mod paks now, and a stale copy
+            Updating an existing install? Delete `baseq3/pakQ3VR.pk3`. Its
+            contents ship in the Trinity mod paks now, and a stale copy
             overrides them.
           generate_release_notes: true
