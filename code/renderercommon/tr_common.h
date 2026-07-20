@@ -155,7 +155,7 @@ IMPLEMENTATION SPECIFIC FUNCTIONS
 ====================================================================
 */
 
-void		GLimp_Init( qboolean fixedFunction );
+void		GLimp_Init( glconfig_t *config, qboolean fixedFunction );
 void		GLimp_Shutdown( void );
 void		GLimp_EndFrame( void );
 

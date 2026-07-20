@@ -34,6 +34,20 @@ int			gl_clamp_mode;	// GL_CLAMP or GL_CLAMP_TO_EGGE
 float		displayAspect = 0.0f;
 qboolean	haveClampToEdge = qfalse;
 
+// Client-owned VR cvars (registered in vrcommon/vr_cvars.c); the DLL renderer
+// holds its own handles, obtained via ri.Cvar_Get in R_Register.
+cvar_t		*vr_worldscale;
+cvar_t		*vr_worldscaleScaler;
+cvar_t		*vr_hudScale;
+cvar_t		*vr_hudYOffset;
+cvar_t		*vr_currentHudDrawStatus;
+cvar_t		*vr_currentHudDepth;
+cvar_t		*vr_desktopContentFit;
+cvar_t		*vr_desktopContentType;
+cvar_t		*vr_desktopMenuStyle;
+cvar_t		*vr_desktopMode;
+cvar_t		*vr_virtualScreenShape;
+
 glstate_t	glState;
 
 glstatic_t	gls;
@@ -278,29 +292,8 @@ static void R_ClearSymTables( void )
 #endif
 
 
-// for modular renderer
-#ifdef USE_RENDERER_DLOPEN
-void QDECL Com_Error( errorParm_t code, const char *fmt, ... )
-{
-	char buf[ 4096 ];
-	va_list	argptr;
-	va_start( argptr, fmt );
-	Q_vsnprintf( buf, sizeof( buf ), fmt, argptr );
-	va_end( argptr );
-	ri.Error( code, "%s", buf );
-}
-
-void QDECL Com_Printf( const char *fmt, ... )
-{
-	char buf[ MAXPRINTMSG ];
-	va_list	argptr;
-	va_start( argptr, fmt );
-	Q_vsnprintf( buf, sizeof( buf ), fmt, argptr );
-	va_end( argptr );
-
-	ri.Printf( PRINT_ALL, "%s", buf );
-}
-#endif
+// Com_Error / Com_Printf for the modular renderer are provided by
+// renderercommon/tr_subs.c (DYNAMIC_RENDERER_SOURCES) in dlopen builds.
 
 
 #ifndef USE_VULKAN
@@ -617,9 +610,6 @@ static void InitOpenGL( void )
 	// This must happen after Vulkan is fully initialized so the XR session
 	// can use the VR-created Vulkan device
 	ri.GLimp_InitVR();
-
-	// vr_vk.xrColorManaged is set inside VR_VK_CreateSession; sync it after GLimp_InitVR().
-	vk_sync_xr_color_state();
 
 	tr.inited = qtrue;
 }
@@ -1496,6 +1486,20 @@ static void R_Register( void )
 {
 	// Renderer identification for cgame runtime checks
 	ri.Cvar_Get("r_opengl", "0", CVAR_ROM);
+
+	// VR cvars are engine singletons (vrcommon/vr_cvars.c); obtain handles here.
+	// Flags 0 — the owning registration supplies the real flags.
+	vr_worldscale           = ri.Cvar_Get( "vr_worldscale",           "32.0", 0 );
+	vr_worldscaleScaler     = ri.Cvar_Get( "vr_worldscaleScaler",     "1.0",  0 );
+	vr_hudScale             = ri.Cvar_Get( "vr_hudScale",             "1.0",  0 );
+	vr_hudYOffset           = ri.Cvar_Get( "vr_hudYOffset",           "0",    0 );
+	vr_currentHudDrawStatus = ri.Cvar_Get( "vr_currentHudDrawStatus", "1",    0 );
+	vr_currentHudDepth      = ri.Cvar_Get( "vr_currentHudDepth",      "3",    0 );
+	vr_desktopContentFit    = ri.Cvar_Get( "vr_desktopContentFit",    "1",    0 );
+	vr_desktopContentType   = ri.Cvar_Get( "vr_desktopContentType",   "0",    0 );
+	vr_desktopMenuStyle     = ri.Cvar_Get( "vr_desktopMenuStyle",     "0",    0 );
+	vr_desktopMode          = ri.Cvar_Get( "vr_desktopMode",          "1",    0 );
+	vr_virtualScreenShape   = ri.Cvar_Get( "vr_virtualScreenShape",   "0",    0 );
 
 	// make sure all the commands added here are also removed in R_Shutdown
 	ri.Cmd_AddCommand( "imagelist", R_ImageList_f );

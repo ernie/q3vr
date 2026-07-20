@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/qcommon.h"
 
 extern SDL_Window *SDL_window;
+extern glconfig_t *glimp_config;
 
 /*
 =================
@@ -61,8 +62,13 @@ void GLimp_SetGamma( unsigned char red[256], unsigned char green[256], unsigned 
 {
 	Uint16 table[3][256];
 	int i, j;
+	// Renderer-owned cvar; real flags come from the loaded renderer's R_Register.
+	cvar_t *cvIgnorehwgamma = Cvar_Get( "r_ignorehwgamma", "0", 0 );
 
-	if( !glConfig.deviceSupportsGamma || r_ignorehwgamma->integer > 0 )
+	if( !glimp_config )
+		return;
+
+	if( !glimp_config->deviceSupportsGamma || cvIgnorehwgamma->integer > 0 )
 		return;
 
 	for (i = 0; i < 256; i++)
@@ -74,7 +80,7 @@ void GLimp_SetGamma( unsigned char red[256], unsigned char green[256], unsigned 
 
 #ifdef _WIN32
 	// Windows puts this odd restriction on gamma ramps...
-	ri.Printf( PRINT_DEVELOPER, "performing gamma clamp.\n" );
+	Com_DPrintf( "performing gamma clamp.\n" );
 	for( j = 0 ; j < 3 ; j++ )
 	{
 		for( i = 0 ; i < 128 ; i++ )
@@ -100,7 +106,7 @@ void GLimp_SetGamma( unsigned char red[256], unsigned char green[256], unsigned 
 
 	if (SDL_SetWindowGammaRamp(SDL_window, table[0], table[1], table[2]) < 0)
 	{
-		ri.Printf( PRINT_DEVELOPER, "SDL_SetWindowGammaRamp() failed: %s\n", SDL_GetError() );
+		Com_DPrintf( "SDL_SetWindowGammaRamp() failed: %s\n", SDL_GetError() );
 	}
 }
 

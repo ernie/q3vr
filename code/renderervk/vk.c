@@ -9,16 +9,12 @@
 
 #include "tr_local.h"
 #include "vk.h"
-#include "../vrvk/vr_vk.h"  // For VR_VulkanDeviceInfo (pull model)
-#include "../vrcommon/vr_clientinfo.h"
-#include "../vrcommon/vr_gameplay.h"  // For VR_Gameplay_ShouldRenderInVirtualScreen
+// Types-only: VR_VulkanDeviceInfo, pulled via ri.VR_Vulkan_GetDeviceInfo().
+#include "../vrvk/vr_vk.h"
 
 #ifdef _WIN32
 #include <windows.h>
 #endif
-
-// VR client state accessible from renderer
-extern vr_clientinfo_t vr;
 
 // Virtual screen shape cvar (0 = curved, 1 = flat)
 extern cvar_t *vr_virtualScreenShape;
@@ -4229,13 +4225,6 @@ static void vk_set_render_scale( void )
 }
 
 
-// vr_vk.xrColorManaged is only set inside VR_VK_CreateSession; earlier callers read a stale false.
-// Call after GLimp_InitVR(), which triggers session creation.
-void vk_sync_xr_color_state( void )
-{
-	vk.xrColorManaged = vr_vk.xrColorManaged ? qtrue : qfalse;
-}
-
 
 void vk_initialize( void )
 {
@@ -7426,7 +7415,7 @@ void vk_update_mvp( const float *m ) {
 		// 2D ortho: common scale/translate in the push; per-eye asymmetry and
 		// HUD parallax become clip-space translations in eyeProj (view slot).
 		int hudStatus = vr_currentHudDrawStatus ? vr_currentHudDrawStatus->integer : -1;
-		qboolean isVirtualScreen = VR_Gameplay_ShouldRenderInVirtualScreen();
+		qboolean isVirtualScreen = ri.VR_InVirtualScreen();
 
 		float hudScale = 1.0f;
 		if ( backEnd.isDrawingHUD && hudStatus == 2 && !isVirtualScreen ) {
@@ -8751,8 +8740,13 @@ Check if the desktop window is currently minimized.
 */
 static qboolean vk_is_window_minimized( void )
 {
-	extern cvar_t *com_minimized;
-	return com_minimized && com_minimized->integer;
+	// com_minimized lives in the client; cached after first ri.Cvar_Get lookup.
+	static cvar_t *cvMinimized = NULL;
+
+	if ( !cvMinimized )
+		cvMinimized = ri.Cvar_Get( "com_minimized", "0", 0 );
+
+	return cvMinimized->integer != 0;
 }
 
 

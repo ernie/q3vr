@@ -2,7 +2,7 @@
 
 #include <stdio.h>
 
-#include "../renderergl2/tr_local.h"
+#include "../renderercommon/tr_common.h"   // qgl function-pointer declarations
 
 //
 // OpenGL Debug

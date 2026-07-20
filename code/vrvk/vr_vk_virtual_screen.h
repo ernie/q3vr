@@ -15,8 +15,8 @@
 #include "../vrcommon/vr_types.h"
 #include "../vrcommon/vr_graphics.h"
 
-void VR_VirtualScreen_Init(void);
-void VR_VirtualScreen_Destroy(void);
+void VRVK_VirtualScreen_Init(void);
+void VRVK_VirtualScreen_Destroy(void);
 
 // Query function for renderer to pull virtual screen state (pull model)
 // Returns qtrue if virtual screen should be rendered

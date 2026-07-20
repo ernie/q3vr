@@ -557,7 +557,7 @@ Swap desktop window buffers - called from VR layer after frame submission
 */
 void RE_SwapDesktopWindow( void )
 {
-	GLimp_EndFrame();
+	ri.GLimp_EndFrame();
 }
 
 /*
@@ -577,6 +577,8 @@ void RE_WaitForRenderComplete( void )
 
 qboolean RE_InitXRResources( void )
 {
+	glConfig.stencilBits = ri.VR_GL_GetStencilBits();
+
 	// OpenGL path: FBOs are created directly in VR layer via VR_CreateImageView()
 	// No renderer-side resource initialization needed for OpenGL.
 	return qtrue;

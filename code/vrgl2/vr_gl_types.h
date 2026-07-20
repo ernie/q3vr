@@ -1,9 +1,18 @@
 #ifndef __VR_GL_TYPES
 #define __VR_GL_TYPES
 
-// vr_types.h includes SDL_opengl.h and defines XR_USE_GRAPHICS_API_OPENGL
-// for non-Vulkan builds, giving us access to OpenGL-specific OpenXR types
+// Xlib platform setup must precede vr_types.h so the first
+// openxr_platform.h inclusion in GL TUs compiles the GLX binding section.
+#if !defined(WIN32) && !defined(__ANDROID__)
+#include <X11/Xlib.h>
+#include <GL/glx.h>
+#define XR_USE_PLATFORM_XLIB
+#endif
+
+// vr_types.h gives OpenGL-specific OpenXR types but no real GL types; this
+// header's structs use real GLuint/GLenum, so pull them in here too.
 #include "../vrcommon/vr_types.h"
+#include "SDL_opengl.h"
 
 // OpenGL graphics requirements from OpenXR
 typedef struct {

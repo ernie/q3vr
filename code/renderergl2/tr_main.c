@@ -25,8 +25,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include <string.h> // memcpy
 
-#include "../vrcommon/vr_gameplay.h"
-
 trGlobals_t		tr;
 
 static float	s_flipMatrix[16] = {
@@ -682,7 +680,7 @@ void R_RotateForViewer (void)
 		VectorCopy(tr.viewParms.or.axis[1], axis[1]);
 		VectorCopy(tr.viewParms.or.axis[2], axis[2]);
 
-		if ((eye < 2) && !VR_ShouldDisableStereo())
+		if ((eye < 2) && !ri.VR_ShouldDisableStereo())
 		{
 			// Apply stereo eye offset for IPD
 			// The eye offset must be in HEAD-LOCAL space, not world space.
@@ -974,15 +972,20 @@ void R_SetupProjectionZ(viewParms_t *dest)
 		tr.vrParms.mirrorProjection[10] = c[2] + 1.0f;
 		tr.vrParms.mirrorProjection[14] = c[3];
 
-		if (VR_ShouldDisableStereo())
+		if (ri.VR_ShouldDisableStereo())
 		{
-			// Virtual screen / weapon zoom: use symmetric mirror projection for both eyes.
-			// Matches renderervk's mono portal path in vk_update_mvp.
+			// Cyclopean (zoom / virtual screen): symmetric mirror projection for
+			// both eyes, matching vk_update_mvp's portal path.
 			for (int eye = 0; eye < 2; eye++)
 			{
 				Mat4Copy(tr.vrParms.mirrorProjection, tr.vrParms.mirrorProjectionEye[eye]);
-				// Non-square framebuffer correction (matches VR_PROJECTION mono path)
-				tr.vrParms.mirrorProjectionEye[eye][5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
+				if (vr.weapon_zoomed) {
+					tr.vrParms.mirrorProjectionEye[eye][5] *= (float)glConfig.vidWidth / (float)glConfig.vidHeight;
+				} else {
+					tr.vrParms.mirrorProjectionEye[eye][5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
+				}
+				tr.vrParms.mirrorProjectionEye[eye][8] = 0.0f;
+				tr.vrParms.mirrorProjectionEye[eye][9] = 0.0f;
 			}
 		}
 		else

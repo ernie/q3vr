@@ -58,6 +58,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tr_common.h"
 #include "iqm.h"
 
+#include "../vrcommon/vr_clientinfo.h"
+// The VR layer's client state, pulled through the refimport table. The macro
+// preserves the historical direct-global spelling at ~40 read sites.
+#define vr (*ri.vrClientInfo)
+
 // color4ub_t is now defined in q_shared.h for shared use across all renderers
 
 // BSP content flag for nodes (vs leaves)

@@ -260,9 +260,6 @@ typedef struct vkUniform_s {
 // Q3VR is XR-only: pulls Vulkan device from VR layer via ri.VR_Vulkan_GetDeviceInfo()
 void vk_initialize( void );
 
-// Call after GLimp_InitVR(); vr_vk.xrColorManaged is not set until XR session creation.
-void vk_sync_xr_color_state( void );
-
 // Called after initialization or renderer restart
 void vk_init_descriptors( void );
 
@@ -520,7 +517,6 @@ typedef struct {
 	// HDR display output (desktop mirror scRGB FP16) + headset wide-gamut
 	qboolean hdrColorspaceExt;   // VK_EXT_swapchain_colorspace instance ext present
 	qboolean hdrActive;          // mirror negotiated scRGB FP16 this run
-	qboolean xrColorManaged;     // headset XR_FB_color_space set to Rec709
 	int      hdrOsState;         // osHdrState_t: OS HDR switch state (Windows)
 
 	VkSampler linearSampler;  // Linear filtering, clamp to edge

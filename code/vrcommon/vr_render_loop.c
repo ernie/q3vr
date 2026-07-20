@@ -5,15 +5,7 @@
 
 #include "vr_macros.h"
 #include "vr_clientinfo.h"
-
-// VR_SwapchainInfos struct definition from graphics-specific headers.
-// This file only accesses the common interface members (XrSwapchain, width, height)
-// that are present in both GL and VK implementations.
-#ifdef USE_VULKAN
-#include "../vrvk/vr_vk_types.h"
-#else
-#include "../vrgl2/vr_gl_types.h"
-#endif
+#include "vr_backend.h"
 #include "common/xr_linear.h"
 
 extern cvar_t *vr_frameTimingLog;
@@ -155,6 +147,10 @@ void VR_EndFrame(XrSession session, VR_SwapchainInfos* swapchains, XrView* views
 {
 	extern vr_clientinfo_t vr;
 
+	XrSwapchain colorSwapchain;
+	int colorWidth, colorHeight;
+	VR_GetActiveBackend()->GetColorSwapchainDesc( swapchains, &colorSwapchain, &colorWidth, &colorHeight );
+
 	// Scoped: submit only a head-locked quad sampling the cyclopean texture.
 	// Quad layers carry a single pose (no per-view geometry for SteamVR to
 	// override per-eye) so the crosshair lands on the same world ray for both
@@ -167,9 +163,9 @@ void VR_EndFrame(XrSession session, VR_SwapchainInfos* swapchains, XrView* views
 		quad_layer.space = viewSpace;
 		quad_layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
 
-		quad_layer.subImage.swapchain = swapchains->color.swapchain;
-		quad_layer.subImage.imageRect.extent.width = swapchains->color.width;
-		quad_layer.subImage.imageRect.extent.height = swapchains->color.height;
+		quad_layer.subImage.swapchain = colorSwapchain;
+		quad_layer.subImage.imageRect.extent.width = colorWidth;
+		quad_layer.subImage.imageRect.extent.height = colorHeight;
 		quad_layer.subImage.imageArrayIndex = 0;  // both array layers carry identical cyclopean pixels
 
 		quad_layer.pose.orientation.w = 1.0f;
@@ -177,7 +173,7 @@ void VR_EndFrame(XrSession session, VR_SwapchainInfos* swapchains, XrView* views
 
 		// Aspect-match to texture so reticle stays circular.
 		quad_layer.size.height = 2.0f;
-		quad_layer.size.width = 2.0f * (float)swapchains->color.width / (float)swapchains->color.height;
+		quad_layer.size.width = 2.0f * (float)colorWidth / (float)colorHeight;
 
 		const XrCompositionLayerBaseHeader* layers[1] = {
 			(const XrCompositionLayerBaseHeader*)&quad_layer,
@@ -200,9 +196,9 @@ void VR_EndFrame(XrSession session, VR_SwapchainInfos* swapchains, XrView* views
 		projection_layer_elements[view].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
 		projection_layer_elements[view].pose = views[view].pose;
 		projection_layer_elements[view].fov = views[view].fov;
-		projection_layer_elements[view].subImage.swapchain = swapchains->color.swapchain;
-		projection_layer_elements[view].subImage.imageRect.extent.width = swapchains->color.width;
-		projection_layer_elements[view].subImage.imageRect.extent.height = swapchains->color.height;
+		projection_layer_elements[view].subImage.swapchain = colorSwapchain;
+		projection_layer_elements[view].subImage.imageRect.extent.width = colorWidth;
+		projection_layer_elements[view].subImage.imageRect.extent.height = colorHeight;
 		projection_layer_elements[view].subImage.imageArrayIndex = view;
 	}
 

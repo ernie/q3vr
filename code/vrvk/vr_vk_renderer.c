@@ -31,30 +31,33 @@
 #include "vr_vk_swapchains.h"
 #include "vr_vk_virtual_screen.h"
 
+#include "../vrcommon/vr_backend.h"
+
 extern vr_clientinfo_t vr;
 extern cvar_t *vr_heightAdjust;
 extern cvar_t *vr_refreshrate;
 extern cvar_t *vr_desktopMode;
 
-const float hudScale = M_PI * 15.0f / 180.0f;
+// File-local: both backends coexist in one binary and would collide otherwise.
+// views/viewCount stay external — vr_vk_virtual_screen.c reads them.
+static const float hudScale = M_PI * 15.0f / 180.0f;
 
-XrBool32 stageSupported = XR_FALSE;
-XrTime lastPredictedDisplayTime = 0;
-qboolean frameStarted = qfalse;
-qboolean needRecenter = qtrue;
+static XrBool32 stageSupported = XR_FALSE;
+static XrTime lastPredictedDisplayTime = 0;
+static qboolean needRecenter = qtrue;
 
 // Per-frame data held between BeginFrame and EndFrame
-XrFovf fov = { 0 };
+static XrFovf fov = { 0 };
 XrView views[2];
 uint32_t viewCount = 2;
-uint32_t swapchainColorIndex = 0;
+static uint32_t swapchainColorIndex = 0;
 
 // Forward declarations
-void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter);
-void VR_Renderer_EndFrame(VR_Engine* engine);
-void VR_Recenter(VR_Engine* engine, XrTime predictedDisplayTime);
-void VR_ClearFrameBuffer(int width, int height);
-void VR_UpdatePerFrameState(void);
+static void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter);
+static void VR_Renderer_EndFrame(VR_Engine* engine);
+static void VR_Recenter(VR_Engine* engine, XrTime predictedDisplayTime);
+static void VR_ClearFrameBuffer(int width, int height);
+static void VR_UpdatePerFrameState(void);
 
 /*
 ==================
@@ -80,16 +83,16 @@ static void ConvertToReversedDepth(XrMatrix4x4f* matrix)
 	matrix->m[10] = matrix->m[10] + 1.0f;  // -1 -> 0
 	matrix->m[14] = -matrix->m[14];         // -near -> near
 }
-XrDesktopViewConfiguration VR_GetDesktopViewConfiguration(void);
+static XrDesktopViewConfiguration VR_GetDesktopViewConfiguration(void);
 
 
-void VR_GetResolution(VR_Engine* engine, int *pWidth, int *pHeight)
+void VRVK_GetResolution(VR_Engine* engine, int *pWidth, int *pHeight)
 {
 	VR_GetSupersampledResolution(engine->appState.Instance, engine->appState.SystemId, pWidth, pHeight);
 }
 
 
-void VR_InitRenderer(VR_Engine* engine)
+void VRVK_InitRenderer(VR_Engine* engine)
 {
 	VR_VK_RegisterDebugCallbackIfEnabled();
 
@@ -141,14 +144,14 @@ void VR_InitRenderer(VR_Engine* engine)
 		printf("[VR Vulkan] Warning: Failed to initialize XR resources\n");
 	}
 
-	VR_VirtualScreen_Init();
+	VRVK_VirtualScreen_Init();
 	VR_VirtualScreen_ResetPosition();
 }
 
 
-void VR_DestroyRenderer(VR_Engine* engine)
+void VRVK_DestroyRenderer(VR_Engine* engine)
 {
-	VR_VirtualScreen_Destroy();
+	VRVK_VirtualScreen_Destroy();
 	VR_VK_DestroySwapchains(&engine->appState.Renderer.Swapchains);
 
 	// Destroy VIEW reference space
@@ -160,7 +163,7 @@ void VR_DestroyRenderer(VR_Engine* engine)
 }
 
 
-void VR_ProcessFrame(VR_Engine* engine)
+void VRVK_ProcessFrame(VR_Engine* engine)
 {
 	const XrBool32 needsRecenter = VR_ProcessXrEvents(&engine->appState);
 	if (engine->appState.SessionActive == VR_FALSE)
@@ -173,6 +176,12 @@ void VR_ProcessFrame(VR_Engine* engine)
 
 	VR_Renderer_BeginFrame(engine, needsRecenter);
 	Com_Frame();
+	// vid_restart inside Com_Frame may have switched backends; if so this
+	// frame was re-begun on the new one, so finish it there instead.
+	if ( VR_GetActiveBackend() != VRVK_GetBackend() ) {
+		VR_GetActiveBackend()->FinishFrame(engine);
+		return;
+	}
 	VR_Renderer_EndFrame(engine);
 
 	if (needRecenter)
@@ -183,9 +192,11 @@ void VR_ProcessFrame(VR_Engine* engine)
 }
 
 
-void VR_Renderer_RestoreState(VR_Engine* engine)
+void VRVK_RestoreState(VR_Engine* engine)
 {
-	if (!frameStarted)
+	// Cross-backend check: after a switch, the interrupted frame may have
+	// been begun by the other backend (see vr_backend.h).
+	if (!VR_FrameInFlight())
 	{
 		// Frame hasn't started, no need to restore anything here
 		return;
@@ -205,9 +216,9 @@ void VR_Renderer_RestoreState(VR_Engine* engine)
 }
 
 
-void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
+static void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 {
-	frameStarted = qtrue;
+	VR_SetFrameInFlight(qtrue);
 	lastPredictedDisplayTime = VR_WaitFrame(engine->appState.Session).predictedDisplayTime;
 
 	if (needsRecenter)
@@ -322,7 +333,7 @@ void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 }
 
 
-void VR_Renderer_EndFrame(VR_Engine* engine)
+static void VR_Renderer_EndFrame(VR_Engine* engine)
 {
 	VR_SwapchainInfos* swapchains = engine->appState.Renderer.Swapchains;
 
@@ -361,11 +372,11 @@ void VR_Renderer_EndFrame(VR_Engine* engine)
 		engine->appState.ViewSpace,
 		lastPredictedDisplayTime);
 
-	frameStarted = qfalse;
+	VR_SetFrameInFlight(qfalse);
 }
 
 
-void VR_Recenter(VR_Engine* engine, XrTime predictedDisplayTime)
+static void VR_Recenter(VR_Engine* engine, XrTime predictedDisplayTime)
 {
 	// Calculate recenter reference
 	XrReferenceSpaceCreateInfo spaceCreateInfo = {0};
@@ -431,7 +442,7 @@ void VR_Recenter(VR_Engine* engine, XrTime predictedDisplayTime)
 }
 
 
-void VR_ClearFrameBuffer(int width, int height)
+static void VR_ClearFrameBuffer(int width, int height)
 {
 	// Delegate to renderer - avoids direct graphics API calls in VR layer
 	qboolean isThirdPersonSpectator = Cvar_VariableIntegerValue("vr_thirdPersonSpectator") ? qtrue : qfalse;
@@ -439,7 +450,7 @@ void VR_ClearFrameBuffer(int width, int height)
 }
 
 
-void VR_UpdatePerFrameState(void)
+static void VR_UpdatePerFrameState(void)
 {
 	if (vr.weapon_zoomed)
 	{
@@ -457,7 +468,7 @@ void VR_UpdatePerFrameState(void)
 }
 
 
-XrDesktopViewConfiguration VR_GetDesktopViewConfiguration(void)
+static XrDesktopViewConfiguration VR_GetDesktopViewConfiguration(void)
 {
 	switch (vr_desktopMode->integer)
 	{
@@ -472,10 +483,10 @@ XrDesktopViewConfiguration VR_GetDesktopViewConfiguration(void)
 }
 
 
-qboolean VR_Renderer_SubmitLoadingFrame(VR_Engine* engine)
+qboolean VRVK_SubmitLoadingFrame(VR_Engine* engine)
 {
 	// Only submit frames during loading states when a frame has been started
-	if ((clc.state != CA_LOADING && clc.state != CA_PRIMED) || !frameStarted)
+	if ((clc.state != CA_LOADING && clc.state != CA_PRIMED) || !VR_FrameInFlight())
 	{
 		return qfalse;
 	}
@@ -489,4 +500,14 @@ qboolean VR_Renderer_SubmitLoadingFrame(VR_Engine* engine)
 	VR_Renderer_BeginFrame(engine, XR_FALSE);
 
 	return qtrue;
+}
+
+// Ends a frame RestoreState re-began here after a mid-frame renderer switch.
+void VRVK_FinishFrame( VR_Engine* engine )
+{
+	if (!VR_FrameInFlight())
+	{
+		return;
+	}
+	VR_Renderer_EndFrame(engine);
 }

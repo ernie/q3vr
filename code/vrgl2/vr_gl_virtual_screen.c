@@ -271,7 +271,7 @@ unsigned int _VR_CreateVaoAndProgram(
 	return shaderProgram;
 }
 
-void VR_VirtualScreen_Init(void)
+void VRGL_VirtualScreen_Init(void)
 {
 	CHECK(cylinderVBO == 0, "Can be called only once");
 	CHECK(cylinderVBO == 0, "Can be called only once");
@@ -306,7 +306,7 @@ void VR_VirtualScreen_Init(void)
 	qglBindVertexArray(0);
 }
 
-void VR_VirtualScreen_Destroy(void)
+void VRGL_VirtualScreen_Destroy(void)
 {
 	qglDeleteProgram(vsShaderProgram);
 	qglDeleteProgram(floorShaderProgram);

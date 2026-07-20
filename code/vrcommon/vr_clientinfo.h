@@ -29,7 +29,7 @@ typedef struct {
 #define THUMB_LEFT  0
 #define THUMB_RIGHT 1
 
-typedef struct {
+typedef struct vr_clientinfo_s {
 	float fov_x;
 	float fov_y;
 	float fov_angle_up;    // Raw OpenXR FOV angle in radians (positive = up)

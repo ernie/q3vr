@@ -50,7 +50,6 @@ find_package(Vulkan REQUIRED)
 list(APPEND RENDERER_VK_BINARY_SOURCES
     ${RENDERER_COMMON_SOURCES}
     ${RENDERER_VK_SOURCES}
-    ${SDL_RENDERER_SOURCES}
     ${RENDERER_LIBRARY_SOURCES})
 
 list(APPEND RENDERER_VK_DEFINITIONS USE_VULKAN)
@@ -66,6 +65,9 @@ if(USE_RENDERER_DLOPEN)
     target_compile_definitions( ${RENDERER_VK_BINARY} PRIVATE ${RENDERER_DEFINITIONS} ${RENDERER_VK_DEFINITIONS})
     target_compile_options(     ${RENDERER_VK_BINARY} PRIVATE ${RENDERER_COMPILE_OPTIONS})
     target_link_options(        ${RENDERER_VK_BINARY} PRIVATE ${RENDERER_LINK_OPTIONS})
+
+    # No "lib" prefix so the DLL/.so name matches cl_main.c's "renderer_%s".
+    set_target_properties(${RENDERER_VK_BINARY} PROPERTIES PREFIX "")
 
     set_output_dirs(${RENDERER_VK_BINARY})
 

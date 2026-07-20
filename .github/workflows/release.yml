@@ -53,7 +53,8 @@ jobs:
           path: |
             build/Release/**/*.dll
             build/Release/**/trinityvr.exe
-            build/Release/**/gltrinityvr.exe
+            build/Release/**/renderer_vulkan.dll
+            build/Release/**/renderer_opengl2.dll
             build/Release/**/*.pk3
           if-no-files-found: error
           retention-days: 5
@@ -97,7 +98,8 @@ jobs:
           path: |
             build/Release/**/*.dll
             build/Release/**/trinityvr.exe
-            build/Release/**/gltrinityvr.exe
+            build/Release/**/renderer_vulkan.dll
+            build/Release/**/renderer_opengl2.dll
             build/Release/**/*.pk3
           if-no-files-found: error
           retention-days: 5
@@ -157,7 +159,8 @@ jobs:
           path: |
             build/Release/**/*.so
             build/Release/**/trinityvr
-            build/Release/**/gltrinityvr
+            build/Release/**/renderer_vulkan.so
+            build/Release/**/renderer_opengl2.so
             build/Release/**/*.pk3
           if-no-files-found: error
           retention-days: 5
@@ -219,13 +222,11 @@ jobs:
         run: |
           for dir in windows-msvc windows-mingw; do
             if [ -d "$dir" ]; then
-              find "$dir" -name trinityvr.exe   -exec sh -c 'cp "$1" "$(dirname "$1")/q3vr.exe"'   _ {} \;
-              find "$dir" -name gltrinityvr.exe -exec sh -c 'cp "$1" "$(dirname "$1")/glq3vr.exe"' _ {} \;
+              find "$dir" -name trinityvr.exe -exec sh -c 'cp "$1" "$(dirname "$1")/q3vr.exe"' _ {} \;
             fi
           done
           if [ -d linux ]; then
-            find linux -name trinityvr   -exec sh -c 'cp "$1" "$(dirname "$1")/q3vr"'   _ {} \;
-            find linux -name gltrinityvr -exec sh -c 'cp "$1" "$(dirname "$1")/glq3vr"' _ {} \;
+            find linux -name trinityvr -exec sh -c 'cp "$1" "$(dirname "$1")/q3vr"' _ {} \;
           fi
 
       - name: Create archives
@@ -236,12 +237,9 @@ jobs:
           7z a -r q3vr-linux-x86_64.zip           ./linux/*
 
           # Remove the legacy-named copies so the canonical (trinityvr-*) archives stay clean.
-          find windows-msvc  -name 'q3vr.exe'   -delete
-          find windows-msvc  -name 'glq3vr.exe' -delete
-          find windows-mingw -name 'q3vr.exe'   -delete
-          find windows-mingw -name 'glq3vr.exe' -delete
-          find linux         -name 'q3vr'       -delete
-          find linux         -name 'glq3vr'     -delete
+          find windows-msvc  -name 'q3vr.exe' -delete
+          find windows-mingw -name 'q3vr.exe' -delete
+          find linux         -name 'q3vr'     -delete
 
           7z a -r trinityvr-windows-msvc-x86_64.zip  ./windows-msvc/*
           7z a -r trinityvr-windows-mingw-x86_64.zip ./windows-mingw/*

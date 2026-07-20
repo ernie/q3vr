@@ -23,12 +23,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_local.h"
 #include "vk.h"
-#include "../vrcommon/vr_clientinfo.h"
-#include "../vrcommon/vr_gameplay.h"
 
 #include <string.h> // memcpy
 
-extern vr_clientinfo_t vr;
 extern cvar_t *vr_worldscale;
 extern cvar_t *vr_worldscaleScaler;
 
@@ -446,7 +443,7 @@ static void R_RotateForViewer( void )
 		VectorCopy(tr.viewParms.or.axis[1], axis[1]);
 		VectorCopy(tr.viewParms.or.axis[2], axis[2]);
 
-		if ((eye < 2) && !VR_ShouldDisableStereo())
+		if ((eye < 2) && !ri.VR_ShouldDisableStereo())
 		{
 			// Apply stereo eye offset for IPD
 			// The eye offset must be in HEAD-LOCAL space, not world space.

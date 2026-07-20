@@ -1,26 +1,8 @@
 #ifndef __VR_VK_TYPES
 #define __VR_VK_TYPES
 
-// This header is ONLY for Vulkan-specific VR types.
-// It must set up Vulkan graphics API binding for OpenXR.
-
-#include <vulkan/vulkan.h>
-
-// Platform defines for OpenXR (must be before openxr.h)
-#if defined(WIN32)
-#include "unknwn.h"
-#define XR_USE_PLATFORM_WIN32
-#elif defined(__ANDROID__)
-#define XR_USE_PLATFORM_ANDROID
-#else
-#include <X11/Xlib.h>
-#define XR_USE_PLATFORM_XLIB
-#endif
-
-// Vulkan graphics API binding - required for XrGraphicsRequirementsVulkan2KHR, etc.
-#define XR_USE_GRAPHICS_API_VULKAN
-#include <openxr/openxr.h>
-#include <openxr/openxr_platform.h>
+// vr_types.h sets up both graphics APIs' OpenXR platform types
+#include "../vrcommon/vr_types.h"
 
 // Vulkan graphics requirements from OpenXR (XR_KHR_vulkan_enable2)
 typedef struct {

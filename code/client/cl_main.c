@@ -32,12 +32,22 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../sys/sys_loadlib.h"
 
 #include "../vrcommon/vr_cvars.h"
+#include "../vrcommon/vr_clientinfo.h"
+#include "../vrcommon/vr_gameplay.h"
+#include "../vrcommon/vr_backend.h"
+#include "../vrcommon/vr_base.h"
 #include "../renderercommon/tr_common.h"
 
-// VR Vulkan accessors and platform functions
-// For Vulkan builds, implemented in vrvk/vr_vk.c and sdl/sdl_glimp.c
-// For OpenGL builds, returns NULL (Vulkan not available)
-#ifdef USE_VULKAN
+extern vr_clientinfo_t vr;
+
+// Backend accessors (implemented in vrvk/vr_vk.c and vrgl2/vr_gl.c). Declared
+// here rather than including both backend headers, whose type headers define a
+// conflicting VR_SwapchainInfos_s tag and cannot coexist in one TU.
+const vr_backend_t* VRVK_GetBackend( void );
+const vr_backend_t* VRGL_GetBackend( void );
+
+// VR Vulkan accessors and platform functions, implemented in vrvk/vr_vk.c and
+// sdl/sdl_glimp.c (both compiled into the client).
 #include <vulkan/vulkan.h>
 extern const void* VR_Vulkan_GetDeviceInfo(void);
 extern const void* VR_Vulkan_GetSwapchainInfo(void);
@@ -45,11 +55,6 @@ extern qboolean VR_GetVirtualScreenMatrices(float eyeProj[2][16], float screenMo
 extern void VKimp_Init(glconfig_t *config);
 extern void VKimp_Shutdown(qboolean unloadDLL);
 extern qboolean VK_CreateSurface(void *instance, void *pSurface);
-#else
-static const void* VR_Vulkan_GetDeviceInfo(void) { return NULL; }
-static const void* VR_Vulkan_GetSwapchainInfo(void) { return NULL; }
-static qboolean VR_GetVirtualScreenMatrices(float eyeProj[2][16], float screenModelView[16], float floorModelView[16]) { return qfalse; }
-#endif
 
 #include <SDL.h>
 
@@ -3075,9 +3080,9 @@ Platform wrapper functions for Quake3e-style refimport_t
 ============
 */
 static void CL_GLimp_Init_Wrapper( glconfig_t *config ) {
-	// Quake3e passes glconfig pointer, Q3VR's GLimp_Init takes fixedFunction boolean
-	// For Q3VR, we use fixedFunction = qfalse (modern OpenGL)
-	GLimp_Init( qfalse );
+	// Pass the renderer's glconfig_t through; the client-side glimp fills it via
+	// its glimp_config pointer. fixedFunction = qfalse (modern OpenGL).
+	GLimp_Init( config, qfalse );
 }
 
 static void CL_GLimp_Shutdown_Wrapper( qboolean unloadDLL ) {
@@ -3106,7 +3111,7 @@ void CL_InitRef( void ) {
 	Com_Printf( "----- Initializing Renderer ----\n" );
 
 #ifdef USE_RENDERER_DLOPEN
-	cl_renderer = Cvar_Get("cl_renderer", "opengl2", CVAR_ARCHIVE | CVAR_LATCH);
+	cl_renderer = Cvar_Get("cl_renderer", "vulkan", CVAR_ARCHIVE | CVAR_LATCH);
 
 	Com_sprintf(dllName, sizeof(dllName), "renderer_%s" DLL_EXT, cl_renderer->string);
 
@@ -3130,6 +3135,17 @@ void CL_InitRef( void ) {
 	{
 		Com_Error(ERR_FATAL, "Can't load symbol GetRefAPI: '%s'",  Sys_LibraryError());
 	}
+
+	// Must precede GetRefAPI: renderer init pulls XR resources through the backend.
+	if ( !Q_stricmp( cl_renderer->string, "vulkan" ) ) {
+		VR_SetBackend( VRVK_GetBackend() );
+	} else {
+		VR_SetBackend( VRGL_GetBackend() );
+	}
+
+	// Renderer init pulls the XR-created graphics device (vk_initialize), so
+	// this must complete before GetRefAPI; VR_EnterVR's call is an idempotent guard.
+	VR_EnsureGraphicsInitialized();
 #endif
 
 	refImport.Cmd_AddCommand = Cmd_AddCommand;
@@ -3207,17 +3223,10 @@ void CL_InitRef( void ) {
 	refImport.GLimp_InitVR = GLimp_InitVR;
 
 	// Vulkan platform functions
-#ifdef USE_VULKAN
 	refImport.VKimp_Init = VKimp_Init;
 	refImport.VKimp_Shutdown = VKimp_Shutdown;
 	refImport.VK_GetInstanceProcAddr = (void*(*)(void*, const char*))vkGetInstanceProcAddr;
 	refImport.VK_CreateSurface = VK_CreateSurface;
-#else
-	refImport.VKimp_Init = NULL;
-	refImport.VKimp_Shutdown = NULL;
-	refImport.VK_GetInstanceProcAddr = NULL;
-	refImport.VK_CreateSurface = NULL;
-#endif
 
 	// VR Vulkan accessors - renderer pulls XR-created resources during init
 	refImport.VR_Vulkan_GetDeviceInfo = VR_Vulkan_GetDeviceInfo;
@@ -3225,6 +3234,12 @@ void CL_InitRef( void ) {
 
 	// Virtual screen state query - renderer pulls the split virtual-screen transform
 	refImport.VR_GetVirtualScreenState = VR_GetVirtualScreenMatrices;
+
+	// VR client state + gameplay queries - renderer pulls instead of linking vrcommon directly
+	refImport.vrClientInfo = &vr;
+	refImport.VR_ShouldDisableStereo = VR_ShouldDisableStereo;
+	refImport.VR_InVirtualScreen = VR_Gameplay_ShouldRenderInVirtualScreen;
+	refImport.VR_GL_GetStencilBits = VR_Backend_GetStencilBits;
 
 	ret = GetRefAPI( REF_API_VERSION, &refImport );
 
@@ -3643,6 +3658,7 @@ void CL_Init( void ) {
 	Cmd_AddCommand ("model", CL_SetModel_f );
 	Cmd_AddCommand ("video", CL_Video_f );
 	Cmd_AddCommand ("stopvideo", CL_StopVideo_f );
+	Cmd_AddCommand ("minimize", GLimp_Minimize );
 	if( !com_dedicated->integer ) {
 		Cmd_AddCommand ("sayto", CL_Sayto_f );
 		Cmd_SetCommandCompletionFunc( "sayto", CL_CompletePlayerName );
@@ -3726,6 +3742,7 @@ void CL_Shutdown(char *finalmsg, qboolean disconnect, qboolean quit)
 	Cmd_RemoveCommand ("model");
 	Cmd_RemoveCommand ("video");
 	Cmd_RemoveCommand ("stopvideo");
+	Cmd_RemoveCommand ("minimize");
 
 	CL_ShutdownInput();
 	Con_Shutdown();

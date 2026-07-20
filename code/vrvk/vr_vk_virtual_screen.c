@@ -19,13 +19,13 @@ extern XrView views[2];
 extern uint32_t viewCount;
 
 
-void VR_VirtualScreen_Init(void)
+void VRVK_VirtualScreen_Init(void)
 {
 	VR_VirtualScreen_ResetPosition();
 }
 
 
-void VR_VirtualScreen_Destroy(void)
+void VRVK_VirtualScreen_Destroy(void)
 {
 	// Nothing to destroy - Vulkan resources are managed by the renderer
 }

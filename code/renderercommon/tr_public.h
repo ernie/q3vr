@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "tr_types.h"
 
-#define	REF_API_VERSION		9
+#define	REF_API_VERSION		10
 
 //
 // Shutdown codes for renderer shutdown
@@ -263,6 +263,18 @@ typedef struct {
 	// transform: a shared per-eye eyeProj pair (P_eye * eyeFromHead, XR meter
 	// space) plus one mono model-view (headView * model) per mesh
 	qboolean (*VR_GetVirtualScreenState)( float eyeProj[2][16], float screenModelView[16], float floorModelView[16] );
+
+	// Read-only view of the VR layer's per-frame client state (HMD pose, FOV,
+	// virtual-screen/zoom flags). Owned by the client; renderer must not write.
+	const struct vr_clientinfo_s *vrClientInfo;
+
+	// VR gameplay state queries (client-side vr_gameplay.c)
+	qboolean (*VR_ShouldDisableStereo)( void );
+	qboolean (*VR_InVirtualScreen)( void );
+
+	// GL backend: stencil bits chosen for the XR framebuffer (0 on Vulkan).
+	// Renderer copies into glConfig.stencilBits at XR-resource init.
+	int (*VR_GL_GetStencilBits)( void );
 } refimport_t;
 
 extern	refimport_t	ri;

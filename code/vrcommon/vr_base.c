@@ -2,6 +2,7 @@
 #include "../qcommon/qcommon.h"
 #include "../client/client.h"
 #include "vr_base.h"
+#include "vr_backend.h"
 #include "vr_clientinfo.h"
 #include "vr_shared.h"
 #include "vr_debug.h"
@@ -29,7 +30,7 @@ qboolean vr_shutdown = qfalse;
 static const char* requiredExtensionNames[MAX_REQUIRED_EXTENSIONS];
 static uint32_t numRequiredExtensions = 0;
 
-static VR_Bool VR_HasInstanceExtension(const char* name)
+VR_Bool VR_HasInstanceExtension(const char* name)
 {
 	uint32_t count = 0;
 	if (xrEnumerateInstanceExtensionProperties(NULL, 0, &count, NULL) != XR_SUCCESS || count == 0) {
@@ -63,27 +64,50 @@ static void VR_BuildExtensionList(void)
 {
 	numRequiredExtensions = 0;
 
-	requiredExtensionNames[numRequiredExtensions++] = VR_Graphics_GetExtensionName();
+	// Backend is not yet known (cl_renderer is read after Com_Init), so request
+	// both graphics-binding extensions the runtime advertises; the unused one is harmless.
+	if ( VR_HasInstanceExtension( XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME ) )
+		requiredExtensionNames[numRequiredExtensions++] = XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME;
+	if ( VR_HasInstanceExtension( XR_KHR_OPENGL_ENABLE_EXTENSION_NAME ) )
+		requiredExtensionNames[numRequiredExtensions++] = XR_KHR_OPENGL_ENABLE_EXTENSION_NAME;
+
 	requiredExtensionNames[numRequiredExtensions++] = XR_EXT_DEBUG_UTILS_EXTENSION_NAME;
 	requiredExtensionNames[numRequiredExtensions++] = XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME;
-#ifdef USE_VULKAN
-	// Quest supports format_list, SteamVR does not — only enable if advertised.
-	if (numRequiredExtensions < MAX_REQUIRED_EXTENSIONS &&
-		VR_HasInstanceExtension("XR_KHR_vulkan_swapchain_format_list"))
-	{
+
+	// Vulkan-only optional extensions (no-ops for the GL backend; instance-level,
+	// so they must be requested here even though the backend is chosen later)
+	if ( numRequiredExtensions < MAX_REQUIRED_EXTENSIONS &&
+		VR_HasInstanceExtension( "XR_KHR_vulkan_swapchain_format_list" ) )
 		requiredExtensionNames[numRequiredExtensions++] = "XR_KHR_vulkan_swapchain_format_list";
-	}
-	// Color-accurate wide gamut where the runtime supports it (Meta yes, SteamVR no).
-	if (numRequiredExtensions < MAX_REQUIRED_EXTENSIONS &&
-		VR_HasInstanceExtension("XR_FB_color_space"))
-	{
+	if ( numRequiredExtensions < MAX_REQUIRED_EXTENSIONS &&
+		VR_HasInstanceExtension( "XR_FB_color_space" ) )
 		requiredExtensionNames[numRequiredExtensions++] = "XR_FB_color_space";
-	}
-#endif
 }
 
 // Part of init
 void VR_InitInstanceInput( VR_Engine* );
+
+static qboolean vr_graphicsInitialized = qfalse;
+
+// Backend-specific XR graphics setup, deferred from VR_Init until the backend
+// (cl_renderer) is known. Idempotent.
+void VR_EnsureGraphicsInitialized( void )
+{
+	if ( vr_graphicsInitialized || vr_engine.appState.Instance == XR_NULL_HANDLE )
+		return;
+
+	XR_CHECK(
+		VR_Graphics_GetRequirements( vr_engine.appState.Instance, vr_engine.appState.SystemId ),
+		"Failed to get graphics requirements" );
+
+	VR_Graphics_PrintRequirements();
+
+	// Vulkan: creates VkInstance/VkDevice via xrCreateVulkanInstanceKHR /
+	// xrCreateVulkanDeviceKHR. OpenGL: no-op (context created by SDL later).
+	VR_Graphics_Init( vr_engine.appState.Instance, vr_engine.appState.SystemId );
+
+	vr_graphicsInitialized = qtrue;
+}
 
 VR_Engine* VR_Init( void )
 {
@@ -135,17 +159,6 @@ VR_Engine* VR_Init( void )
 
 	VR_GetSystemProperties(vr_engine.appState.Instance, vr_engine.appState.SystemId, &vr_engine.systemProperties);
 
-	// Get graphics requirements via the graphics-specific implementation
-	XR_CHECK(
-		VR_Graphics_GetRequirements(vr_engine.appState.Instance, vr_engine.appState.SystemId),
-		"Failed to get graphics requirements");
-
-	// Print graphics requirements debug info
-	VR_Graphics_PrintRequirements();
-
-	// Initialize graphics subsystem (Vulkan: creates VkInstance/VkDevice, OpenGL: no-op)
-	VR_Graphics_Init(vr_engine.appState.Instance, vr_engine.appState.SystemId);
-
 	fprintf(stderr,
 		"[OpenXR] system properties:\n"
 		"  System name: %s\n"
@@ -193,6 +206,7 @@ void VR_Destroy( VR_Engine* engine )
 		VR_DestroyDebugUtilsMessenger(engine->appState.Instance, &engine->appState.DebugUtilsMessenger);
 		xrDestroyInstance(engine->appState.Instance);
 		memset(&vr_engine, 0, sizeof(vr_engine));
+		vr_graphicsInitialized = qfalse;
 	}
 	vr_initialized = qfalse;
 }
@@ -204,6 +218,8 @@ void VR_PrepareForShutdown( void )
 
 void VR_EnterVR( VR_Engine* engine )
 {
+	VR_EnsureGraphicsInitialized();
+
 	if (engine->appState.Session)
 	{
 		fprintf(stderr, "VR_EnterVR called with existing session");

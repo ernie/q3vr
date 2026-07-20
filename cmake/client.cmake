@@ -44,6 +44,8 @@ set(CLIENT_SOURCES
     ${SOURCE_DIR}/client/snd_openal.c
     ${SOURCE_DIR}/sdl/sdl_input.c
     ${SOURCE_DIR}/sdl/sdl_snd.c
+    ${SOURCE_DIR}/sdl/sdl_glimp.c
+    ${SOURCE_DIR}/sdl/sdl_gamma.c
     ${CLIENT_PLATFORM_SOURCES}
 )
 
@@ -129,23 +131,6 @@ function(add_client_executable TARGET_NAME RENDERER_TYPE VR_SOURCES_LIST)
 
     set_output_dirs(${TARGET_NAME})
 
-    if(NOT USE_RENDERER_DLOPEN)
-        if(RENDERER_TYPE STREQUAL "VK")
-            target_sources(${TARGET_NAME} PRIVATE ${RENDERER_VK_BINARY_SOURCES})
-            target_include_directories(${TARGET_NAME} PRIVATE ${RENDERER_INCLUDE_DIRS} ${VR_VK_INCLUDE_DIRS})
-            target_compile_definitions(${TARGET_NAME} PRIVATE ${RENDERER_DEFINITIONS} ${RENDERER_VK_DEFINITIONS})
-            target_compile_options(${TARGET_NAME} PRIVATE ${RENDERER_COMPILE_OPTIONS})
-            target_link_libraries(${TARGET_NAME} PRIVATE ${RENDERER_LIBRARIES} ${RENDERER_VK_LIBRARIES})
-            add_dependencies(${TARGET_NAME} compile_shaders)
-        elseif(RENDERER_TYPE STREQUAL "GL2")
-            target_sources(${TARGET_NAME} PRIVATE ${RENDERER_GL2_BINARY_SOURCES})
-            target_include_directories(${TARGET_NAME} PRIVATE ${RENDERER_INCLUDE_DIRS} ${VR_INCLUDE_DIRS})
-            target_compile_definitions(${TARGET_NAME} PRIVATE ${RENDERER_DEFINITIONS})
-            target_compile_options(${TARGET_NAME} PRIVATE ${RENDERER_COMPILE_OPTIONS})
-            target_link_libraries(${TARGET_NAME} PRIVATE ${RENDERER_LIBRARIES})
-        endif()
-    endif()
-
     foreach(LIBRARY IN LISTS CLIENT_DEPLOY_LIBRARIES)
         add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy
@@ -158,21 +143,10 @@ function(add_client_executable TARGET_NAME RENDERER_TYPE VR_SOURCES_LIST)
     endforeach()
 endfunction()
 
-# Build Vulkan renderer executable (trinityvr.exe)
-if(BUILD_RENDERER_VK)
-    # Use Vulkan-specific VR sources (vrcommon + vrvk)
-    add_client_executable(${CLIENT_NAME} "VK" "${VR_SOURCES_VK}")
-    set(PRIMARY_CLIENT ${CLIENT_NAME})
-endif()
-
-# Build OpenGL renderer executable (gltrinityvr.exe)
-if(BUILD_RENDERER_GL2)
-    # Use OpenGL-specific VR sources (vrcommon + vrgl2)
-    add_client_executable(gl${CLIENT_NAME} "GL2" "${VR_SOURCES}")
-    if(NOT DEFINED PRIMARY_CLIENT)
-        set(PRIMARY_CLIENT gl${CLIENT_NAME})
-    endif()
-endif()
+# Single client executable (trinityvr.exe); both renderers load as DLLs at
+# runtime and the matching VR backend is selected via cl_renderer.
+add_client_executable(${CLIENT_NAME} "" "${VR_SOURCES}")
+set(PRIMARY_CLIENT ${CLIENT_NAME})
 
 # Copy assets to output dir (attach to primary client only)
 if(DEFINED PRIMARY_CLIENT)

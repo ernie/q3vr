@@ -4,6 +4,10 @@ include_guard(GLOBAL)
 find_package(OpenXR CONFIG REQUIRED)
 list(APPEND VR_LIBRARIES OpenXR::openxr_loader OpenXR::headers)
 
+# vr_types.h includes vulkan.h in every configuration (runtime backend dispatch)
+find_package(Vulkan REQUIRED)
+list(APPEND VR_INCLUDE_DIRS ${Vulkan_INCLUDE_DIRS})
+
 # vrcommon - Renderer-agnostic VR sources (shared by all renderers)
 set(VR_COMMON_SOURCES
     ${SOURCE_DIR}/vrcommon/vr_cvars.c
@@ -22,6 +26,7 @@ set(VR_COMMON_SOURCES
     ${SOURCE_DIR}/vrcommon/vr_render_loop.c
     ${SOURCE_DIR}/vrcommon/vr_session.c
     ${SOURCE_DIR}/vrcommon/vr_virtual_screen.c
+    ${SOURCE_DIR}/vrcommon/vr_backend.c
 )
 
 # vrgl2 - OpenGL-specific VR sources
@@ -35,8 +40,6 @@ set(VR_GL2_SOURCES
 )
 
 # vrvk - Vulkan-specific VR sources (XR_KHR_vulkan_enable2 integration)
-# These are NOT added to VR_SOURCES - they are used only by renderer_vk.cmake
-# via VR_VK_SOURCES variable
 set(VR_VK_SOURCES
     ${SOURCE_DIR}/vrvk/vr_vk.c
     ${SOURCE_DIR}/vrvk/vr_vk_debug.c
@@ -46,26 +49,18 @@ set(VR_VK_SOURCES
     ${SOURCE_DIR}/vrvk/vr_vk_virtual_screen.c
 )
 
-# VR_SOURCES is used by the client executable
-# It should contain vrcommon (always) + vrgl2 (for OpenGL clients)
-# Vulkan-specific VR code (vrvk) is only linked into renderer_vulkan.dll
-set(VR_SOURCES ${VR_COMMON_SOURCES})
+# The single client links every VR backend (vrcommon + vrgl2 + vrvk); the
+# renderer DLL and matching backend are chosen at runtime via cl_renderer.
+set(VR_SOURCES ${VR_COMMON_SOURCES} ${VR_GL2_SOURCES} ${VR_VK_SOURCES})
 
-# Add vrcommon to include directories (always needed)
-list(APPEND VR_INCLUDE_DIRS ${SOURCE_DIR}/vrcommon)
+# The client links both graphics loaders: vrvk makes Vulkan calls (cl_main.c
+# needs vkGetInstanceProcAddr) and vrgl2 makes raw gl* calls.
+find_package(OpenGL REQUIRED)
+list(APPEND VR_LIBRARIES Vulkan::Vulkan ${OPENGL_LIBRARIES})
 
-if(BUILD_RENDERER_GL2)
-    # OpenGL build gets vrgl2 sources for the client
-    list(APPEND VR_SOURCES ${VR_GL2_SOURCES})
-    find_package(OpenGL REQUIRED)
-    list(APPEND VR_LIBRARIES ${OPENGL_LIBRARIES})
-    list(APPEND VR_INCLUDE_DIRS ${SOURCE_DIR}/vrgl2)
-endif()
-
-# VR_SOURCES_VK combines vrcommon + vrvk for Vulkan clients
-if(BUILD_RENDERER_VK)
-    set(VR_SOURCES_VK ${VR_COMMON_SOURCES} ${VR_VK_SOURCES})
-    list(APPEND VR_VK_INCLUDE_DIRS ${SOURCE_DIR}/vrcommon ${SOURCE_DIR}/vrvk)
-endif()
+list(APPEND VR_INCLUDE_DIRS
+    ${SOURCE_DIR}/vrcommon
+    ${SOURCE_DIR}/vrgl2
+    ${SOURCE_DIR}/vrvk)
 
 list(APPEND RENDERER_INCLUDE_DIRS ${VR_INCLUDE_DIRS})

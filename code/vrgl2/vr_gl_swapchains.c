@@ -1,14 +1,22 @@
 #include "vr_gl_swapchains.h"
 
-#include "../renderergl2/tr_local.h"
+#include "../renderercommon/tr_common.h"   // qgl function-pointer declarations
 
 #include "../vrcommon/vr_base.h"
+#include "../vrcommon/vr_clientinfo.h"
 #include "../vrcommon/vr_macros.h"
 #include "../vrcommon/vr_swapchains.h"
 
 extern cvar_t *vr_desktopContentFit;
 extern cvar_t *vr_desktopMenuStyle;
 extern cvar_t *vr_desktopMode;
+
+static int vrgl_stencilBits = 0;
+
+int VRGL_GetStencilBits( void )
+{
+	return vrgl_stencilBits;
+}
 
 //
 // OpenGL-specific format selection
@@ -284,11 +292,11 @@ VR_SwapchainInfos* VR_CreateSwapchains(XrInstance instance, XrSystemId systemId,
 				supersampledWidth, supersampledHeight, viewCount,
 				0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
 			swapchains->depthAttachment = GL_DEPTH_ATTACHMENT;
-			glConfig.stencilBits = 0;
+			vrgl_stencilBits = 0;
 			fprintf(stderr, "[OpenXR] Created native depth texture: %dx%d, %u layers (no stencil)\n", supersampledWidth, supersampledHeight, viewCount);
 		} else {
 			swapchains->depthAttachment = GL_DEPTH_STENCIL_ATTACHMENT;
-			glConfig.stencilBits = 8;
+			vrgl_stencilBits = 8;
 			fprintf(stderr, "[OpenXR] Created native depth-stencil texture: %dx%d, %u layers (8-bit stencil)\n", supersampledWidth, supersampledHeight, viewCount);
 		}
 	}

@@ -74,8 +74,8 @@ XrResult VR_GL_CreateSession(XrInstance instance, XrSystemId systemId, XrSession
 	return xrCreateSession(instance, &sessionCreateInfo, session);
 }
 
-// VR_Graphics interface implementation
-XrResult VR_Graphics_CreateSession(XrInstance instance, XrSystemId systemId, XrSession* session)
+// vr_backend_t interface implementation
+XrResult VRGL_CreateSession(XrInstance instance, XrSystemId systemId, XrSession* session)
 {
 	return VR_GL_CreateSession(instance, systemId, session);
 }

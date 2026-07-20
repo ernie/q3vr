@@ -8,10 +8,10 @@
 
 #include "../vrcommon/vr_macros.h"
 #include "../vrcommon/vr_graphics.h"
-#include "../renderergl2/tr_local.h"
+#include "../renderercommon/tr_common.h"   // qgl function-pointer declarations
 
-void VR_VirtualScreen_Init(void);
-void VR_VirtualScreen_Destroy(void);
+void VRGL_VirtualScreen_Init(void);
+void VRGL_VirtualScreen_Destroy(void);
 void VR_VirtualScreen_Draw(XrView* views, uint32_t viewCount, GLuint virtualScreenImage);
 
 #endif

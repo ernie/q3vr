@@ -9,27 +9,17 @@
 #define XR_USE_PLATFORM_WIN32
 #elif defined(__ANDROID__)
 #define XR_USE_PLATFORM_ANDROID
-#else
-#include <X11/Xlib.h>
-#ifndef USE_VULKAN
-// GLX types needed for XrGraphicsBindingOpenGLXlibKHR in openxr_platform.h
-#include <GL/glx.h>
-#define XR_USE_PLATFORM_XLIB
 #endif
-#endif
+// Non-Windows desktop: no platform define here — the OpenGL backend's Xlib
+// setup (XR_USE_PLATFORM_XLIB) lives in vrgl2/vr_gl_types.h, GL-side TUs only.
 
-// Graphics API defines for OpenXR
-// Must be defined before including openxr_platform.h
-#ifdef USE_VULKAN
-// For Vulkan builds, vulkan.h MUST be included before openxr_platform.h
-// so that OpenXR can use Vulkan types (VkInstance, VkImage, etc.)
+// Both graphics APIs' OpenXR types are enabled; the active backend is chosen
+// at runtime (see vr_backend.h). vulkan.h must precede openxr_platform.h.
+// No GL header here — renderer TUs carrying their own GL-type shims (e.g.
+// renderervk/tr_local.h) would collide with real GL typedefs pulled in here.
 #include <vulkan/vulkan.h>
 #define XR_USE_GRAPHICS_API_VULKAN
-#else
-// For OpenGL builds, SDL_opengl.h provides the GL types
-#include "SDL_opengl.h"
 #define XR_USE_GRAPHICS_API_OPENGL
-#endif
 
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>

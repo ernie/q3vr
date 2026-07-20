@@ -36,31 +36,17 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../renderercommon/iqm.h"
 #include "../renderercommon/qgl.h"
 #include "../vrcommon/vr_clientinfo.h"
+// The VR layer's client state, pulled through the refimport table. The macro
+// preserves the historical direct-global spelling at ~40 read sites.
+#define vr (*ri.vrClientInfo)
 
 extern cvar_t *vr_hudDepth;
 extern cvar_t *vr_hudScale;
 extern cvar_t *vr_currentHudDepth;
 extern cvar_t *vr_currentHudDrawStatus;
-extern vr_clientinfo_t vr;
 
-#define GLE(ret, name, ...) extern name##proc * qgl##name;
-QGL_1_1_PROCS;
-QGL_DESKTOP_1_1_PROCS;
-QGL_1_3_PROCS;
-QGL_1_5_PROCS;
-QGL_2_0_PROCS;
-QGL_3_0_PROCS;
-QGL_ARB_occlusion_query_PROCS;
-QGL_ARB_framebuffer_object_PROCS;
-QGL_ARB_vertex_array_object_PROCS;
-QGL_EXT_direct_state_access_PROCS;
-QGL_3_1_PROCS;
-QGL_3_2_PROCS;
-QGL_4_2_PROCS;
-QGL_4_3_PROCS;
-QGL_4_5_PROCS;
-QGL_OVR_multiview_PROCS;
-#undef GLE
+// qgl* function-pointer extern declarations now live in renderercommon/qgl.h
+// so non-renderergl2 TUs (e.g. vrgl2) can use them without this header.
 
 #define GL_INDEX_TYPE		GL_UNSIGNED_SHORT
 typedef unsigned short glIndex_t;
@@ -2106,6 +2092,9 @@ IMPLEMENTATION SPECIFIC FUNCTIONS
 
 void		GLimp_InitExtraExtensions( void );
 void		GLimp_InitVR( void );
+#ifdef USE_RENDERER_DLOPEN
+void		QGL_InitRendererProcs( void );
+#endif
 
 /*
 ====================================================================

@@ -11,11 +11,6 @@ set(RENDERER_COMMON_SOURCES
     ${SOURCE_DIR}/renderercommon/puff.c
 )
 
-set(SDL_RENDERER_SOURCES
-    ${SOURCE_DIR}/sdl/sdl_gamma.c
-    ${SOURCE_DIR}/sdl/sdl_glimp.c
-)
-
 set(DYNAMIC_RENDERER_SOURCES
     ${SOURCE_DIR}/renderercommon/tr_subs.c
     ${SOURCE_DIR}/qcommon/q_shared.c
@@ -28,12 +23,6 @@ endif()
 
 if(USE_RENDERER_DLOPEN)
     list(APPEND RENDERER_DEFINITIONS USE_RENDERER_DLOPEN)
-else()
-    # Q3VR: Multiple static renderers are allowed - each creates a separate executable
-    # (trinityvr.exe for Vulkan, gltrinityvr.exe for OpenGL)
-    if(NOT BUILD_RENDERER_GL2 AND NOT BUILD_RENDERER_VK)
-        message(FATAL_ERROR "At least one renderer must be enabled (BUILD_RENDERER_GL2 or BUILD_RENDERER_VK)")
-    endif()
 endif()
 
 list(APPEND RENDERER_LIBRARIES ${COMMON_LIBRARIES})

@@ -47,7 +47,8 @@ jobs:
           path: |
             build/Release/**/*.dll
             build/Release/**/trinityvr.exe
-            build/Release/**/gltrinityvr.exe
+            build/Release/**/renderer_vulkan.dll
+            build/Release/**/renderer_opengl2.dll
             build/Release/**/*.pk3
           retention-days: 5
 
@@ -107,6 +108,7 @@ jobs:
           path: |
             build/Release/**/*.so
             build/Release/**/trinityvr
-            build/Release/**/gltrinityvr
+            build/Release/**/renderer_vulkan.so
+            build/Release/**/renderer_opengl2.so
             build/Release/**/*.pk3
           retention-days: 5

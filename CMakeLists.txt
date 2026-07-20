@@ -14,14 +14,14 @@ project(${PROJECT_NAME} VERSION ${PROJECT_VERSION} LANGUAGES C CXX)
 
 option(BUILD_SERVER "Build dedicated server" OFF)
 option(BUILD_CLIENT "Build client" ON)
-option(BUILD_RENDERER_GL2 "Build GL2 renderer (gltrinityvr.exe)" ON)
-option(BUILD_RENDERER_VK "Build Vulkan renderer (trinityvr.exe)" ON)
+option(BUILD_RENDERER_GL2 "Build GL2 renderer module (renderer_opengl2)" ON)
+option(BUILD_RENDERER_VK "Build Vulkan renderer module (renderer_vulkan)" ON)
 option(BUILD_GAME_LIBRARIES "Build game module libraries" ON)
 option(BUILD_STANDALONE "Build binaries for standalone games" OFF)
 
-# Q3VR: Dynamic renderer loading is not supported due to tight VR integration
-# Both renderers are statically linked into separate executables (trinityvr.exe and gltrinityvr.exe)
-set(USE_RENDERER_DLOPEN OFF CACHE BOOL "Dynamically load renderer - NOT SUPPORTED in Q3VR" FORCE)
+# Single client binary + renderer DLLs; both VR backends are compiled in and
+# the matching one is selected at runtime via cl_renderer.
+option(USE_RENDERER_DLOPEN "Dynamically load renderer" ON)
 option(USE_OPENAL "OpenAL audio" ON)
 option(USE_OPENAL_DLOPEN "Dynamically load OpenAL" ON)
 option(USE_HTTP "HTTP download support" ON)

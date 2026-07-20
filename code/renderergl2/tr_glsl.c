@@ -23,9 +23,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "tr_local.h"
 
 #include "tr_dsa.h"
-#include "../vrcommon/vr_base.h"
-#include "../vrcommon/vr_clientinfo.h"
-#include "../vrcommon/vr_gameplay.h"
 
 
 extern const char *fallbackShader_bokeh_vp;
@@ -252,7 +249,7 @@ void GLSL_ViewMatricesUniformBuffer(const float eyeView[2][16], const float mode
       case VR_PROJECTION:
         {
           // Mono view when stereo disabled (weapon zoom, virtual screen)
-          if (VR_ShouldDisableStereo())
+          if (ri.VR_ShouldDisableStereo())
           {
             Mat4Copy(modelView, viewMatrices);
             Mat4Copy(modelView, viewMatrices+16);
@@ -1356,7 +1353,7 @@ void GLSL_InitGPUShaders(void)
 
 
 		// HACK: use in main menu simple light model (to prevent issue with missing models textures)
-		if (Cvar_Get("r_uiFullScreen", "1", 0)->integer)
+		if (ri.Cvar_Get("r_uiFullScreen", "1", 0)->integer)
 		{
 			Q_strcat(extradefines, 1024, "#define USE_MENU_LIGHT\n");
 		}
@@ -1861,15 +1858,19 @@ void GLSL_PrepareUniformBuffers(void)
           hudOrthoProjectionMatrix, hudOrthoProjectionMatrix);
 
   // VR_PROJECTION - 3D world rendering
-  // Weapon zoom uses cyclopean approach: symmetric projection from center viewpoint,
-  // both eyes get identical content, compositor receives averaged FOV for both eyes
+  // Cyclopean paths (zoom, virtual screen), matching vk_update_mvp: off-center
+  // terms zeroed — the zoom quad layer has no fov metadata to compensate.
   if (vr.virtual_screen || vr.weapon_zoomed)
   {
-    // Virtual screen: symmetric projection (content on virtual screen quad)
-    // Compensate for non-square framebuffer (matches vk_update_mvp virtual_screen path)
     float proj[16];
     Com_Memcpy(proj, tr.vrParms.projection, sizeof(proj));
-    proj[5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
+    if (vr.weapon_zoomed) {
+      proj[5] *= (float)glConfig.vidWidth / (float)glConfig.vidHeight;
+    } else {
+      proj[5] *= (float)glConfig.vidHeight / (float)glConfig.vidWidth;
+    }
+    proj[8] = 0.0f;
+    proj[9] = 0.0f;
     GLSL_ProjectionMatricesUniformBuffer(projectionMatricesBuffer[VR_PROJECTION],
             proj, proj);
   }
@@ -1917,7 +1918,7 @@ static GLuint GLSL_CalculateProjection() {
   // Menu 3D models (RDF_NOWORLDMODEL) on virtual screen need projection built from their FOV
   // This ensures menu models render at the correct size regardless of HMD FOV
   if (!glState.isDrawingHUD &&
-      VR_Gameplay_ShouldRenderInVirtualScreen() &&
+      ri.VR_InVirtualScreen() &&
       (backEnd.refdef.rdflags & RDF_NOWORLDMODEL))
   {
     result = MENU_PROJECTION;

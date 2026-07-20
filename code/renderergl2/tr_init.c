@@ -75,6 +75,14 @@ cvar_t	*r_measureOverdraw;
 cvar_t	*r_inGameVideo;
 cvar_t	*r_fastsky;
 cvar_t	*vr_thirdPersonSpectator;
+
+// Client-owned VR cvars (registered in vrcommon/vr_cvars.c); the DLL renderer
+// holds its own handles, obtained via ri.Cvar_Get in R_Register.
+cvar_t	*vr_worldscale;
+cvar_t	*vr_worldscaleScaler;
+cvar_t	*vr_hudScale;
+cvar_t	*vr_currentHudDrawStatus;
+cvar_t	*vr_currentHudDepth;
 cvar_t	*r_drawSun;
 cvar_t	*r_dynamiclight;
 cvar_t	*r_dlightBacks;
@@ -273,7 +281,12 @@ static void InitOpenGL( void )
 	{
 		GLint		temp;
 		
-		GLimp_Init( qfalse );
+		ri.GLimp_Init( &glConfig );
+#ifdef USE_RENDERER_DLOPEN
+		// The client owns the GL context and its own qgl* set; a DLL renderer
+		// resolves its own function pointers through ri.GL_GetProcAddress.
+		QGL_InitRendererProcs();
+#endif
 		GLimp_InitExtraExtensions();
 
 		glConfig.textureEnvAddAvailable = qtrue;
@@ -316,7 +329,7 @@ static void InitOpenGL( void )
 	// set default state
 	GL_SetDefaultState();
 
-	GLimp_InitVR();
+	ri.GLimp_InitVR();
 }
 
 /*
@@ -1246,6 +1259,14 @@ void R_Register( void )
 	// Renderer identification for cgame runtime checks
 	ri.Cvar_Get("r_opengl", "1", CVAR_ROM);
 
+	// VR cvars are engine singletons (vrcommon/vr_cvars.c); obtain handles here.
+	// Flags 0 — the owning registration supplies the real flags.
+	vr_worldscale           = ri.Cvar_Get( "vr_worldscale",           "32.0", 0 );
+	vr_worldscaleScaler     = ri.Cvar_Get( "vr_worldscaleScaler",     "1.0",  0 );
+	vr_hudScale             = ri.Cvar_Get( "vr_hudScale",             "1.0",  0 );
+	vr_currentHudDrawStatus = ri.Cvar_Get( "vr_currentHudDrawStatus", "1",    0 );
+	vr_currentHudDepth      = ri.Cvar_Get( "vr_currentHudDepth",      "3",    0 );
+
 	//
 	// latched and archived variables
 	//
@@ -1483,7 +1504,6 @@ void R_Register( void )
 	ri.Cmd_AddCommand( "screenshot", R_ScreenShot_f );
 	ri.Cmd_AddCommand( "screenshotJPEG", R_ScreenShotJPEG_f );
 	ri.Cmd_AddCommand( "gfxinfo", GfxInfo_f );
-	ri.Cmd_AddCommand( "minimize", GLimp_Minimize );
 	ri.Cmd_AddCommand( "gfxmeminfo", GfxMemInfo_f );
 	ri.Cmd_AddCommand( "exportCubemaps", R_ExportCubemaps_f );
 }
@@ -1633,7 +1653,6 @@ void RE_Shutdown( refShutdownCode_t code ) {
 	ri.Cmd_RemoveCommand( "screenshot" );
 	ri.Cmd_RemoveCommand( "screenshotJPEG" );
 	ri.Cmd_RemoveCommand( "gfxinfo" );
-	ri.Cmd_RemoveCommand( "minimize" );
 	ri.Cmd_RemoveCommand( "gfxmeminfo" );
 	ri.Cmd_RemoveCommand( "exportCubemaps" );
 
@@ -1658,7 +1677,7 @@ void RE_Shutdown( refShutdownCode_t code ) {
 
 	// shut down platform specific OpenGL stuff
 	if ( destroyWindow ) {
-		GLimp_Shutdown();
+		ri.GLimp_Shutdown( code == REF_UNLOAD_DLL ? qtrue : qfalse );
 
 		Com_Memset( &glConfig, 0, sizeof( glConfig ) );
 		Com_Memset( &glRefConfig, 0, sizeof( glRefConfig ) );

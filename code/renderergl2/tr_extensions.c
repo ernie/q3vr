@@ -369,4 +369,42 @@ done:
 	}
 
 #undef GLE
+
+	// Anisotropic filtering + edge-clamp probing: moved from sdl_glimp.c since
+	// these write renderer-owned globals a DLL cannot see.
+	textureFilterAnisotropic = qfalse;
+	if ( SDL_GL_ExtensionSupported( "GL_EXT_texture_filter_anisotropic" ) )
+	{
+		if ( r_ext_texture_filter_anisotropic->integer ) {
+			qglGetIntegerv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, (GLint *)&maxAnisotropy );
+			if ( maxAnisotropy <= 0 ) {
+				ri.Printf( PRINT_ALL, "...GL_EXT_texture_filter_anisotropic not properly supported!\n" );
+				maxAnisotropy = 0;
+			}
+			else
+			{
+				ri.Printf( PRINT_ALL, "...using GL_EXT_texture_filter_anisotropic (max: %i)\n", maxAnisotropy );
+				textureFilterAnisotropic = qtrue;
+			}
+		}
+		else
+		{
+			ri.Printf( PRINT_ALL, "...ignoring GL_EXT_texture_filter_anisotropic\n" );
+		}
+	}
+	else
+	{
+		ri.Printf( PRINT_ALL, "...GL_EXT_texture_filter_anisotropic not found\n" );
+	}
+
+	haveClampToEdge = qfalse;
+	if ( QGL_VERSION_ATLEAST( 1, 2 ) || QGLES_VERSION_ATLEAST( 1, 0 ) || SDL_GL_ExtensionSupported( "GL_SGIS_texture_edge_clamp" ) )
+	{
+		ri.Printf( PRINT_ALL, "...using GL_SGIS_texture_edge_clamp\n" );
+		haveClampToEdge = qtrue;
+	}
+	else
+	{
+		ri.Printf( PRINT_ALL, "...GL_SGIS_texture_edge_clamp not found\n" );
+	}
 }
