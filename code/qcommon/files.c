@@ -1425,8 +1425,9 @@ long FS_FOpenFileRead(const char *filename, fileHandle_t *file, qboolean uniqueF
 FS_GetVMVRAPIVersion
 
 Scan a candidate .qvm (at the given searchpath) for the VR API sentinel
-string. Returns the declared MAJOR version (0 if the QVM is not VR-aware)
-and writes the minor to *outMinor. A sentinel with no ".minor" reads as .0.
+string. Returns the declared MAJOR version (0 if the QVM is not VR-aware,
+-1 if unreadable under pure/version restrictions) and writes the minor to
+*outMinor. A sentinel with no ".minor" reads as .0.
 =================
 */
 int FS_GetVMVRAPIVersion( const char *name, void *searchPath, int *outMinor )
@@ -1448,7 +1449,7 @@ int FS_GetVMVRAPIVersion( const char *name, void *searchPath, int *outMinor )
 	if ( len <= 0 ) {
 		if ( f )
 			FS_FCloseFile( f );
-		return 0;
+		return -1;
 	}
 	buf = Hunk_AllocateTempMemory( len + 1 );
 	FS_Read( buf, len, f );
@@ -1570,6 +1571,14 @@ int FS_FindVM(void **startSearch, char *found, int foundlen, const char *name, q
 			else if(search->pack)
 			{
 				pack = search->pack;
+
+				// pure/version-restricted paks can't supply a QVM; skip them
+				// before they become the game dir's single candidate
+				if(!FS_PakIsPure(pack))
+				{
+					search = search->next;
+					continue;
+				}
 
 				if(lastSearch && lastSearch->pack)
 				{

@@ -64,7 +64,10 @@ qboolean VM_VRSelectModule( vm_t *vm, vmInterpret_t *interpret, qboolean qvmOnly
 		int minor = 0;
 		int major = FS_GetVMVRAPIVersion( name, startSearch, &minor );
 		const char *pakName = FS_VMSearchPathName( startSearch );
-		if ( major == 0 ) {
+		if ( major < 0 ) {
+			// only reachable if FS_FindVM's eligibility screen and this read disagree
+			Com_Printf( "%s.qvm in %s could not be read (pure/version restrictions); skipping\n", name, pakName );
+		} else if ( major == 0 ) {
 			// plain non-VR QVM: fall through to native
 			Com_Printf( "%s.qvm in %s is not VR-aware; skipping\n", name, pakName );
 		} else if ( major == VR_API_MAJOR && minor <= VR_API_MINOR ) {
