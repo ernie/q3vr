@@ -370,9 +370,9 @@ void CL_KeyMove( usercmd_t *cmd ) {
 	forward += movespeed * CL_KeyState (&in_forward);
 	forward -= movespeed * CL_KeyState (&in_back);
 
-	cmd->forwardmove = ClampChar( forward );
-	cmd->rightmove = ClampChar( side );
-	cmd->upmove = ClampChar( up );
+	cmd->forwardmove = ClampCharMove( forward );
+	cmd->rightmove = ClampCharMove( side );
+	cmd->upmove = ClampCharMove( up );
 }
 
 void CL_SnapTurn( int dxYaw )
@@ -444,21 +444,21 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 
 	if ( !in_strafe.active ) {
 		cl.viewangles[YAW] += anglespeed * yaw;
-		cmd->rightmove = ClampChar( cmd->rightmove + (int)right );
+		cmd->rightmove = ClampCharMove( cmd->rightmove + (int)right );
 	} else {
 		cl.viewangles[YAW] += anglespeed * right;
-		cmd->rightmove = ClampChar( cmd->rightmove + (int)yaw );
+		cmd->rightmove = ClampCharMove( cmd->rightmove + (int)yaw );
 	}
 
 	if ( in_mlooking ) {
 		cl.viewangles[PITCH] += anglespeed * forward;
-		cmd->forwardmove = ClampChar( cmd->forwardmove + (int)pitch );
+		cmd->forwardmove = ClampCharMove( cmd->forwardmove + (int)pitch );
 	} else {
 		cl.viewangles[PITCH] += anglespeed * pitch;
-		cmd->forwardmove = ClampChar( cmd->forwardmove + (int)forward );
+		cmd->forwardmove = ClampCharMove( cmd->forwardmove + (int)forward );
 	}
 
-	cmd->upmove = ClampChar( cmd->upmove + (int)up );
+	cmd->upmove = ClampCharMove( cmd->upmove + (int)up );
 }
 
 /*
@@ -540,14 +540,14 @@ void CL_MouseMove(usercmd_t *cmd)
 
 	// add mouse X/Y movement to cmd
 	if(in_strafe.active)
-		cmd->rightmove = ClampChar(cmd->rightmove + m_side->value * mx);
+		cmd->rightmove = ClampCharMove(cmd->rightmove + m_side->value * mx);
 	else
 		cl.viewangles[YAW] -= m_yaw->value * mx;
 
 	if ((in_mlooking || cl_freelook->integer) && !in_strafe.active)
 		cl.viewangles[PITCH] += m_pitch->value * my;
 	else
-		cmd->forwardmove = ClampChar(cmd->forwardmove - m_forward->value * my);
+		cmd->forwardmove = ClampCharMove(cmd->forwardmove - m_forward->value * my);
 }
 
 
@@ -630,8 +630,8 @@ void CL_FinishMove( usercmd_t *cmd ) {
 
 		vec3_t out;
 		rotateAboutOrigin(cmd->rightmove, cmd->forwardmove, -vr.calculated_weaponangles[YAW], out);
-		cmd->rightmove = ClampChar( (int)out[0] );
-		cmd->forwardmove = ClampChar( (int)out[1] );
+		cmd->rightmove = ClampCharMove( (int)out[0] );
+		cmd->forwardmove = ClampCharMove( (int)out[1] );
 	}
 	else
 	{
@@ -647,9 +647,9 @@ void CL_FinishMove( usercmd_t *cmd ) {
 			float originalUp = cmd->upmove;
 
 			// Decompose forward movement into horizontal and vertical components based on pitch
-			cmd->forwardmove = ClampChar((int)(originalForward * cos(pitchRad)));
+			cmd->forwardmove = ClampCharMove((int)(originalForward * cos(pitchRad)));
 			// Integrate original upmove input with pitch-based vertical movement
-			cmd->upmove = ClampChar((int)(originalUp + originalForward * -sin(pitchRad)));
+			cmd->upmove = ClampCharMove((int)(originalUp + originalForward * -sin(pitchRad)));
 		}
 	}
 
