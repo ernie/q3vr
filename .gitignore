@@ -50,6 +50,8 @@ profile
 ####################
 .cache/
 
-# Local-only project guidance (never committed)
+# Local-only project files
 ####################
 CLAUDE.md
+docs/superpowers
+.claude
