@@ -1439,9 +1439,23 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 {
 	vrController_t* controller = isRightController == qtrue ? &rightController : &leftController;
 
+	// Menu trigger latch, per controller: which key this hand pressed and whether
+	// that press is still outstanding.  An off-hand press swaps hands (see below),
+	// so keying the release off isActiveController would swallow the release of a
+	// press already in flight and invent one for the hand that only swapped.
+	static int		menuTriggerKey[2]  = { K_MOUSE1, K_MOUSE1 };
+	static qboolean	menuTriggerDown[2] = { qfalse, qfalse };
+	const int		hand = isRightController ? 1 : 0;
+
 	// Weapon adjustment / TVD scrub mode: suppress all trigger actions
 	if (vr.weapon_adjust || vr.menuYawLocked)
 	{
+		// flush a held menu trigger; no release can be delivered from here
+		if (menuTriggerDown[hand])
+		{
+			menuTriggerDown[hand] = qfalse;
+			Com_QueueEvent(in_vrEventTime, SE_KEY, menuTriggerKey[hand], qfalse, 0, NULL);
+		}
 		return;
 	}
 
@@ -1460,6 +1474,14 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 	if (isPrimaryTrigger)
 	{
 		wasInMenuMode = inMenuMode;
+	}
+
+	// Leaving menu mode with a menu trigger still held would leave the UI holding
+	// a button it will never see released.  Flush it on the way out.
+	if (!inMenuMode && menuTriggerDown[hand])
+	{
+		menuTriggerDown[hand] = qfalse;
+		Com_QueueEvent(in_vrEventTime, SE_KEY, menuTriggerKey[hand], qfalse, 0, NULL);
 	}
 
 	if (inMenuMode)
@@ -1482,6 +1504,9 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 				else if (triggerValue < IN_TriggerReleasedThreshold() && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
 				{
 					IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
+					// this release also ends any menu press held across the keyboard
+					// opening (clicking a text field does exactly that)
+					menuTriggerDown[hand] = qfalse;
 					Com_QueueEvent(in_vrEventTime, SE_KEY, K_MOUSE1, qfalse, 0, NULL);
 				}
 			}
@@ -1509,14 +1534,14 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 			// hidden and selection is arrow-driven, so the trigger activates the
 			// highlighted item (Enter) rather than clicking the now-stale cursor spot
 			// (Mouse1). Latch the key at press so the release matches if nav flips mid-hold.
-			static int menuTriggerKey = K_MOUSE1;
 			if (triggerValue > IN_TriggerPressedThreshold() && !IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
 			{
 				IN_ActivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
 				if (isActiveController)
 				{
-					menuTriggerKey = vr.menuStickNavActive ? K_ENTER : K_MOUSE1;
-					Com_QueueEvent(in_vrEventTime, SE_KEY, menuTriggerKey, qtrue, 0, NULL);
+					menuTriggerKey[hand] = vr.menuStickNavActive ? K_ENTER : K_MOUSE1;
+					menuTriggerDown[hand] = qtrue;
+					Com_QueueEvent(in_vrEventTime, SE_KEY, menuTriggerKey[hand], qtrue, 0, NULL);
 					VR_Vibrate(200, vr.menuLeftHanded ? 1 : 2, 0.8f);
 				}
 				else
@@ -1528,9 +1553,12 @@ static void IN_VRTriggers( qboolean isRightController, float triggerValue )
 			else if (triggerValue < IN_TriggerReleasedThreshold() && IN_InputActivated(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX))
 			{
 				IN_DeactivateInput(&controller->axisButtons, VR_TOUCH_AXIS_TRIGGER_INDEX);
-				if (isActiveController)
+				// release what this hand actually pressed, not what the current
+				// active hand would press now
+				if (menuTriggerDown[hand])
 				{
-					Com_QueueEvent(in_vrEventTime, SE_KEY, menuTriggerKey, qfalse, 0, NULL);
+					menuTriggerDown[hand] = qfalse;
+					Com_QueueEvent(in_vrEventTime, SE_KEY, menuTriggerKey[hand], qfalse, 0, NULL);
 				}
 			}
 		}
