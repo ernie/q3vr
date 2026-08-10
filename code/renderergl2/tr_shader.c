@@ -1359,6 +1359,12 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 
 			continue;
 		}
+		// vk renderers' pick of the per-pixel dlight modulation stage;
+		// rend2's dlights have no such stage - accept and ignore
+		else if ( !Q_stricmp( token, "dlight" ) && s_extendedShader )
+		{
+			continue;
+		}
 		else
 		{
 			ri.Printf( PRINT_WARNING, "WARNING: unknown parameter '%s' in shader '%s'\n", token, shader.name );
