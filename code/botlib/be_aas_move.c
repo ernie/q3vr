@@ -504,7 +504,7 @@ int AAS_ClientMovementPrediction(struct aas_clientmove_s *move,
 	float phys_walkaccelerate, phys_airaccelerate, phys_swimaccelerate;
 	float phys_maxwalkvelocity, phys_maxcrouchvelocity, phys_maxswimvelocity;
 	float phys_maxstep, phys_maxsteepness, phys_jumpvel, friction;
-	float gravity, delta, maxvel, wishspeed, accelerate;
+	float gravity, halfgrav, delta, maxvel, wishspeed, accelerate;
 	//float velchange, newvel;
 	//int ax;
 	int n, i, j, pc, step, swimming, crouch, event, jump_frame, areanum;
@@ -548,8 +548,11 @@ int AAS_ClientMovementPrediction(struct aas_clientmove_s *move,
 		swimming = AAS_Swimming(org);
 		//get gravity depending on swimming or not
 		gravity = swimming ? phys_watergravity : phys_gravity;
-		//apply gravity at the START of the frame
-		frame_test_vel[2] = frame_test_vel[2] - (gravity * 0.1 * frametime);
+		//half the frame's gravity before the move and half after: the move
+		//then carries the frame's average velocity, the exact parabola
+		//PM_SlideMove flies, instead of landing 40u per second of flight low
+		halfgrav = 0.5f * gravity * frametime * frametime;
+		frame_test_vel[2] -= halfgrav;
 		//if on the ground or swimming
 		if (onground || swimming)
 		{
@@ -578,7 +581,7 @@ int AAS_ClientMovementPrediction(struct aas_clientmove_s *move,
 				if (!swimming && cmdmove[2] > 1)
 				{
 					//jump velocity minus the gravity for one frame + 5 for safety
-					frame_test_vel[2] = phys_jumpvel - (gravity * 0.1 * frametime) + 5;
+					frame_test_vel[2] = phys_jumpvel - halfgrav + 5;
 					jump_frame = n;
 					//jumping so air accelerate
 					accelerate = phys_airaccelerate;
@@ -827,7 +830,10 @@ int AAS_ClientMovementPrediction(struct aas_clientmove_s *move,
 								frame_test_vel[2] > old_frame_test_vel[2] &&
 								!onground)
 						{
-							delta = old_frame_test_vel[2];
+							//the plane hit is between the frame's two half-steps, so the
+							//stored velocity is a mid-step one: the trip point was tuned
+							//on the frame's END velocity, and that is a half-step lower
+							delta = old_frame_test_vel[2] - halfgrav;
 						} //end if
 						else if (onground)
 						{
@@ -865,6 +871,8 @@ int AAS_ClientMovementPrediction(struct aas_clientmove_s *move,
 			if (++j > 20) return qfalse;
 		//while there is a plane hit
 		} while(trace.fraction < 1.0);
+		//the second half, so the carried velocity is the frame's end velocity
+		frame_test_vel[2] -= halfgrav;
 		//if going down
 		if (frame_test_vel[2] <= 10)
 		{
