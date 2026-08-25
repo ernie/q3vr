@@ -1260,6 +1260,8 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 						   !FS_IsExt(filename, ".bot", len) &&
 						   !FS_IsExt(filename, ".arena", len) &&
 						   !FS_IsExt(filename, ".menu", len) &&
+						   !FS_IsExt(filename, ".aas", len) &&
+						   !FS_IsExt(filename, ".aat", len) &&
 						   Q_stricmp(filename, "vm/qagame.qvm") != 0 &&
 						   !strstr(filename, "levelshots"))
 						{
