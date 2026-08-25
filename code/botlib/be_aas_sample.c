@@ -1042,7 +1042,9 @@ aas_face_t *AAS_AreaGroundFace(int areanum, vec3_t point)
 	return NULL;
 } //end of the function AAS_AreaGroundFace
 //===========================================================================
-// returns the face the trace end position is situated in
+// returns the plane the given face is in. BotTravel_Grapple's post-release
+// steer pushes along the anchor face's normal, the one direction any reader
+// derives from the stored reach.
 //
 // Parameter:				-
 // Returns:					-
