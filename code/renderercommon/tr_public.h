@@ -134,6 +134,10 @@ typedef struct {
 
 	// enhanced blood decals: radial projected decal onto nearby world surfaces
 	void	(*AddSpritePolyToScene)( qhandle_t hShader, const vec3_t origin, float width, float height, float rotation, const byte *rgba );
+	// polys with view gating: RF_FIRST_PERSON / RF_THIRD_PERSON honored the
+	// way refents honor them, so first-person effect polys stay out of
+	// mirrors and mirror-only ones out of the main view
+	void	(*AddPolysToScene2)( qhandle_t hShader, int numVerts, const polyVert_t *verts, int num, int renderfx );
 	void	(*ProjectDecal)( const vec3_t origin, float size, float reach, float orientation,
 				qhandle_t hShader, const float rgba[4], int lifeTime );
 	void	(*ClearDecals)( void );

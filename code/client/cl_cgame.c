@@ -522,6 +522,13 @@ qboolean CL_GetValue( char *value, int valueSize, const char *key ) {
 		return qtrue;
 	}
 
+	// view-gated polys: RF_FIRST_PERSON / RF_THIRD_PERSON honored the way
+	// refents honor them; advertised only when the active renderer implements it
+	if ( !Q_stricmp( key, "trap_R_AddPolysToScene2" ) && re.AddPolysToScene2 ) {
+		Com_sprintf( value, valueSize, "%i", CG_R_ADDPOLYSTOSCENE2 );
+		return qtrue;
+	}
+
 	if ( !Q_stricmp( key, "trap_VR_RegisterState" ) ) {
 		Com_sprintf( value, valueSize, "%i", CG_VR_REGISTERSTATE );
 		return qtrue;
@@ -935,6 +942,10 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 
 	case CG_R_ADDSPRITEPOLYTOSCENE:
 		re.AddSpritePolyToScene( args[1], VMA(2), VMF(3), VMF(4), VMF(5), VMA(6) );
+		return 0;
+
+	case CG_R_ADDPOLYSTOSCENE2:
+		re.AddPolysToScene2( args[1], args[2], VMA(3), args[4], args[5] );
 		return 0;
 
 	case CG_VR_REGISTERSTATE:

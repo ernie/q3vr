@@ -175,6 +175,7 @@ typedef enum {
 	CG_R_BEGIN_POST_BLOOM_2D,
 	CG_R_END_POST_BLOOM_2D,
 	CG_R_ADDSPRITEPOLYTOSCENE,
+	CG_R_ADDPOLYSTOSCENE2,
 	CG_TRAP_GETVALUE = COM_TRAP_GETVALUE,
 //	qboolean trap_GetValue( char *value, int valueSize, const char *key );
 //	Engine-side value query (voip_*, plus discovered extensions e.g. trap_R_ProjectDecal).
