@@ -1372,8 +1372,7 @@ static void RB_SurfaceFlare(srfFlare_t *surf)
 	// RB_TestFlare's qglReadPixels depth probe cannot read the layered
 	// OVR_multiview2 FBO, and the window-space quad path predates the
 	// P*V*M shader split. The Vulkan renderer has a working probe and
-	// renders flares. Decision: Ernie, 2026-07-02 — see
-	// docs/superpowers/specs/2026-07-02-flares-rehabilitation-design.md.
+	// renders flares.
 	(void)surf;
 }
 

@@ -1754,7 +1754,7 @@ static const void *RB_SwapBuffers( const void *data ) {
 	tr.needScreenMap = 0;
 
 #ifdef USE_VULKAN
-	// End frame - OpenXR handles display timing
+	// End frame: OpenXR handles display timing
 	// Desktop mirror blit is handled separately in VR_Renderer_EndFrame
 	vk_end_frame();
 
@@ -1827,7 +1827,7 @@ static const void* RB_HUDBuffer( const void* data ) {
 		tess.shader = NULL;
 	}
 
-	// For HUD mode 2 (overlay), don't switch to HUD render pass - just track state.
+	// For HUD mode 2 (overlay), don't switch to HUD render pass: just track state.
 	// 3D HUD icons should render to the current target (overlay or XR swapchain).
 	if ( vr_currentHudDrawStatus->integer == 2 ) {
 		if ( cmd->start && !backEnd.isDrawingHUD ) {

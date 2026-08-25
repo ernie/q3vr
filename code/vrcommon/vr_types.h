@@ -10,12 +10,12 @@
 #elif defined(__ANDROID__)
 #define XR_USE_PLATFORM_ANDROID
 #endif
-// Non-Windows desktop: no platform define here — the OpenGL backend's Xlib
+// Non-Windows desktop: no platform define here; the OpenGL backend's Xlib
 // setup (XR_USE_PLATFORM_XLIB) lives in vrgl2/vr_gl_types.h, GL-side TUs only.
 
 // Both graphics APIs' OpenXR types are enabled; the active backend is chosen
 // at runtime (see vr_backend.h). vulkan.h must precede openxr_platform.h.
-// No GL header here — renderer TUs carrying their own GL-type shims (e.g.
+// No GL header here: renderer TUs carrying their own GL-type shims (e.g.
 // renderervk/tr_local.h) would collide with real GL typedefs pulled in here.
 #include <vulkan/vulkan.h>
 #define XR_USE_GRAPHICS_API_VULKAN

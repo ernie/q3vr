@@ -801,7 +801,7 @@ typedef struct {
 	renderPass_t renderPassIndex;
 	qboolean inRenderPass;		// true when actually inside a render pass
 	qboolean recordingCommands;	// true when command buffer is recording (between Begin/End)
-	qboolean descriptorsReady;	// qfalse between vk_release_resources() and vk_init_descriptors() - pool contents are dead
+	qboolean descriptorsReady;	// qfalse between vk_release_resources() and vk_init_descriptors(): pool contents are dead
 	qboolean colorNeedsTransitionToAttachment;	// true after ending post_bloom (color in SHADER_READ_ONLY)
 
 	uint32_t screenMapWidth;

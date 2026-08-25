@@ -36,7 +36,7 @@ VM_VRSelectModule
 Module selection for the VR engine. vm_* 0 wants native first (stock);
 otherwise prefer a VR-aware QVM with native as fallback. qvmOnly (pure
 server) forbids native: bytecode or fail. A plain non-VR QVM never
-loads - it would swap VR functions for flatscreen ones.
+loads: it would swap VR functions for flatscreen ones.
 ==============
 */
 qboolean VM_VRSelectModule( vm_t *vm, vmInterpret_t *interpret, qboolean qvmOnly, vmHeader_t **header ) {
@@ -149,7 +149,7 @@ the address (QVM: offset into dataBase; DLL: host pointer), and start syncing.
 void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize, int apiMajor, int apiMinor ) {
 	const char *pakName = FS_VMSearchPathName( vm->searchPath );
 	// Registration is the module's version advertisement: the major.minor pair
-	// it was compiled against. Enforce the same contract as the load gate - run
+	// it was compiled against. Enforce the same contract as the load gate: run
 	// a module whose major matches and whose minor the engine can meet. For
 	// native modules, which never pass the QVM sentinel scan, this is the only
 	// version check; for QVMs it holds the compiled-in pair to the sentinel's word.
@@ -158,7 +158,7 @@ void VM_RegisterVRShared( vm_t *vm, int writer, intptr_t vmAddr, int structSize,
 			vm->name, VR_API_MAJOR, VR_API_MINOR, apiMajor, apiMinor );
 	}
 	// structSize comes from (possibly hostile) module memory, so clamp it to
-	// [0,sizeof] ONCE here and drive every sync from the stored value - never
+	// [0,sizeof] ONCE here and drive every sync from the stored value: never
 	// re-read it from the module (TOCTOU). The engine only ever touches
 	// structSize bytes of the block.
 	if ( structSize < 0 )

@@ -223,7 +223,7 @@ void GLSL_ViewMatricesUniformBuffer(const float eyeView[2][16], const float mode
       case STEREO_ORTHO_PROJECTION:
         {
           if (vr.weapon_zoomed) {
-            // Weapon zoom: no stereo parallax on HUD — must match the mono 3D world
+            // Weapon zoom: no stereo parallax on HUD; must match the mono 3D world
             Mat4Identity( viewMatrices );
             Mat4Identity( viewMatrices + 16 );
           } else {
@@ -1859,7 +1859,7 @@ void GLSL_PrepareUniformBuffers(void)
 
   // VR_PROJECTION - 3D world rendering
   // Cyclopean paths (zoom, virtual screen), matching vk_update_mvp: off-center
-  // terms zeroed — the zoom quad layer has no fov metadata to compensate.
+  // terms zeroed: the zoom quad layer has no fov metadata to compensate.
   if (vr.virtual_screen || vr.weapon_zoomed)
   {
     float proj[16];

@@ -23,8 +23,8 @@ extern vr_clientinfo_t vr;
 void VR_SharedSyncIn( vr_shared_t *dst, int structSize ) {
 	// Fill a full scratch, then copy only the bytes the module's struct actually
 	// has, so an older (smaller) module's mirror is never overwritten. structSize
-	// was clamped to [0,sizeof] and captured at registration - never re-read from
-	// module memory - so a hostile QVM can shrink what we write but never push it
+	// was clamped to [0,sizeof] and captured at registration: never re-read from
+	// module memory, so a hostile QVM can shrink what we write but never push it
 	// past its own block.
 	vr_shared_t scratch;
 	vr_shared_t *s = &scratch;

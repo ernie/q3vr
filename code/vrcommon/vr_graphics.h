@@ -36,14 +36,14 @@ void VR_Graphics_Shutdown(void);
 // Invalidate XR function pointers before XrInstance is destroyed
 // This is called from VR_Destroy() before xrDestroyInstance() to ensure
 // function pointers obtained via xrGetInstanceProcAddr are cleared.
-// Note: This does NOT destroy Vulkan resources - the renderer owns those.
+// Note: This does NOT destroy Vulkan resources; the renderer owns those.
 void VR_Graphics_InvalidateFunctionPointers(void);
 
 // Create XR session with graphics-specific binding
 // Returns XR_SUCCESS on success
 XrResult VR_Graphics_CreateSession(XrInstance instance, XrSystemId systemId, XrSession* session);
 
-// Virtual screen interface — implemented in vrcommon (vr_virtual_screen.c),
+// Virtual screen interface: implemented in vrcommon (vr_virtual_screen.c),
 // graphics-agnostic and not part of vr_backend_t.
 void VR_VirtualScreen_ResetPosition(void);
 float VR_VirtualScreen_GetCurrentYaw(void);

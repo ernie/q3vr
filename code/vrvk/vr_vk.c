@@ -70,7 +70,7 @@ XrResult VR_VK_GetGraphicsRequirements(XrInstance instance, XrSystemId systemId,
 // Print graphics requirements debug info
 void VR_VK_PrintGraphicsRequirements(const VR_VK_GraphicsRequirements* requirements)
 {
-	// Use XR version macros - XrVersion is encoded differently than VkVersion
+	// Use XR version macros: XrVersion is encoded differently than VkVersion
 	fprintf(stderr, "[OpenXR] Vulkan version requirements: [%d.%d.%d, %d.%d.%d]\n",
 		XR_VERSION_MAJOR(requirements->requirements.minApiVersionSupported),
 		XR_VERSION_MINOR(requirements->requirements.minApiVersionSupported),
@@ -192,7 +192,7 @@ XrResult VR_Vulkan_CheckRequirements(XrInstance xrInstance, XrSystemId systemId)
             XR_VERSION_MINOR(requirements.maxApiVersionSupported),
             XR_VERSION_PATCH(requirements.maxApiVersionSupported));
 
-    // We require Vulkan 1.1 for multiview - use XR version encoding for comparison
+    // We require Vulkan 1.1 for multiview: use XR version encoding for comparison
     XrVersion ourVersion = XR_MAKE_VERSION(1, 1, 0);
 
     // If runtime reports 0 for min/max, it means any version is acceptable
@@ -208,7 +208,7 @@ XrResult VR_Vulkan_CheckRequirements(XrInstance xrInstance, XrSystemId systemId)
     return XR_SUCCESS;
 }
 
-// Note: VR_Vulkan_GetInstanceExtensions() removed - not needed with XR_KHR_vulkan_enable2
+// Note: VR_Vulkan_GetInstanceExtensions() removed: not needed with XR_KHR_vulkan_enable2
 // The enable2 extension uses xrCreateVulkanInstanceKHR which automatically adds required extensions
 
 XrResult VR_Vulkan_CreateInstance(XrInstance xrInstance, XrSystemId systemId)
@@ -386,7 +386,7 @@ XrResult VR_Vulkan_GetPhysicalDevice(XrInstance xrInstance, XrSystemId systemId)
 
 XrResult VR_Vulkan_CreateDevice(XrInstance xrInstance, XrSystemId systemId)
 {
-    // Our required extensions - runtime will add any additional ones via xrCreateVulkanDeviceKHR
+    // Our required extensions: runtime will add any additional ones via xrCreateVulkanDeviceKHR
     const char* extensions[] = {
         VK_KHR_MULTIVIEW_EXTENSION_NAME,  // For stereo rendering
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,  // For desktop mirror window
@@ -522,7 +522,7 @@ void VR_Vulkan_Shutdown(void)
     memset(&vr_vk, 0, sizeof(vr_vk));
     vr_vk_initialized = VR_FALSE;
 
-    // Clear XR function pointers - they become invalid when XrInstance is destroyed
+    // Clear XR function pointers: they become invalid when XrInstance is destroyed
     xrGetVulkanGraphicsRequirements2KHR = NULL;
     xrGetVulkanGraphicsDevice2KHR = NULL;
     xrCreateVulkanInstanceKHR = NULL;

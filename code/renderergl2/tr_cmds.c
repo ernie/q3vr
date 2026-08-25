@@ -522,7 +522,7 @@ void R_Mat4Copy( const float in[16], float out[16] )
 ==================
 RE_ClearVRFramebuffer
 
-Clear the VR framebuffer - called from VR layer to avoid graphics API calls there
+Clear the VR framebuffer: called from VR layer to avoid graphics API calls there
 ==================
 */
 void RE_ClearVRFramebuffer( int width, int height, qboolean isThirdPersonSpectator )
@@ -552,7 +552,7 @@ void RE_ClearVRFramebuffer( int width, int height, qboolean isThirdPersonSpectat
 ==================
 RE_SwapDesktopWindow
 
-Swap desktop window buffers - called from VR layer after frame submission
+Swap desktop window buffers: called from VR layer after frame submission
 ==================
 */
 void RE_SwapDesktopWindow( void )
@@ -564,13 +564,13 @@ void RE_SwapDesktopWindow( void )
 ==================
 RE_WaitForRenderComplete
 
-Wait for GPU to complete rendering - called from VR layer before releasing XR swapchains.
+Wait for GPU to complete rendering: called from VR layer before releasing XR swapchains.
 OpenGL has implicit synchronization, so this is a no-op for GL2.
 ==================
 */
 void RE_WaitForRenderComplete( void )
 {
-	// OpenGL has implicit synchronization - GPU commands complete
+	// OpenGL has implicit synchronization: GPU commands complete
 	// in order before xrReleaseSwapchainImage returns.
 	// No explicit wait needed.
 }

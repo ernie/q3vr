@@ -329,7 +329,7 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 		// CL_FlushMemory unloads the cgame DLL (Sys_UnloadDll), but cgame
 		// frames may still be on the call stack if the error was triggered
 		// during cgame rendering.  On Windows x64, longjmp uses RtlUnwindEx
-		// which walks stack unwind tables — if the DLL has been unloaded,
+		// which walks stack unwind tables: if the DLL has been unloaded,
 		// those tables are gone and the unwind crashes.
 		com_deferredFlush = qtrue;
 		com_errorEntered = qfalse;
@@ -342,7 +342,7 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 			CL_Init();
 		}
 		CL_Disconnect( qtrue );
-		// Defer CL_FlushMemory — same DLL unwind safety issue as above.
+		// Defer CL_FlushMemory: same DLL unwind safety issue as above.
 		com_deferredFlush = qtrue;
 		com_errorEntered = qfalse;
 		longjmp (abortframe, -1);
@@ -354,7 +354,7 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 		}
 		if ( com_cl_running && com_cl_running->integer ) {
 			CL_Disconnect( qtrue );
-			// Defer CL_FlushMemory — same DLL unwind safety issue as above.
+			// Defer CL_FlushMemory: same DLL unwind safety issue as above.
 			com_deferredFlush = qtrue;
 		} else {
 			Com_Printf("Server didn't have CD\n" );
@@ -3203,7 +3203,7 @@ void Com_Frame( void ) {
 		// via Sys_UnloadDll.  If the error was triggered during cgame
 		// rendering, cgame stack frames are still on the call stack.
 		// On Windows x64, longjmp walks the stack's unwind tables via
-		// RtlUnwindEx — unloading the DLL removes those tables, crashing
+		// RtlUnwindEx: unloading the DLL removes those tables, crashing
 		// the unwind.  By doing the longjmp first, the stack is clean.
 		if ( com_deferredFlush ) {
 			CL_FlushMemory();

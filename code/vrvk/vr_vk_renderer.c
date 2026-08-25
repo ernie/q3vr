@@ -39,7 +39,7 @@ extern cvar_t *vr_refreshrate;
 extern cvar_t *vr_desktopMode;
 
 // File-local: both backends coexist in one binary and would collide otherwise.
-// views/viewCount stay external — vr_vk_virtual_screen.c reads them.
+// views/viewCount stay external: vr_vk_virtual_screen.c reads them.
 static const float hudScale = M_PI * 15.0f / 180.0f;
 
 static XrBool32 stageSupported = XR_FALSE;
@@ -238,12 +238,12 @@ static void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 	// Update HMD position/views
 	IN_VRUpdateHMD(views, viewCount, &fov);
 
-	// SP intermission state tracking - must be set before rendering
+	// SP intermission state tracking: must be set before rendering
 	// so UI code sees the correct state for scaling/offsets
 	qboolean isSPIntermission = VR_IsSPIntermission();
 	if (isSPIntermission && !vr.sp_intermission_active)
 	{
-		// First frame of SP intermission - capture anchor position
+		// First frame of SP intermission: capture anchor position
 		vr.sp_intermission_active = qtrue;
 		// Store yaw for HUD positioning (in degrees)
 		XrQuaternionf q = views[0].pose.orientation;
@@ -253,7 +253,7 @@ static void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 	}
 	else if (!isSPIntermission && vr.sp_intermission_active)
 	{
-		// Exiting SP intermission - reset state
+		// Exiting SP intermission: reset state
 		vr.sp_intermission_active = qfalse;
 	}
 
@@ -270,7 +270,7 @@ static void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 	// Acquire XR color swapchain (depth is native Vulkan buffer, not from OpenXR)
 	VR_VK_Swapchains_Acquire(swapchains, &swapchainColorIndex);
 
-	// Begin XR rendering - sets up Vulkan command buffer and binds XR framebuffers
+	// Begin XR rendering: sets up Vulkan command buffer and binds XR framebuffers
 	re.BeginXRFrame(swapchainColorIndex);
 
 	// Clear framebuffer
@@ -444,7 +444,7 @@ static void VR_Recenter(VR_Engine* engine, XrTime predictedDisplayTime)
 
 static void VR_ClearFrameBuffer(int width, int height)
 {
-	// Delegate to renderer - avoids direct graphics API calls in VR layer
+	// Delegate to renderer: avoids direct graphics API calls in VR layer
 	qboolean isThirdPersonSpectator = Cvar_VariableIntegerValue("vr_thirdPersonSpectator") ? qtrue : qfalse;
 	re.ClearVRFramebuffer(width, height, isThirdPersonSpectator);
 }

@@ -101,7 +101,7 @@ Append a structured event line to the active g_log file (the same
 log the game module writes Kill:/Award:/etc. lines to). Used by the
 demo lifecycle to surface DemoSaved / DemoDiscarded events that
 trinity-tracker's collector log parser keys on. Format matches the
-existing log convention: "<ISO-local> <EventType>: <args>" — the QVM
+existing log convention: "<ISO-local> <EventType>: <args>"; the QVM
 uses localtime() in G_LogPrintf, so we follow suit to keep lines
 chronologically interleaved.
 

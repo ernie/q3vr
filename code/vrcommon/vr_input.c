@@ -1253,7 +1253,7 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
 	float curvedY = IN_ApplyThumbstickCurve(joystickY, vr_thumbstickDeadzone->value);
 
 	// Menu / intermission / scoreboard: suppress locomotion. In actual VR menus, vertical
-	// stick is handled by IN_VRMenuThumbstickNav (PGUP/PGDN with delayed repeat) - do NOT
+	// stick is handled by IN_VRMenuThumbstickNav (PGUP/PGDN with delayed repeat): do NOT
 	// also emit PGUP/PGDN here or it doubles up. Keep the direct page-scroll for the
 	// intermission/scoreboard cases only.
 	qboolean inVrMenu = (vr.virtual_screen && (!vr.first_person_following || vr.in_menu));
@@ -1359,7 +1359,7 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
 			}
 
 			// Analog walk/run: gentle pushes walk silently, firm pushes run (footsteps).
-			// We only decide the BUTTON_WALKING flag here - the emitted axis values are
+			// We only decide the BUTTON_WALKING flag here: the emitted axis values are
 			// left untouched, so movement speed stays the same continuous curve and there
 			// is no jolt when crossing the threshold (see CG/server PM_CmdScale).
 			if ( vr_analogWalk->integer )
@@ -1368,7 +1368,7 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
 				// The run-line is the server's component=64 boundary (~160 u/s): below it
 				// the player walks silently, above it they run and generate footsteps.
 				// Anchoring here means we never assert a "walking" state the anti-cheat in
-				// bg_pmove.c would override. The flag only gates footsteps/animation - the
+				// bg_pmove.c would override. The flag only gates footsteps/animation: the
 				// emitted axis values are untouched, so speed stays a smooth 0..320 curve.
 				const float runLine = 64.0f / 127.0f; // ~0.5039
 				const float hyst = 0.04f; // asymmetric drop-to-walk band prevents flicker
@@ -2137,7 +2137,7 @@ void VR_ProcessInputActions( void )
 	IN_VRJoystick(qtrue, navRX, navRY);
 
 	// Menu thumbstick navigation: only in an actual menu (virtual screen, not
-	// follow-mode gameplay) - the same menu gate the PGUP/PGDN path uses, minus
+	// follow-mode gameplay): the same menu gate the PGUP/PGDN path uses, minus
 	// intermission/scoreboard (no items to navigate there). NOTE: vr.menuCursorActive
 	// is a UI-VM-lifetime flag (true during gameplay/follow), so it must NOT gate this,
 	// or arrows would fire while playing. The helper resets its own repeat state when

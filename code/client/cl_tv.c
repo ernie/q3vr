@@ -538,7 +538,7 @@ qboolean CL_TV_Open( const char *filename ) {
 	// Build first snapshot into standard ring buffer
 	CL_TV_BuildSnapshot();
 
-	// Read second frame — data stays in tvPlay for post-init snapshot build
+	// Read second frame: data stays in tvPlay for post-init snapshot build
 	CL_TV_ReadFrame();
 
 	tvPlay.active = qtrue;
@@ -652,7 +652,7 @@ void CL_TV_ReadFrame( void ) {
 	while ( 1 ) {
 		num = MSG_ReadBits( &msg, GENTITYNUM_BITS );
 		if ( msg.readcount > msg.cursize ) {
-			// message buffer exhausted -- normal at end of demo
+			// message buffer exhausted: normal at end of demo
 			tvPlay.atEnd = qtrue;
 			return;
 		}
@@ -1006,7 +1006,7 @@ void CL_TV_BuildSnapshot( void ) {
 	}
 
 	if ( total <= MAX_ENTITIES_IN_SNAPSHOT ) {
-		// All fit - simple copy, no sorting needed
+		// All fit: simple copy, no sorting needed
 		count = 0;
 		for ( i = 0; i < MAX_GENTITIES - 1; i++ ) {
 			if ( !( tvPlay.entityBitmask[i >> 3] & ( 1 << ( i & 7 ) ) ) )
@@ -1023,7 +1023,7 @@ void CL_TV_BuildSnapshot( void ) {
 			count++;
 		}
 	} else {
-		// Too many entities - keep the nearest MAX_ENTITIES_IN_SNAPSHOT
+		// Too many entities: keep the nearest MAX_ENTITIES_IN_SNAPSHOT
 		tvEntDist_t candidates[MAX_GENTITIES];
 		int n = 0;
 
@@ -1175,7 +1175,7 @@ void CL_TV_Seek( int targetTime ) {
 		tvPlay.serverTime - tvPlay.firstServerTime );
 
 	// Snap cl.serverTime to the seek target so the view updates immediately,
-	// even when paused (timescale 0) — the frozen branch of CL_SetCGameTime
+	// even when paused (timescale 0): the frozen branch of CL_SetCGameTime
 	// never recomputes cl.serverTime, so without this it would stay stale.
 	cl.serverTime = cl.snap.serverTime;
 }
@@ -1195,7 +1195,7 @@ static void CL_TV_RebuildSnapshots( void ) {
 	// to the new viewpoint, not the old one.
 	VectorCopy( tvPlay.players[tvPlay.viewpoint].origin, tvPlay.viewOrigin );
 
-	// Build two NEW snapshots (no rollback — incrementing sequence so
+	// Build two NEW snapshots (no rollback: incrementing sequence so
 	// cgame sees them as genuinely new via trap_GetCurrentSnapshotNumber).
 	// CG_SetNextSnap detects the clientNum change and sets nextFrameTeleport,
 	// and CG_TransitionSnapshot updates cg.clientNum automatically.
@@ -1206,7 +1206,7 @@ static void CL_TV_RebuildSnapshots( void ) {
 	Cvar_SetIntegerValue( "cl_tvViewpoint", tvPlay.viewpoint );
 
 	// Update client timing state so the view updates immediately,
-	// even when paused (timescale 0) — same pattern as CL_TV_Seek.
+	// even when paused (timescale 0): same pattern as CL_TV_Seek.
 	// The frozen branch of CL_SetCGameTime never recomputes
 	// cl.serverTime, so without this it would stay stale.
 	cl.snap = cl.snapshots[clc.serverMessageSequence & PACKET_MASK];

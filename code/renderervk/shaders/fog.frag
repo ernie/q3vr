@@ -1,6 +1,6 @@
 #version 450
 
-// Multiview fog fragment shader - identical to fog.frag
+// Multiview fog fragment shader: identical to fog.frag
 // Vertex transforms moved to a mono modelview push + ViewTransform UBO (set 0, binding 1); fragment inputs unchanged.
 
 layout(set = 0, binding = 0) uniform UBO {

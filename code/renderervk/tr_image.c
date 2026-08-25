@@ -1780,7 +1780,7 @@ void R_DeleteTextures( void ) {
 
 	for ( i = 0; i < tr.numImages; i++ ) {
 		image_t *img = tr.images[ i ];
-		// Skip external images - their VkImage is owned elsewhere (e.g., HUD buffer)
+		// Skip external images: their VkImage is owned elsewhere (e.g., HUD buffer)
 		if ( !img->isExternal ) {
 			vk_destroy_image_resources( &img->handle, &img->view );
 		}
@@ -1807,7 +1807,7 @@ void R_DeleteTextures( void ) {
 	tr.numImages = 0;
 
 #ifdef USE_VULKAN
-	// Clear HUD image/shader pointers - they'll be recreated by R_SetupHUDShader
+	// Clear HUD image/shader pointers: they'll be recreated by R_SetupHUDShader
 	// after XR resources are reinitialized
 	tr.hudImage = NULL;
 	tr.hudShader = NULL;

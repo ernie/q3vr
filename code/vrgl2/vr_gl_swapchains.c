@@ -535,7 +535,7 @@ void VR_Swapchains_BlitXRToMainFbo(VR_SwapchainInfos* swapchains, uint32_t swapc
 		int dstX, dstY, dstWidth, dstHeight;
 		if (ratioT > ratioW)
 		{
-			// Source is wider than window - fit to width, letterbox top/bottom
+			// Source is wider than window: fit to width, letterbox top/bottom
 			dstWidth = wX;
 			dstHeight = dstWidth / ratioT;
 			dstX = leftOffset;
@@ -543,7 +543,7 @@ void VR_Swapchains_BlitXRToMainFbo(VR_SwapchainInfos* swapchains, uint32_t swapc
 		}
 		else
 		{
-			// Source is taller than window - fit to height, pillarbox left/right
+			// Source is taller than window: fit to height, pillarbox left/right
 			dstHeight = wY;
 			dstWidth = dstHeight * ratioT;
 			dstX = leftOffset + (wX - dstWidth) / 2;

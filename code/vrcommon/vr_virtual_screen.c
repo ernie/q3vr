@@ -35,7 +35,7 @@ static const float targetDistance = 3.0f;
 GetPositionInFront
 
 Head forward projected onto the horizontal plane, at the given distance and
-the head's own height - the screen anchors upright at eye level regardless
+the head's own height: the screen anchors upright at eye level regardless
 of head pitch.
 ==================
 */
@@ -62,7 +62,7 @@ static XrVector3f GetPositionInFront(const XrPosef* pose, float distance)
 ==================
 YawFacingQuaternion
 
-Yaw-only rotation turning the screen toward the head - keeps the screen
+Yaw-only rotation turning the screen toward the head: keeps the screen
 upright instead of inheriting the anchoring head pose's pitch/roll.
 ==================
 */
@@ -115,7 +115,7 @@ static void EnsureNewPositionInExpectedDistance(const XrVector3f* hmdPosition, X
 GetCurrentVirtualScreenPositionAndRotation
 
 Anchor ladder. Fixed mode (vr_virtualScreenMode 0): anchor once per reset.
-Follow mode (1): hysteresis re-targeting - settle when the in-front point is
+Follow mode (1): hysteresis re-targeting; settle when the in-front point is
 within 0.04*d of the target, track once it drifts past 0.60*d, teleport past
 1.20*d, drift at 0.01/frame with the head distance held constant.
 ==================

@@ -49,7 +49,7 @@ typedef struct {
 // Global VR Vulkan state
 extern VR_VulkanState vr_vk;
 
-// Initialization functions - called in sequence during VR startup
+// Initialization functions: called in sequence during VR startup
 // These implement the XR_KHR_vulkan_enable2 workflow
 
 // Check graphics requirements before creating Vulkan instance
@@ -90,7 +90,7 @@ typedef struct {
     // Color (multiview stereo, arraySize=2)
     VkFormat colorFormat;
     uint32_t colorWidth, colorHeight, colorArraySize, colorImageCount;
-    VkImage* colorImages;          // NOT owned - from OpenXR
+    VkImage* colorImages;          // NOT owned: from OpenXR
 } VR_VulkanSwapchainInfo;
 
 // Get the XR swapchain info for renderer initialization

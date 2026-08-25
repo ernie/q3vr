@@ -197,7 +197,7 @@ void VR_Destroy( VR_Engine* engine )
 #ifdef USE_BHAPTICS
 		VR_Bhaptics_Shutdown();
 #endif
-		// Invalidate XR function pointers before destroying XrInstance - they were
+		// Invalidate XR function pointers before destroying XrInstance: they were
 		// obtained via xrGetInstanceProcAddr and become invalid after xrDestroyInstance.
 		// Note: We do NOT call VR_Graphics_Shutdown() here because the renderer still
 		// needs the VkDevice/VkInstance. The renderer will destroy them in vk_shutdown().

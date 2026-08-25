@@ -19,7 +19,7 @@ typedef struct VR_VK_SwapchainInfo_s {
 	uint32_t height;
 	uint32_t arraySize;          // 2 for stereo multiview
 	uint32_t imageCount;         // Number of swapchain images
-	VkImage* images;             // VkImage handles from XR (NOT owned - from OpenXR)
+	VkImage* images;             // VkImage handles from XR (NOT owned: from OpenXR)
 } VR_VK_SwapchainInfo;
 
 // Concrete implementation of VR_SwapchainInfos for Vulkan

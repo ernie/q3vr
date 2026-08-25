@@ -1582,7 +1582,7 @@ VKimp_Shutdown
 */
 void VKimp_Shutdown(qboolean unloadDLL)
 {
-	(void)unloadDLL;  // Not used - DLL management handled elsewhere
+	(void)unloadDLL;  // Not used: DLL management handled elsewhere
 
 	IN_Shutdown();
 

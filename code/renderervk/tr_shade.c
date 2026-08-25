@@ -1068,8 +1068,8 @@ static void RB_IterateStagesGeneric( const shaderCommands_t *input )
 		}
 
 		// mark entity model pixels with stencil bit 0x80 so shadows skip them.
-		// RT_MODEL only — transparent sprites would block shadow visibility;
-		// fogged entities excluded — their shadow volumes are never added
+		// RT_MODEL only: transparent sprites would block shadow visibility;
+		// fogged entities excluded: their shadow volumes are never added
 		if ( r_shadows->integer == 2 && tess.fogNum == 0
 			&& backEnd.currentEntity != &tr.worldEntity
 			&& backEnd.currentEntity->e.reType == RT_MODEL ) {

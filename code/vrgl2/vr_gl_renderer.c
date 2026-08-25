@@ -196,12 +196,12 @@ static void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 	// Update HMD position/views
 	IN_VRUpdateHMD(views, viewCount, &fov);
 
-	// SP intermission state tracking - must be set before rendering
+	// SP intermission state tracking: must be set before rendering
 	// so UI code sees the correct state for scaling/offsets
 	qboolean isSPIntermission = VR_IsSPIntermission();
 	if (isSPIntermission && !vr.sp_intermission_active)
 	{
-		// First frame of SP intermission - capture anchor position
+		// First frame of SP intermission: capture anchor position
 		vr.sp_intermission_active = qtrue;
 		// Store yaw for HUD positioning (in degrees)
 		XrQuaternionf q = views[0].pose.orientation;
@@ -211,7 +211,7 @@ static void VR_Renderer_BeginFrame(VR_Engine* engine, XrBool32 needsRecenter)
 	}
 	else if (!isSPIntermission && vr.sp_intermission_active)
 	{
-		// Exiting SP intermission - reset state
+		// Exiting SP intermission: reset state
 		vr.sp_intermission_active = qfalse;
 	}
 
@@ -317,7 +317,7 @@ static void VR_Renderer_EndFrame(VR_Engine* engine)
 
 	VR_Swapchains_BindFramebuffers(NULL, 0);
 
-	// Blit to main FBO (desktop window) - use virtual screen if active, otherwise eye view
+	// Blit to main FBO (desktop window): use virtual screen if active, otherwise eye view
 	VR_Swapchains_BlitXRToMainFbo(swapchains, swapchainColorIndex, VR_GetDesktopViewConfiguration(), use_virtual_screen);
 
 	VR_EndFrame(
@@ -329,7 +329,7 @@ static void VR_Renderer_EndFrame(VR_Engine* engine)
 		engine->appState.ViewSpace,
 		lastPredictedDisplayTime);
 
-	// Flip desktop window's buffer - use renderer export for abstraction
+	// Flip desktop window's buffer: use renderer export for abstraction
 	re.SwapDesktopWindow();
 
 	VR_SetFrameInFlight(qfalse);
@@ -402,7 +402,7 @@ static void VR_Recenter(VR_Engine* engine, XrTime predictedDisplayTime)
 
 static void VR_ClearFrameBuffer( int width, int height)
 {
-	// Delegate to renderer - avoids direct graphics API calls in VR layer
+	// Delegate to renderer: avoids direct graphics API calls in VR layer
 	qboolean isThirdPersonSpectator = Cvar_VariableIntegerValue("vr_thirdPersonSpectator") ? qtrue : qfalse;
 	re.ClearVRFramebuffer(width, height, isThirdPersonSpectator);
 }

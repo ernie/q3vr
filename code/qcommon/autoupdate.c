@@ -20,7 +20,7 @@
   #include <curl/curl.h>
 #endif
 
-// On Windows, curl is statically linked — use curl_* directly.
+// On Windows, curl is statically linked: use curl_* directly.
 // On other platforms with USE_CURL_DLOPEN, use the qcurl_* wrappers from cl_http_curl.c.
 #ifdef USE_CURL_DLOPEN
 extern char* (*qcurl_version)(void);
@@ -557,7 +557,7 @@ static void Update_PerformCheck( void )
 ==================
 Update_FileWriteCallback
 
-curl write callback for ZIP file download - writes directly to a raw file handle.
+curl write callback for ZIP file download: writes directly to a raw file handle.
 ==================
 */
 static FILE *updateZipFile;

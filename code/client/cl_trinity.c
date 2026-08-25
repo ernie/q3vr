@@ -23,7 +23,7 @@ static cvar_t *cl_trinityLoginPass;
 
 #ifdef USE_HTTP
 
-// On Windows, curl is statically linked — use curl_* directly.
+// On Windows, curl is statically linked: use curl_* directly.
 // On other platforms with USE_CURL_DLOPEN, use the qcurl_* wrappers from cl_http_curl.c.
 #ifdef USE_CURL_DLOPEN
 extern char* (*qcurl_version)(void);

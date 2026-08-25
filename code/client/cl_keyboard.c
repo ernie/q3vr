@@ -884,14 +884,14 @@ void VKeyboard_HandleOffhandKey( qboolean down ) {
 	}
 
 	if (!down) {
-		// Trigger released -- clear repeat if offhand owns it
+		// Trigger released: clear repeat if offhand owns it
 		if (vkb.repeatHand == VKB_HAND_OFFHAND) {
 			vkb.repeatKey = NULL;
 		}
 		return;
 	}
 
-	// Trigger pressed -- hit test at offhand cursor position
+	// Trigger pressed: hit test at offhand cursor position
 	keyDef = VKeyboard_GetKeyAt(vr.offhandCursorX, vr.offhandCursorY);
 	if (!keyDef) {
 		if (VKeyboard_IsInKeyboardArea(vr.offhandCursorX, vr.offhandCursorY)) {

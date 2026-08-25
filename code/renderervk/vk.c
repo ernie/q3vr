@@ -627,7 +627,7 @@ static void vk_create_swapchain( VkPhysicalDevice physical_device, VkDevice devi
 	desc.imageExtent = image_extent;
 	desc.imageArrayLayers = 1;
 	desc.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	// Always add transfer bits - needed for:
+	// Always add transfer bits, needed for:
 	// - TRANSFER_DST_BIT: vkCmdClearColorImage (r_clear) and blit destination (VR mirror)
 	// - TRANSFER_SRC_BIT: screenshots
 	desc.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -718,7 +718,7 @@ static void vk_create_render_passes( void )
 	depth_format = vk.depth_format;
 	device = vk.device;
 
-	// Common subpass dependencies - used by all render passes
+	// Common subpass dependencies: used by all render passes
 	Com_Memset( &deps, 0, sizeof( deps ) );
 
 	// deps[0]: External -> subpass 0 (wait for previous operations before color/depth output)
@@ -757,7 +757,7 @@ static void vk_create_render_passes( void )
 	deps[2].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 	deps[2].dependencyFlags = 0;
 
-	// Screenmap render pass - only needed for FBO mode (r_fbo=1)
+	// Screenmap render pass: only needed for FBO mode (r_fbo=1)
 	// In non-FBO mode, we skip directly to XR multiview passes
 	if ( r_fbo->integer )
 	{
@@ -897,7 +897,7 @@ static void vk_create_render_passes( void )
 		attachments[1].format = depth_format;
 		attachments[1].samples = vk.msaaActive ? vkSamples : VK_SAMPLE_COUNT_1_BIT;
 		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		// Must STORE at every sample count - post_bloom and mainResume LOAD depth
+		// Must STORE at every sample count: post_bloom and mainResume LOAD depth
 		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachments[1].stencilLoadOp = glConfig.stencilBits ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -1797,7 +1797,7 @@ static const present_format_t present_formats[] = {
 	//{32, VK_FORMAT_B10G11R11_UFLOAT_PACK32, VK_FORMAT_B10G11R11_UFLOAT_PACK32}
 };
 
-// sRGB formats for desktop swapchain - matches XR swapchain color space
+// sRGB formats for desktop swapchain: matches XR swapchain color space
 static const present_format_t present_formats_srgb[] = {
 	{24, VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB},
 };
@@ -2107,7 +2107,7 @@ static void vk_destroy_instance( void ) {
 		vk_surface = VK_NULL_HANDLE;
 	}
 
-	// DO NOT destroy vk_instance - it's owned by the VR layer (XR_KHR_vulkan_enable2)
+	// DO NOT destroy vk_instance: it's owned by the VR layer (XR_KHR_vulkan_enable2)
 	// The VR layer's VR_Vulkan_Shutdown() handles instance/device destruction
 	vk_instance = VK_NULL_HANDLE;
 }
@@ -2175,7 +2175,7 @@ static void init_vulkan_library( void )
 			qvkGetPhysicalDeviceQueueFamilyProperties( vk.physical_device, &queueFamilyCount, NULL );
 			ri.Printf( PRINT_WARNING, "[VK] XR queue family %d does not support presentation, checking %d families...\n",
 				vk.queue_family_index, queueFamilyCount );
-			// For now, continue anyway - the presentation might work or we might need separate queues
+			// For now, continue anyway: the presentation might work or we might need separate queues
 		} else {
 			ri.Printf( PRINT_ALL, "[VK] XR queue family %d supports presentation\n", vk.queue_family_index );
 		}
@@ -5151,7 +5151,7 @@ void vk_queue_wait_idle( void )
 
 
 // Precondition: callers must end (discard or finish) any in-flight frame
-// first — the pool reset below frees every set, and descriptorsReady only
+// first: the pool reset below frees every set, and descriptorsReady only
 // guards frames that haven't started yet.
 void vk_release_resources( void ) {
 	int i, j;
@@ -5761,7 +5761,7 @@ void vk_create_post_process_pipelines( void )
 	create_info.pDepthStencilState = &depth_stencil_state;
 
 	// =====================================================================
-	// 1. XR Gamma Pipeline - outputs from FBO to XR swapchain
+	// 1. XR Gamma Pipeline: outputs from FBO to XR swapchain
 	// =====================================================================
 	if ( vk.gamma_pipeline != VK_NULL_HANDLE ) {
 		vk_wait_idle();
@@ -7784,7 +7784,7 @@ void vk_bind_descriptor_sets( void )
 		}
 	}
 
-	// Q3VR: Always use multiview layout - mono modelview passed via 64-byte push
+	// Q3VR: Always use multiview layout; mono modelview passed via 64-byte push
 	// constants, per-eye projection via the ViewTransform UBO (set 0, binding 1)
 	qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		vk.pipeline_layout, start, count, vk.cmd->descriptor_set.current + start, offset_count, offsets );
@@ -8003,7 +8003,7 @@ void vk_begin_main_render_pass( qboolean clear )
 		render_pass_begin_info.pClearValues = clear_values;
 		vk_world.dirty_depth_attachment = 0;
 	} else {
-		// Resuming after HUD pass - don't clear, preserve existing content
+		// Resuming after HUD pass: don't clear, preserve existing content
 		render_pass_begin_info.clearValueCount = 0;
 		render_pass_begin_info.pClearValues = NULL;
 	}
@@ -8134,7 +8134,7 @@ void vk_begin_hud_render_pass( qboolean clear )
 
 	// End current render pass if active
 	if ( vk.inRenderPass ) {
-		// Track if we're ending post_bloom - its finalLayout transitions color to SHADER_READ_ONLY
+		// Track if we're ending post_bloom: its finalLayout transitions color to SHADER_READ_ONLY
 		// Only post_bloom does this; main keeps color in COLOR_ATTACHMENT
 		if ( vk.renderPassIndex == RENDER_PASS_POST_BLOOM ) {
 			vk.colorNeedsTransitionToAttachment = qtrue;
@@ -8314,7 +8314,7 @@ static void vk_resize_geometry_buffer( void )
 
 	for ( i = 0; i < NUM_COMMAND_BUFFERS; i++ ) {
 		vk_update_uniform_descriptor( vk.tess[ i ].uniform_descriptor, vk.tess[ i ].vertex_buffer );
-		// fresh buffers - every cached eyeProj slot is gone
+		// fresh buffers: every cached eyeProj slot is gone
 		vk.tess[ i ].eyeproj_cache_valid = qfalse;
 	}
 
@@ -8357,7 +8357,7 @@ void vk_begin_frame( uint32_t colorIndex )
 		vk_finish_frame();
 	}
 
-	// Always start fresh - increment frame count
+	// Always start fresh: increment frame count
 	vk.frame_count++;
 
 #ifdef USE_UPLOAD_QUEUE
@@ -8501,7 +8501,7 @@ void vk_begin_frame( uint32_t colorIndex )
 	vk.cmd->last_pipeline = VK_NULL_HANDLE;
 	backEnd.screenMapDone = qfalse;
 
-	// XR always uses the main multiview render pass - no screenmap in VR
+	// XR always uses the main multiview render pass: no screenmap in VR
 	vk_begin_main_render_pass( qtrue );  // Clear framebuffer at start of frame
 
 	// Reset dynamic buffers for new frame
@@ -8519,7 +8519,7 @@ void vk_begin_frame( uint32_t colorIndex )
 
 	Com_Memset( &vk.cmd->scissor_rect, 0, sizeof( vk.cmd->scissor_rect ) );
 
-	// the ring restarted at offset 0 - last frame's cached eyeProj slot is gone
+	// the ring restarted at offset 0: last frame's cached eyeProj slot is gone
 	vk.cmd->eyeproj_cache_valid = qfalse;
 
 	// prime set 0 binding 1 so every dynamic-offset bind this frame has a
@@ -8558,7 +8558,7 @@ void vk_end_frame( void )
 		useVirtualScreen = ri.VR_GetVirtualScreenState( vsEyeProj, screenMV, floorMV );
 	}
 
-	// Post-processing for XR (bloom, gamma) - fboActive always true in VR
+	// Post-processing for XR (bloom, gamma): fboActive always true in VR
 	if ( vk.xr.initialized && vk.color_image != VK_NULL_HANDLE ) {
 		vk.cmd->last_pipeline = VK_NULL_HANDLE; // do not restore clobbered descriptors in vk_bloom()
 
@@ -8579,7 +8579,7 @@ void vk_end_frame( void )
 
 		// Transition FBO color to shader read for gamma pass
 		// If we just ended post_bloom: FBO is already in SHADER_READ_ONLY_OPTIMAL (from finalLayout)
-		// Otherwise (main, mainResume, or HUD after bloom): FBO is in COLOR_ATTACHMENT_OPTIMAL - needs transition
+		// Otherwise (main, mainResume, or HUD after bloom): FBO is in COLOR_ATTACHMENT_OPTIMAL, needs transition
 		if ( vk.renderPassIndex != RENDER_PASS_POST_BLOOM ) {
 			record_image_layout_transition( vk.cmd->command_buffer,
 				vk.color_image, VK_IMAGE_ASPECT_COLOR_BIT,
@@ -8616,7 +8616,7 @@ void vk_end_frame( void )
 	vk.recordingCommands = qfalse;
 
 	// Submit command buffer with fence
-	// Only signal renderingCompleteSem if desktop mirror is enabled - it must be consumed each frame.
+	// Only signal renderingCompleteSem if desktop mirror is enabled: it must be consumed each frame.
 	// If we signal it but desktop mirror doesn't run (disabled, minimized, etc), the semaphore
 	// remains signaled and the next vk_end_frame will cause a double-signal validation error.
 	{
@@ -8649,7 +8649,7 @@ void vk_end_frame( void )
 
 /*
 Shared by vk_finish_frame / vk_discard_frame: end an interrupted render
-pass and report whether a command buffer is open - the finish path submits
+pass and report whether a command buffer is open: the finish path submits
 it, the discard path drops it.
 */
 static qboolean vk_end_interrupted_pass( void )
@@ -8872,7 +8872,7 @@ static void vk_destroy_desktop_mirror_resources( void )
 		qvkFreeMemory( vk.device, vk.desktopMirrorMemory, NULL );
 		vk.desktopMirrorMemory = VK_NULL_HANDLE;
 	}
-	// Note: vk.linearSampler is NOT destroyed here - it's a shared resource
+	// Note: vk.linearSampler is NOT destroyed here; it's a shared resource
 	// created early in vk_initialize() and destroyed in vk_shutdown()
 	// Descriptors are freed when pool is reset
 	vk.desktopMirrorDescriptor = VK_NULL_HANDLE;
@@ -9112,7 +9112,7 @@ static qboolean vk_create_desktop_mirror_resources( void )
 	VK_CHECK( qvkCreatePipelineLayout( vk.device, &layoutInfo, NULL, &vk.desktopMirrorPipelineLayout ) );
 	SET_OBJECT_NAME( vk.desktopMirrorPipelineLayout, "Desktop mirror pipeline layout", VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT );
 
-	// 9. Create pipeline — sRGB view auto-decodes on read, sRGB framebuffer auto-encodes on write
+	// 9. Create pipeline: sRGB view auto-decodes on read, sRGB framebuffer auto-encodes on write
 	specData.gamma = 1.0f;
 	specData.obScale = 1.0f;
 
@@ -9142,7 +9142,7 @@ static qboolean vk_create_desktop_mirror_resources( void )
 	shaderStages[1].pName = "main";
 	shaderStages[1].pSpecializationInfo = &specInfo;
 
-	// Vertex input (no vertex attributes - fullscreen triangle from gl_VertexIndex)
+	// Vertex input (no vertex attributes: fullscreen triangle from gl_VertexIndex)
 	Com_Memset( &vertexInput, 0, sizeof( vertexInput ) );
 	vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
@@ -9304,7 +9304,7 @@ void vk_present_desktop_mirror( void )
 		return;
 	}
 
-	// Skip when window is minimized - no point trying to present
+	// Skip when window is minimized: no point trying to present
 	if ( vk_is_window_minimized() ) {
 		return;
 	}
@@ -9336,7 +9336,7 @@ void vk_present_desktop_mirror( void )
 	}
 
 	// Non-blocking acquire so the VR frame is never stalled by desktop vsync.
-	// If no image is available, we skip — spectator sees the previous frame held.
+	// If no image is available, we skip: spectator sees the previous frame held.
 	result = qvkAcquireNextImageKHR( vk.device, vk.swapchain, 0,
 		vk.desktopAcquireSem, VK_NULL_HANDLE, &desktopImageIndex );
 
@@ -9348,7 +9348,7 @@ void vk_present_desktop_mirror( void )
 	}
 
 	if ( result == VK_NOT_READY || result == VK_TIMEOUT ) {
-		// No desktop swapchain image available — skip this frame's mirror
+		// No desktop swapchain image available: skip this frame's mirror
 		vk_drain_rendering_semaphore();
 		return;
 	}
@@ -9844,7 +9844,7 @@ void vk_present_desktop_mirror( void )
 		dstLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
 	} else {
-		// Normal mode: sample from XR swapchain (still ours — runs before xrReleaseSwapchainImage)
+		// Normal mode: sample from XR swapchain (still ours, runs before xrReleaseSwapchainImage)
 		uint32_t xrColorIndex = vk.xr.colorIndex;
 
 		// Lazy-init desktop mirror resources
@@ -10123,7 +10123,7 @@ finish_desktop_mirror:
 	// Submit blit command buffer
 	// - Wait on acquire semaphore: ensures presentation engine is done reading before we write
 	// - Wait on renderingCompleteSem: ensures XR rendering is done before we read virtualScreenImage
-	//   (only if vk_end_frame submitted this frame - renderingCompleteSignaled indicates successful submit)
+	//   (only if vk_end_frame submitted this frame: renderingCompleteSignaled indicates successful submit)
 	// - Signal per-image semaphore: indexed by acquired image, presentation waits on this
 	{
 		VkSemaphore waitSemaphores[2];
@@ -10533,7 +10533,7 @@ qboolean vk_bloom( void )
 		qvkCmdBindDescriptorSets( vk.cmd->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 			vk.pipeline_layout_blend, 0, ARRAY_LEN(dset), dset, 0, NULL );
 		qvkCmdDraw( vk.cmd->command_buffer, 4, 1, 0, 0 );
-		// NOTE: Do NOT end render pass here - keep post_bloom open for 2D rendering
+		// NOTE: Do NOT end render pass here; keep post_bloom open for 2D rendering
 		// The render pass will be ended by vk_end_frame() or next vk_end_render_pass() call
 	}
 
@@ -10907,7 +10907,7 @@ qboolean vk_create_xr_framebuffers( void )
 
 		// Use UNORM views to bypass automatic sRGB conversion (shader handles gamma)
 		if ( xr->gammaViews[i] != VK_NULL_HANDLE ) {
-			attachments[0] = xr->gammaViews[i];  // UNORM view - no auto sRGB conversion
+			attachments[0] = xr->gammaViews[i];  // UNORM view: no auto sRGB conversion
 		} else {
 			attachments[0] = xr->colorViews[i];  // Fallback to sRGB view
 		}
@@ -11149,7 +11149,7 @@ qboolean vk_create_hud_buffer( void )
 
 	// 8. Initialize HUD color and depth images
 	// Color: clear to transparent black and transition to SHADER_READ_ONLY_OPTIMAL
-	// Depth: clear to 0.0 (USE_REVERSED_DEPTH) - render pass uses UNDEFINED initialLayout with LOAD_OP_CLEAR
+	// Depth: clear to 0.0 (USE_REVERSED_DEPTH); render pass uses UNDEFINED initialLayout with LOAD_OP_CLEAR
 	{
 		VkCommandBuffer cmdBuf;
 		VkCommandBufferAllocateInfo cmdAllocInfo;
@@ -11877,7 +11877,7 @@ qboolean vk_create_virtual_screen_meshes( void )
 		return qfalse;
 	}
 
-	// Create cylinder index buffer (shares memory allocation - append after vertex data)
+	// Create cylinder index buffer (shares memory allocation: append after vertex data)
 	// For simplicity, we use a separate allocation
 	{
 		VkBufferCreateInfo bufferCI;
@@ -12449,7 +12449,7 @@ static void vk_render_virtual_screen( float eyeProj[2][16], float screenMV[16], 
 		xr->virtualScreenImage, VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, 0 );
 
-	// 7. XR swapchain left in TRANSFER_SRC — virtual screen render pass uses
+	// 7. XR swapchain left in TRANSFER_SRC: virtual screen render pass uses
 	// initialLayout=UNDEFINED and will clear+overwrite entirely
 
 	// Route the virtual screen's own eyeProj pair through the standard
@@ -12474,7 +12474,7 @@ static void vk_render_virtual_screen( float eyeProj[2][16], float screenMV[16], 
 		qtrue, xr->width, xr->height );
 
 	// 9. Draw floor grid and screen mesh; on ring overflow keep the cleared
-	// pass but skip the draws - the resize is scheduled and the ring
+	// pass but skip the draws: the resize is scheduled and the ring
 	// self-heals next frame
 	if ( eyeproj_offset != ~0U ) {
 		VkDescriptorSet sets[2];
@@ -12575,7 +12575,7 @@ static qboolean vk_create_xr_gamma_framebuffers( void )
 	ri.Printf( PRINT_ALL, "Creating gamma framebuffers for XR swapchain output...\n" );
 
 	for ( i = 0; i < xr->colorInfo->imageCount && i < MAX_SWAPCHAIN_IMAGES; i++ ) {
-		// Use UNORM views for gamma framebuffer - gamma shader outputs sRGB-encoded
+		// Use UNORM views for gamma framebuffer: gamma shader outputs sRGB-encoded
 		// values directly, so we need to bypass Vulkan's automatic linear-to-sRGB
 		// conversion that would occur with sRGB attachment format
 		if ( xr->gammaViews[i] == VK_NULL_HANDLE ) {
@@ -12804,7 +12804,7 @@ static qboolean vk_reallocate_xr_fbo_descriptors( void )
 	return qtrue;
 }
 
-// Static color swapchain info storage - populated from VR layer pull
+// Static color swapchain info storage: populated from VR layer pull
 static VR_VK_SwapchainInfo s_colorSwapchainInfo;
 
 /*
@@ -13011,7 +13011,7 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 		}
 	}
 
-	// Subpass dependencies - includes depth stages for mainResume which uses
+	// Subpass dependencies: includes depth stages for mainResume which uses
 	// LOAD_OP_LOAD on depth after HUD pass (FBO depth must be synchronized)
 	deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
 	deps[0].dstSubpass = 0;
@@ -13106,7 +13106,7 @@ static qboolean vk_recreate_xr_render_pass( VkFormat colorFormat, VkFormat depth
 			vk.render_pass.gamma = VK_NULL_HANDLE;
 		}
 
-		// gamma has only color attachment (no depth) - outputs to XR swapchain
+		// gamma has only color attachment (no depth): outputs to XR swapchain
 		// Uses UNORM format because gamma shader outputs sRGB values directly
 		attachments[0].format = gammaFormat;
 		attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;

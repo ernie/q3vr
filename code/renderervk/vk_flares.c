@@ -333,7 +333,7 @@ static void RB_TestFlare( flare_t *f ) {
 	multisampled image will cause multiple fragment shader invocations.
 
 	VR: the probe position must be computed PER EYE with the same eyeProj
-	matrices the scene rendered with — each view's depth buffer is shifted
+	matrices the scene rendered with: each view's depth buffer is shifted
 	by asymmetric-FOV offset + IPD parallax relative to the mono projection,
 	so a mono-positioned dot samples pixels several degrees away from where
 	the flare actually is in either eye. The two clip-space positions go in
@@ -363,7 +363,7 @@ static void RB_TestFlare( flare_t *f ) {
 	*((uint32_t*)(vk.storage.buffer_ptr + offset)) = 0x00;
 
 	// per-eye probe positions: clip = eyeProj[e] * (worldModelView * origin),
-	// biased toward the viewer — exactly the transform the scene drew with
+	// biased toward the viewer: exactly the transform the scene drew with
 	Com_Memset( clipPos, 0, sizeof( clipPos ) );
 	for ( i = 0; i < 2; i++ ) {
 		R_TransformModelToClip( f->origin, backEnd.viewParms.world.modelMatrix,

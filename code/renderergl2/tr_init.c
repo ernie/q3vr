@@ -1260,7 +1260,7 @@ void R_Register( void )
 	ri.Cvar_Get("r_opengl", "1", CVAR_ROM);
 
 	// VR cvars are engine singletons (vrcommon/vr_cvars.c); obtain handles here.
-	// Flags 0 — the owning registration supplies the real flags.
+	// Flags 0: the owning registration supplies the real flags.
 	vr_worldscale           = ri.Cvar_Get( "vr_worldscale",           "32.0", 0 );
 	vr_worldscaleScaler     = ri.Cvar_Get( "vr_worldscaleScaler",     "1.0",  0 );
 	vr_hudScale             = ri.Cvar_Get( "vr_hudScale",             "1.0",  0 );

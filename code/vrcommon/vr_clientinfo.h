@@ -58,7 +58,7 @@ typedef struct vr_clientinfo_s {
 	qboolean weapon_adjust;
 	qboolean no_crosshair;
 	qboolean vote_active;           // true when any yes/no dialog is visible (vote, team vote, TVD offer)
-	int vote_holding;               // 0=none, 1=A held (yes), -1=B held (no) — set by engine, read by cgame
+	int vote_holding;               // 0=none, 1=A held (yes), -1=B held (no): set by engine, read by cgame
 
 	int realign; // used to realign the 6DoF playspace in a multiplayer game
 	qboolean recenter_follow_camera; // flag to trigger camera recentering in follow mode

@@ -14,7 +14,7 @@
 
 #include "common/xr_linear.h"
 
-// Eye-midpoint position with the left eye's orientation - anchoring uses a
+// Eye-midpoint position with the left eye's orientation: anchoring uses a
 // single centered head pose so the screen is not offset toward one eye
 void VR_VirtualScreen_ComputeCenteredHeadPose(XrPosef* out, const XrView* views, uint32_t viewCount);
 

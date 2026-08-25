@@ -3210,10 +3210,10 @@ void CL_InitRef( void ) {
 
 	refImport.Com_RealTime = Com_RealTime;
 
-	// memory cleanup (Quake3e pattern) - not used in Q3VR
+	// memory cleanup (Quake3e pattern): not used in Q3VR
 	refImport.FreeAll = NULL;
 
-	// OpenGL platform functions - using wrappers to match Quake3e signatures
+	// OpenGL platform functions: using wrappers to match Quake3e signatures
 	refImport.GLimp_Init = CL_GLimp_Init_Wrapper;
 	refImport.GLimp_Shutdown = CL_GLimp_Shutdown_Wrapper;
 	refImport.GLimp_EndFrame = GLimp_EndFrame;
@@ -3228,11 +3228,11 @@ void CL_InitRef( void ) {
 	refImport.VK_GetInstanceProcAddr = (void*(*)(void*, const char*))vkGetInstanceProcAddr;
 	refImport.VK_CreateSurface = VK_CreateSurface;
 
-	// VR Vulkan accessors - renderer pulls XR-created resources during init
+	// VR Vulkan accessors: renderer pulls XR-created resources during init
 	refImport.VR_Vulkan_GetDeviceInfo = VR_Vulkan_GetDeviceInfo;
 	refImport.VR_Vulkan_GetSwapchainInfo = VR_Vulkan_GetSwapchainInfo;
 
-	// Virtual screen state query - renderer pulls the split virtual-screen transform
+	// Virtual screen state query: renderer pulls the split virtual-screen transform
 	refImport.VR_GetVirtualScreenState = VR_GetVirtualScreenMatrices;
 
 	// VR client state + gameplay queries - renderer pulls instead of linking vrcommon directly

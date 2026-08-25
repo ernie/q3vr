@@ -231,7 +231,7 @@ float Q_atof( const char *str ) {
 
 	f = (float)atof( str );
 
-	// Check for NaN and infinity - protect against malformed input
+	// Check for NaN and infinity: protect against malformed input
 	if ( !Q_isfinite( f ) ) {
 		return 0.0f;
 	}

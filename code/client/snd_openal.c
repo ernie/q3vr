@@ -134,7 +134,7 @@ typedef struct alSfx_s
 	ALuint		buffer;					// OpenAL buffer
 	snd_info_t	info;					// information for this sound like rate, sample count..
 
-	qboolean	isDefault;				// Couldn't be loaded - use default FX
+	qboolean	isDefault;				// Couldn't be loaded: use default FX
 	qboolean	isDefaultChecked;		// Sound has been check if it isDefault
 	qboolean	inMemory;				// Sound is stored in memory
 	qboolean	isLocked;				// Sound is locked (can not be unloaded)
@@ -2688,7 +2688,7 @@ qboolean S_AL_Init( soundInterface_t *si )
 #endif
 	else
 	{
-		// Check function pointer directly — alcIsExtensionPresent(NULL, ...)
+		// Check function pointer directly: alcIsExtensionPresent(NULL, ...)
 		// returns false on some OpenAL implementations even when the
 		// extension is available (observed with OpenAL Soft on Windows).
 		if (qalcCaptureOpenDevice == NULL)

@@ -1367,7 +1367,7 @@ static qboolean ParseStage( shaderStage_t *stage, const char **text )
 			continue;
 		}
 		// vk renderers' pick of the per-pixel dlight modulation stage;
-		// rend2's dlights have no such stage - accept and ignore
+		// rend2's dlights have no such stage: accept and ignore
 		else if ( !Q_stricmp( token, "dlight" ) && s_extendedShader )
 		{
 			continue;
@@ -4039,7 +4039,7 @@ static void ScanAndLoadShaderFiles( void )
 			ri.FS_FreeFile( buffers[i] );
 	}
 
-	// NOTE: COM_Compress() intentionally omitted here — it relocates text within
+	// NOTE: COM_Compress() intentionally omitted here; it relocates text within
 	// s_shaderText and would invalidate s_extensionOffset. The parser handles the
 	// uncompressed text fine.
 

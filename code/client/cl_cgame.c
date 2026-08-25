@@ -1013,7 +1013,7 @@ void CL_InitCGame( void ) {
 
 	// vid_restart tears down and re-inits the VR state with the derived mode
 	// flags zeroed, and no input frame runs before cgame draws its loading
-	// screen — recompute here so CG_INIT's loading UI sees the right
+	// screen: recompute here so CG_INIT's loading UI sees the right
 	// virtual-screen state
 	VR_RefreshDerivedModeState();
 

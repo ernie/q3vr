@@ -83,7 +83,7 @@ cvar_t	*r_presentBits;
 
 cvar_t	*r_ignorehwgamma;
 
-// SDL glimp cvars - shared with renderercommon
+// SDL glimp cvars: shared with renderercommon
 cvar_t	*r_stencilbits;
 cvar_t	*r_depthbits;
 cvar_t	*r_colorbits;
@@ -579,7 +579,7 @@ static void InitOpenGL( void )
 		R_InitExtensions();
 #endif
 
-		// Q3VR: Force software gamma for VR - hardware gamma only affects desktop monitor
+		// Q3VR: Force software gamma for VR; hardware gamma only affects desktop monitor
 		// Don't call GLimp_InitGamma as it would override this based on SDL window test
 		glConfig.deviceSupportsGamma = qfalse;
 		gls.deviceSupportsGamma = qfalse;
@@ -1488,7 +1488,7 @@ static void R_Register( void )
 	ri.Cvar_Get("r_opengl", "0", CVAR_ROM);
 
 	// VR cvars are engine singletons (vrcommon/vr_cvars.c); obtain handles here.
-	// Flags 0 — the owning registration supplies the real flags.
+	// Flags 0: the owning registration supplies the real flags.
 	vr_worldscale           = ri.Cvar_Get( "vr_worldscale",           "32.0", 0 );
 	vr_worldscaleScaler     = ri.Cvar_Get( "vr_worldscaleScaler",     "1.0",  0 );
 	vr_hudScale             = ri.Cvar_Get( "vr_hudScale",             "1.0",  0 );
@@ -1799,7 +1799,7 @@ static void R_Register( void )
 	ri.Cvar_CheckRange( r_ext_max_anisotropy, 1, 16, qtrue );  // 16x anisotropic is typical GPU max
 	ri.Cvar_SetDescription( r_ext_max_anisotropy, "Sets maximum anisotropic level for your graphics driver. Requires \\r_ext_texture_filter_anisotropic." );
 
-	// SDL glimp cvars - required by sdl_glimp.c
+	// SDL glimp cvars: required by sdl_glimp.c
 	r_stencilbits = ri.Cvar_Get( "r_stencilbits", "8", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	r_depthbits = ri.Cvar_Get( "r_depthbits", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
 	r_colorbits = ri.Cvar_Get( "r_colorbits", "0", CVAR_ARCHIVE_ND | CVAR_LATCH );
@@ -2066,7 +2066,7 @@ static void RE_Shutdown( refShutdownCode_t code ) {
 		// so we must destroy our VkImageViews/VkFramebuffers first while images are valid.
 		vk_shutdown_xr_resources();
 
-		// Now destroy VR swapchains - safe because views/framebuffers are already gone.
+		// Now destroy VR swapchains: safe because views/framebuffers are already gone.
 		// OpenXR swapchain images are owned by OpenXR, so they must be released
 		// before we call vkDestroyDevice, otherwise Vulkan validation complains.
 		if ( code != REF_KEEP_WINDOW ) {
@@ -2208,7 +2208,7 @@ void RE_WaitForRenderComplete( void ) {
 	VkResult result;
 
 	// Wait for GPU to complete rendering before releasing XR swapchains
-	// This is required for Vulkan - OpenXR needs GPU work finished before xrReleaseSwapchainImage
+	// This is required for Vulkan: OpenXR needs GPU work finished before xrReleaseSwapchainImage
 	if ( !vk.cmd || !vk.cmd->waitForFence ) {
 		return;
 	}
@@ -2226,7 +2226,7 @@ void RE_WaitForRenderComplete( void ) {
 }
 
 void RE_BeginXRFrame( uint32_t colorIndex ) {
-	// Begin frame - sets up command buffer, transitions images, begins render pass
+	// Begin frame: sets up command buffer, transitions images, begins render pass
 	// This is called from VR layer after acquiring XR swapchain images
 	vk_begin_frame( colorIndex );
 }
